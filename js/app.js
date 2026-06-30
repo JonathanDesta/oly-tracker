@@ -285,9 +285,19 @@ function stopSessionTimer() {
 
 function updateSessionTimerDisplay() {
   const el = document.getElementById('session-timer');
-  if (!el) return;
-  const sec = Math.floor((Date.now() - STATE.sessionTimer.start) / 1000);
-  el.textContent = fmtTime(sec);
+  if (!el || !STATE.activeWorkout) return;
+  const elapsed = Math.floor((Date.now() - STATE.sessionTimer.start) / 1000);
+  const total = STATE.activeWorkout.totalSec || 0;
+  if (!total) { el.textContent = fmtTime(elapsed); return; } // fallback: count up
+  const rem = total - elapsed;
+  if (rem >= 0) {
+    el.textContent = fmtTime(rem);
+    el.classList.remove('session-over');
+  } else {
+    el.textContent = '+' + fmtTime(-rem); // overtime
+    el.classList.add('session-over');
+  }
+  highlightCurrentExercise(elapsed);
 }
 
 function fmtTime(sec) {
@@ -533,6 +543,81 @@ function dayEstMin(day) {
   return STATE.cutting && day.sections ? Math.round(day.totalMin * 0.85) : day.totalMin;
 }
 
+// ─── Session scheduling ───────────────────────────────────────────────────────
+// Rough real time cost of one exercise, in seconds. Fixed-duration items
+// (cardio/mobility/intervals) use their actual length; set-based items use
+// sets × (execution + rest). Absolute values matter less than the ratios —
+// the variable items are scaled to fit the day's documented total below.
+function exerciseRawSec(ex, def) {
+  if (ex.interval) {
+    const c = ex.interval;
+    return (c.warmupSec || 0) + (c.cooldownSec || 0) +
+      c.rounds * c.workSec + (c.lastRest ? c.rounds : c.rounds - 1) * c.restSec;
+  }
+  if (def.type === 'cardio' || def.type === 'mobility') return durationSec(ex);
+  if (ex.isDailyMax || ex.isMaxEffort) {
+    // Building to a top single/triple: several ramping attempts at long rest.
+    const rest = ex.rest || 240;
+    return 6 * (25 + rest * 0.6);
+  }
+  const sets = typeof ex.sets === 'number' ? ex.sets : 3;
+  const rest = ex.rest || 60;
+  let exec = 30; // seconds to perform one set
+  if (def.type === 'hypertrophy' || def.type === 'strength') exec = 40;
+  else if (def.type === 'core') exec = 35;
+  else if (def.type === 'jump') exec = 20;
+  else if (def.type === 'warmup') exec = 25;
+  return sets * (exec + rest);
+}
+
+// Annotate each exercise in a day with a scheduled start offset (`_startSec`),
+// anchored so the whole session sums to the document's totalMin. Returns a flat
+// schedule list and the total seconds.
+function computeSchedule(day) {
+  if (!day || !day.sections) {
+    return { totalSec: (day && day.totalMin) ? day.totalMin * 60 : 0, list: [] };
+  }
+  let fixedSec = 0, variableRaw = 0;
+  const items = [];
+  day.sections.forEach((sec, si) => sec.exercises.forEach((ex, ei) => {
+    const def = PROGRAM.exercises[ex.id];
+    if (!def) return;
+    const fixed = def.type === 'cardio' || def.type === 'mobility' || !!ex.interval;
+    const raw = exerciseRawSec(ex, def);
+    items.push({ si, ei, ex, fixed, raw });
+    if (fixed) fixedSec += raw; else variableRaw += raw;
+  }));
+  // Anchor to the cutting-adjusted estimate so the countdown matches the home page.
+  const totalSec = (dayEstMin(day) || day.totalMin || 0) * 60;
+  // Distribute the time left after fixed-duration items across the lifting work.
+  const remaining = Math.max(totalSec - fixedSec, variableRaw > 0 ? 60 : 0);
+  const scale = variableRaw > 0 ? remaining / variableRaw : 1;
+  let offset = 0;
+  const list = [];
+  items.forEach(it => {
+    const dur = it.fixed ? it.raw : Math.round(it.raw * scale);
+    it.ex._startSec = offset;
+    it.ex._durSec = dur;
+    list.push({ si: it.si, ei: it.ei, startSec: offset, durSec: dur });
+    offset += dur;
+  });
+  return { totalSec: offset || totalSec, list };
+}
+
+// Live: mark the exercise the schedule expects you to be on right now.
+function highlightCurrentExercise(elapsed) {
+  const sch = STATE.activeWorkout && STATE.activeWorkout.schedule;
+  if (!sch || !sch.length) return;
+  let cur = -1;
+  for (let i = 0; i < sch.length; i++) {
+    if (sch[i].startSec <= elapsed) cur = i; else break;
+  }
+  sch.forEach((s, i) => {
+    const card = document.getElementById(`ex-${s.si}-${s.ei}`);
+    if (card) card.classList.toggle('ex-now', i === cur);
+  });
+}
+
 // ─── Render: Home ─────────────────────────────────────────────────────────────
 function renderHome() {
   const app = $('app');
@@ -637,11 +722,15 @@ function startWorkout(dayKey) {
   const day = dayFor(dayKey);
   if (!day) { alert('No workout found for this day.'); return; }
 
+  const sched = computeSchedule(day);
+
   STATE.activeWorkout = {
     date: today(),
     dayKey,
     day,
     setsLogged: {}, // exerciseId → array of set objects
+    schedule: sched.list,
+    totalSec: sched.totalSec,
     complete: false,
   };
 
@@ -687,8 +776,8 @@ function renderWorkout() {
         <button class="btn-ghost-sm" onclick="endWorkout()">✕ End</button>
         <div class="workout-title">${PROGRAM.dayNames[PROGRAM.dayKeys.indexOf(STATE.activeWorkout.dayKey)]}</div>
         <div class="session-timer-wrap">
-          <span class="session-timer-label">SESSION</span>
-          <span id="session-timer" class="session-timer">00:00</span>
+          <span class="session-timer-label">${STATE.activeWorkout.totalSec ? 'TIME LEFT' : 'SESSION'}</span>
+          <span id="session-timer" class="session-timer">${STATE.activeWorkout.totalSec ? fmtTime(STATE.activeWorkout.totalSec) : '00:00'}</span>
         </div>
       </div>
       ${body}
@@ -796,6 +885,7 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
           ${collapsed ? '<span class="badge badge-green">✓ Done</span>' : ''}
         </div>
         <div class="ex-meta">
+          ${ex._startSec != null ? `<span class="ex-start">⏱ Start @ ${fmtTime(ex._startSec)}</span>` : ''}
           ${setsDisplay ? `<span>${setsDisplay}</span>` : ''}
           ${repDisplay ? `<span>${repDisplay}</span>` : ''}
           ${pwDisplay ? `<span class="ex-pct">${pwDisplay} (${ex.pct}%)</span>` : ''}
