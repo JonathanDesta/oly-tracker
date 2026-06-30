@@ -157,7 +157,12 @@ function skipRestTimer() {
 }
 
 function addRestTime(sec) {
+  // If the timer already completed (or was never running), the "+30s / +1m"
+  // buttons on the done screen should start a fresh rest of that length rather
+  // than silently mutating a dead end-time.
+  if (!STATE.restTimer.active) { startRestTimer(sec); return; }
   STATE.restTimer.end += sec * 1000;
+  renderTimerOverlay();
 }
 
 // ─── Interval timer ───────────────────────────────────────────────────────────
@@ -1104,6 +1109,7 @@ function endWorkout() {
   stopSessionTimer();
   releaseWakeLock();
   clearRestTimer();
+  stopIntervalTimer(); // never leave the VO₂max interval engine running past a session
   STATE.activeWorkout = null;
   save();
 
