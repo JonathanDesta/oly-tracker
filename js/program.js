@@ -714,6 +714,113 @@ const TESTING_WEEK = {
   sunday: { title: 'Days 6–7 — Rest', isRest: true, note: 'Rest. When you are ready, switch to Block 1 in Settings.' },
 };
 
+// ─── Week 12 Deload ───────────────────────────────────────────────────────────
+// ~50% of normal volume at 60–70% intensity — fast, clean, no daily-max attempts
+// and no plyometrics. One short Zone 2. Saturday re-tests every lift so the new
+// 1RMs become the training maxes for the next macrocycle. Keyed by weekday so it
+// uses the same navigation as every other week.
+function makeDeloadDays() {
+  return {
+    monday: {
+      title: 'Monday — Snatch Technique + Light Squat (Deload)',
+      totalMin: 55,
+      sections: [
+        {
+          title: 'Olympic Block', color: 'gold',
+          note: 'Deload — 60–70%, fast and clean. No grinding, no max attempts. Half the usual volume.',
+          exercises: [
+            { id: 'zone2_warmup', duration: '15 min', rest: 0 },
+            { id: 'snatch_warmup', sets: 2, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
+            { id: 'snatch_floor', sets: 3, reps: 2, pct: 67, baseLift: 'snatch', rest: 120 },
+            { id: 'back_squat', sets: 2, reps: 4, pct: 65, baseLift: 'bs', rest: 120 },
+            { id: 'ohs', sets: 2, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
+          ],
+        },
+      ],
+    },
+    tuesday: {
+      title: 'Tuesday — C&J Technique + Light Front Squat (Deload)',
+      totalMin: 55,
+      sections: [
+        {
+          title: 'Olympic Block', color: 'gold',
+          note: 'Deload — 60–70%, crisp positions only. No daily max.',
+          exercises: [
+            { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 55, baseLift: 'cj', rest: 90 },
+            { id: 'cj_floor', sets: 3, reps: '1+1', pct: 67, baseLift: 'cj', rest: 150 },
+            { id: 'front_squat', sets: 2, reps: 4, pct: 65, baseLift: 'fs', rest: 120 },
+          ],
+        },
+      ],
+    },
+    wednesday: {
+      title: 'Wednesday — Technical / Recovery (Deload)',
+      totalMin: 40,
+      sections: [
+        {
+          title: 'Technical Block', color: 'gold',
+          note: 'Pure feel work at 60%. Keep it light — this is recovery, not training.',
+          exercises: [
+            { id: 'snatch_balance', sets: 3, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
+            { id: 'power_snatch', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
+            { id: 'jerk_rack', sets: 3, reps: 2, pct: 60, baseLift: 'cj', rest: 90 },
+          ],
+        },
+      ],
+    },
+    thursday: {
+      title: 'Thursday — Snatch + Back Squat (Deload)',
+      totalMin: 55,
+      sections: [
+        {
+          title: 'Olympic Block', color: 'gold',
+          note: 'Deload — 60–70%. Stop well short of any strain.',
+          exercises: [
+            { id: 'zone2_warmup', duration: '15 min', rest: 0 },
+            { id: 'snatch_warmup', sets: 2, reps: 2, pct: 55, baseLift: 'snatch', rest: 90 },
+            { id: 'snatch_floor', sets: 3, reps: 2, pct: 70, baseLift: 'snatch', rest: 120 },
+            { id: 'back_squat', sets: 2, reps: 3, pct: 68, baseLift: 'bs', rest: 120 },
+          ],
+        },
+      ],
+    },
+    friday: {
+      title: 'Friday — C&J + Front Squat (Deload)',
+      totalMin: 55,
+      sections: [
+        {
+          title: 'Olympic Block', color: 'gold',
+          note: 'Deload — 60–70%. Last session before the re-test.',
+          exercises: [
+            { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 55, baseLift: 'cj', rest: 90 },
+            { id: 'cj_floor', sets: 3, reps: '1+1', pct: 70, baseLift: 'cj', rest: 150 },
+            { id: 'pause_front_squat', sets: 2, reps: 3, pct: 60, baseLift: 'fs', rest: 120 },
+          ],
+        },
+      ],
+    },
+    saturday: {
+      title: 'Re-Test — All Maxes',
+      isTesting: true,
+      totalMin: 120,
+      note: 'End-of-deload re-test. Fully rested — build to a fresh 1RM on each lift. These become your training maxes for the next macrocycle. Same protocol as Week 0: 5–10 lb jumps, singles above 85%, no more than 2 total misses per lift.',
+      lifts: [
+        { lift: 'snatch', label: 'Snatch — 1RM' },
+        { lift: 'cj', label: 'Clean & Jerk — 1RM' },
+        { lift: 'bs', label: 'Back Squat — 1RM' },
+        { lift: 'fs', label: 'Front Squat — 1RM' },
+        { lift: 'pp', label: 'Push Press — 1RM' },
+        { lift: 'bench', label: 'Bench Press — 1RM' },
+      ],
+    },
+    sunday: {
+      title: 'Sunday — Passive Rest',
+      isRest: true,
+      note: 'Full passive rest. Deload complete — when you are ready, switch to Block 1 in Settings to start the next macrocycle with your re-tested maxes.',
+    },
+  };
+}
+
 // ─── Main program export ──────────────────────────────────────────────────────
 const PROGRAM = {
   exercises: EX,
@@ -850,6 +957,7 @@ const PROGRAM = {
       weeks: 1,
       startWeek: 12,
       description: '50% of normal volume. 60–70% intensity. Re-test all maxes at end of week — these become training maxes for the next macrocycle.',
+      getDay: (dayKey) => makeDeloadDays()[dayKey],
     },
   ],
 

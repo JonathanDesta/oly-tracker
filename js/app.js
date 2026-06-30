@@ -736,6 +736,11 @@ function startWorkout(dayKey) {
   const day = dayFor(dayKey);
   if (!day) { alert('No workout found for this day.'); return; }
 
+  // Clear any live hypertrophy set tracker left over from an abandoned session
+  // (activeWorkout isn't persisted, but recordHypertrophySet saves `sets` as it
+  // goes — without this, a partial prior session would contaminate progression).
+  Object.values(STATE.hypertrophyWeights).forEach(d => { if (d) d.sets = []; });
+
   const sched = computeSchedule(day);
 
   STATE.activeWorkout = {
@@ -1452,12 +1457,15 @@ function updateWeek(val) {
   const max = block?.weeks || 4;
   STATE.program.weekInBlock = Math.min(Math.max(parseInt(val) - 1, 0), max - 1);
   save();
+  renderSettings();
 }
 
 function exportData() {
   const data = JSON.stringify({
     maxes: STATE.maxes,
     program: STATE.program,
+    cutting: STATE.cutting,
+    noSport: STATE.noSport,
     log: STATE.log,
     hypertrophyWeights: STATE.hypertrophyWeights,
   }, null, 2);
@@ -1479,6 +1487,8 @@ function importData(input) {
       const data = JSON.parse(e.target.result);
       if (data.maxes) Object.assign(STATE.maxes, data.maxes);
       if (data.program) Object.assign(STATE.program, data.program);
+      if ('cutting' in data) STATE.cutting = !!data.cutting;
+      if ('noSport' in data) STATE.noSport = !!data.noSport;
       if (data.log) STATE.log = data.log;
       if (data.hypertrophyWeights) STATE.hypertrophyWeights = data.hypertrophyWeights;
       save();
@@ -1494,8 +1504,14 @@ function importData(input) {
 function clearAllData() {
   if (!confirm('Delete ALL workout data? This cannot be undone.')) return;
   localStorage.removeItem('oly_state');
-  Object.assign(STATE, { maxes: {snatch:null,cj:null,bs:null,fs:null,pp:null,bench:null}, program:{blockId:1,weekInBlock:0}, log:{}, hypertrophyWeights:{} });
-  render();
+  Object.assign(STATE, {
+    maxes: {snatch:null,cj:null,bs:null,fs:null,pp:null,bench:null},
+    program: {blockId:0,weekInBlock:0},
+    cutting: false, noSport: false,
+    log: {}, hypertrophyWeights: {}, activeWorkout: null,
+  });
+  save();
+  nav('home');
 }
 
 // ─── Main render ──────────────────────────────────────────────────────────────
