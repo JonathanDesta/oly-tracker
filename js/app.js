@@ -9,6 +9,7 @@ const STATE = {
   maxes: { snatch: null, cj: null, bs: null, fs: null, pp: null, bench: null },
   program: { blockId: 0, weekInBlock: 0 }, // start on Week 0 Testing; weekInBlock is 0-indexed
   cutting: false, // training phase: false = lean bulk, true = cutting (deficit)
+  noSport: false, // false = assume ~2 sport sessions this week; true = reinstate plyos + VO₂max intervals
   log: {},           // { 'YYYY-MM-DD': { dayKey, sections: [...], sessionMin } }
   hypertrophyWeights: {}, // { exerciseId: { weight, sets } } last logged weights
   restTimer: { active: false, end: 0, prescribed: 0, interval: null },
@@ -28,6 +29,7 @@ function save() {
     maxes: STATE.maxes,
     program: STATE.program,
     cutting: STATE.cutting,
+    noSport: STATE.noSport,
     log: STATE.log,
     hypertrophyWeights: STATE.hypertrophyWeights,
   }));
@@ -41,6 +43,7 @@ function load() {
     Object.assign(STATE.maxes, data.maxes || {});
     Object.assign(STATE.program, data.program || {});
     STATE.cutting = !!data.cutting;
+    STATE.noSport = !!data.noSport;
     STATE.log = data.log || {};
     STATE.hypertrophyWeights = data.hypertrophyWeights || {};
   } catch (e) { console.warn('Load error', e); }
@@ -537,10 +540,14 @@ function dayFocus(day) {
   return idx >= 0 ? day.title.slice(idx + 1).trim() : day.title;
 }
 
-// Expected session length in minutes (trimmed slightly when cutting).
+// Expected session length in minutes (trimmed slightly when cutting; longer in a
+// no-sport week when the plyos / VO₂max intervals are reinstated).
 function dayEstMin(day) {
-  if (!day || !day.totalMin) return null;
-  return STATE.cutting && day.sections ? Math.round(day.totalMin * 0.85) : day.totalMin;
+  if (!day) return null;
+  let base = day.totalMin;
+  if (STATE.noSport && day.totalMinNoSport) base = day.totalMinNoSport;
+  if (!base) return null;
+  return STATE.cutting && day.sections ? Math.round(base * 0.85) : base;
 }
 
 // ─── Session scheduling ───────────────────────────────────────────────────────
@@ -586,7 +593,8 @@ function computeSchedule(day) {
   day.sections.forEach((sec, si) => sec.exercises.forEach((ex, ei) => {
     const def = PROGRAM.exercises[ex.id];
     if (!def) return;
-    if (ex.optional) { ex._startSec = null; return; } // off by default — excluded from the schedule
+    // Optional items (plyos, VO₂max intervals) count only in a no-sport week.
+    if (ex.optional && !STATE.noSport) { ex._startSec = null; return; }
     const fixed = def.type === 'cardio' || def.type === 'mobility' || !!ex.interval;
     const raw = exerciseRawSec(ex, def);
     items.push({ si, ei, ex, fixed, raw });
@@ -645,6 +653,7 @@ function renderHome() {
           <div class="home-title">Oly Tracker</div>
           <div class="home-sub">${blockName}
             <span class="phase-chip ${STATE.cutting ? 'phase-cut' : 'phase-bulk'}">${STATE.cutting ? 'CUTTING' : 'LEAN BULK'}</span>
+            ${STATE.noSport ? '<span class="phase-chip phase-cut">NO-SPORT WK</span>' : ''}
           </div>
         </div>
       </div>
@@ -850,6 +859,8 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
   const isCore = exDef.type === 'core';
   const isJump = exDef.type === 'jump';
   const isHypertrophy = exDef.type === 'hypertrophy' || (ex.repRange && !ex.pct && !isDailyMax);
+  // An optional item is "inactive" (skipped/dimmed) only when sport is assumed.
+  const inactive = ex.optional && !STATE.noSport;
 
   // Store exercise slot in cache for modal lookup
   EX_CACHE[`${si}_${ei}`] = { si, exId: ex.id, ei, ex };
@@ -880,11 +891,12 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
     ex.sets && logged.length >= ex.sets;
 
   return `
-    <div class="ex-card ${collapsed ? 'ex-done' : ''} ${ex.optional ? 'ex-optional' : ''}" id="ex-${si}-${ei}">
+    <div class="ex-card ${collapsed ? 'ex-done' : ''} ${inactive ? 'ex-optional' : ''}" id="ex-${si}-${ei}">
       <div class="ex-header" onclick="toggleExCard(${si},${ei})">
         <div class="ex-name-wrap">
           <span class="ex-name">${exDef.name}</span>
-          ${ex.optional ? '<span class="badge badge-optional">OPTIONAL</span>' : ''}
+          ${inactive ? '<span class="badge badge-optional">SPORT WEEK — SKIP</span>' : ''}
+          ${ex.optional && !inactive ? '<span class="badge badge-gold">NO-SPORT ADD-BACK</span>' : ''}
           ${isDailyMax ? '<span class="badge badge-gold">DAILY MAX</span>' : ''}
           ${isMaxEffort ? '<span class="badge badge-gold">MAX EFFORT</span>' : ''}
           ${ex.cutNote ? `<span class="badge badge-cut">${ex.cutNote}</span>` : ''}
@@ -902,7 +914,7 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
       </div>
 
       <div class="ex-body ${collapsed ? 'hidden' : ''}">
-        ${ex.optNote ? `<div class="ex-notes ex-notes-warn">○ ${ex.optNote}</div>` : ''}
+        ${ex.optNote && inactive ? `<div class="ex-notes ex-notes-warn">○ ${ex.optNote}</div>` : ''}
         ${exDef.notes ? `<div class="ex-notes">${exDef.notes}</div>` : ''}
         ${ex.note ? `<div class="ex-notes ex-notes-warn">⚠ ${ex.note}</div>` : ''}
         ${exDef.cues && exDef.cues.length ? `
@@ -1339,8 +1351,27 @@ function renderSettings() {
         </div>
         <div class="settings-note">
           ${STATE.cutting
-            ? 'Cutting active: hypertrophy drops to 2 sets at RPE 9–10 (face pulls stay full), Olympic lifts lose one set per exercise but keep all percentages, and Sunday Zone 2 is extended. Plyometrics unchanged.'
+            ? 'Cutting active: hypertrophy drops to 2 sets at RPE 9–10 (face pulls stay full), and Olympic lifts lose one set per exercise but keep all percentages. Plyometrics unchanged.'
             : 'Lean bulk: full program as written. Switch to Cutting when in a deficit to shift from building to retention volume.'}
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">This Week's Sport</div>
+        <div class="phase-toggle">
+          <button class="phase-btn ${!STATE.noSport ? 'phase-btn-active' : ''}" onclick="setNoSport(false)">
+            <div class="phase-btn-title">Played Sport</div>
+            <div class="phase-btn-sub">~2 sessions (default)</div>
+          </button>
+          <button class="phase-btn ${STATE.noSport ? 'phase-btn-active' : ''}" onclick="setNoSport(true)">
+            <div class="phase-btn-title">No Sport</div>
+            <div class="phase-btn-sub">Add intervals + jumps</div>
+          </button>
+        </div>
+        <div class="settings-note">
+          ${STATE.noSport
+            ? 'No-sport week: box jumps (Mon), broad jumps (Thu), and the Wednesday VO₂max intervals are reinstated into your sessions and counted in the time estimates.'
+            : 'Assumes your usual ~2 running-sport sessions, which supply the VO₂max stimulus — so the plyo primers and Wednesday intervals are skipped. Switch to "No Sport" in any week you don\'t play.'}
         </div>
       </div>
 
@@ -1406,6 +1437,12 @@ function updateBlock(val) {
 
 function setCutting(on) {
   STATE.cutting = !!on;
+  save();
+  renderSettings();
+}
+
+function setNoSport(on) {
+  STATE.noSport = !!on;
   save();
   renderSettings();
 }

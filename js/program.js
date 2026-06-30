@@ -451,6 +451,7 @@ function makeDays(B, weekIdx) {
     monday: {
       title: 'Monday — Snatch + Back Squat + Push Hypertrophy',
       totalMin: 105,
+      totalMinNoSport: 110, // box jumps reinstated
       sections: [
         {
           title: 'Olympic Block',
@@ -518,6 +519,7 @@ function makeDays(B, weekIdx) {
     wednesday: {
       title: 'Wednesday — Technical (Recovery Day)',
       totalMin: 50,
+      totalMinNoSport: 80, // VO₂max intervals reinstated
       sections: [
         {
           title: 'Technical Block',
@@ -546,6 +548,7 @@ function makeDays(B, weekIdx) {
     thursday: {
       title: 'Thursday — Snatch Heavy + Back Squat + Core + Side Delts',
       totalMin: 130,
+      totalMinNoSport: 135, // broad jumps reinstated
       sections: [
         {
           title: 'Olympic Block',
@@ -656,30 +659,9 @@ function makeDays(B, weekIdx) {
 
     // ── SUNDAY ──────────────────────────────────────────────────────────────
     sunday: {
-      title: 'Sunday — Rest + Zone 2 + Mandatory Mobility',
-      totalMin: 90,
-      sections: [
-        {
-          title: 'Zone 2 Cardio (active recovery)',
-          color: 'red',
-          note: 'Active recovery, NOT a mandatory 7th session. If 2+ recovery red flags are up (see Guide → Lifestyle), skip this and take full passive rest.',
-          exercises: [
-            { id: 'zone2_warmup', duration: '60–75 min', rest: 0,
-              note: 'Bike, rower, walk, or swim. Conversational pace (~60–70% max HR). This is the primary Zone 2 session of the week.' },
-          ],
-        },
-        {
-          title: 'Mandatory Mobility (15–20 min)',
-          color: 'green',
-          exercises: [
-            { id: 'ankle_wall_drill', sets: 3, reps: '10/side', rest: 30 },
-            { id: 'couch_stretch', duration: '2 min/side', rest: 0 },
-            { id: 'thoracic_ext', duration: '2–3 min', rest: 0 },
-            { id: 'pvc_dislocates', sets: 2, reps: 15, rest: 30 },
-            { id: 'ohs_bodyweight', sets: 3, reps: 5, rest: 30 },
-          ],
-        },
-      ],
+      title: 'Sunday — Passive Rest',
+      isRest: true,
+      note: 'Full passive rest. No session today — prioritize sleep and food. Optional easy mobility from the Guide if you feel stiff, but nothing structured.',
     },
   };
 }
