@@ -450,14 +450,15 @@ function makeDays(B, weekIdx) {
     // ── MONDAY ──────────────────────────────────────────────────────────────
     monday: {
       title: 'Monday — Snatch + Back Squat + Push Hypertrophy',
-      totalMin: 110,
+      totalMin: 105,
       sections: [
         {
           title: 'Olympic Block',
           color: 'gold',
           exercises: [
             { id: 'zone2_warmup', duration: '15–20 min', rest: 0 },
-            { id: 'box_jumps', sets: 3, reps: '3–5', rest: 90 },
+            { id: 'box_jumps', sets: 3, reps: '3–5', rest: 90, optional: true,
+              optNote: 'Cut by default — pickup sport already supplies jumping/landing volume. Reinstate only after a week+ with no sport.' },
             { id: 'snatch_warmup', sets: 3, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
             { id: 'snatch_floor', sets: 5, reps: 2, pct: olyPct, baseLift: 'snatch', rest: 120 },
             { id: 'hang_snatch', sets: 5, reps: 3, pct: hangPct ?? olyPct - 2, baseLift: 'snatch', rest: 120 },
@@ -515,8 +516,8 @@ function makeDays(B, weekIdx) {
 
     // ── WEDNESDAY ───────────────────────────────────────────────────────────
     wednesday: {
-      title: 'Wednesday — Technical + VO₂max Intervals',
-      totalMin: 80,
+      title: 'Wednesday — Technical (Recovery Day)',
+      totalMin: 50,
       sections: [
         {
           title: 'Technical Block',
@@ -530,10 +531,11 @@ function makeDays(B, weekIdx) {
           ],
         },
         {
-          title: 'VO₂max Intervals',
+          title: 'VO₂max Intervals — optional',
           color: 'red',
+          note: 'Covered by your ~2 weekly running-sport sessions, so omitted by default. Do this ONLY in a week with no pickup sport.',
           exercises: [
-            { id: 'vo2max_intervals', duration: '5 × 3 min on / 3 min off', rest: 0,
+            { id: 'vo2max_intervals', duration: '5 × 3 min on / 3 min off', rest: 0, optional: true,
               interval: { rounds: 5, workSec: 180, restSec: 180, lastRest: false } },
           ],
         },
@@ -543,14 +545,15 @@ function makeDays(B, weekIdx) {
     // ── THURSDAY ────────────────────────────────────────────────────────────
     thursday: {
       title: 'Thursday — Snatch Heavy + Back Squat + Core + Side Delts',
-      totalMin: 135,
+      totalMin: 130,
       sections: [
         {
           title: 'Olympic Block',
           color: 'gold',
           exercises: [
             { id: 'zone2_warmup', duration: '15–20 min', rest: 0 },
-            { id: 'broad_jumps', sets: 3, reps: '3–5', rest: 90 },
+            { id: 'broad_jumps', sets: 3, reps: '3–5', rest: 90, optional: true,
+              optNote: 'Cut by default — pickup sport already supplies jumping/landing volume. Reinstate only after a week+ with no sport.' },
             { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
             { id: 'snatch_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'snatch', rest: 150 },
             { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 240, isDailyMax: true,
@@ -657,8 +660,9 @@ function makeDays(B, weekIdx) {
       totalMin: 90,
       sections: [
         {
-          title: 'Zone 2 Cardio (mandatory)',
+          title: 'Zone 2 Cardio (active recovery)',
           color: 'red',
+          note: 'Active recovery, NOT a mandatory 7th session. If 2+ recovery red flags are up (see Guide → Lifestyle), skip this and take full passive rest.',
           exercises: [
             { id: 'zone2_warmup', duration: '60–75 min', rest: 0,
               note: 'Bike, rower, walk, or swim. Conversational pace (~60–70% max HR). This is the primary Zone 2 session of the week.' },

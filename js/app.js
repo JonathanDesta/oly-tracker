@@ -586,6 +586,7 @@ function computeSchedule(day) {
   day.sections.forEach((sec, si) => sec.exercises.forEach((ex, ei) => {
     const def = PROGRAM.exercises[ex.id];
     if (!def) return;
+    if (ex.optional) { ex._startSec = null; return; } // off by default — excluded from the schedule
     const fixed = def.type === 'cardio' || def.type === 'mobility' || !!ex.interval;
     const raw = exerciseRawSec(ex, def);
     items.push({ si, ei, ex, fixed, raw });
@@ -879,10 +880,11 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
     ex.sets && logged.length >= ex.sets;
 
   return `
-    <div class="ex-card ${collapsed ? 'ex-done' : ''}" id="ex-${si}-${ei}">
+    <div class="ex-card ${collapsed ? 'ex-done' : ''} ${ex.optional ? 'ex-optional' : ''}" id="ex-${si}-${ei}">
       <div class="ex-header" onclick="toggleExCard(${si},${ei})">
         <div class="ex-name-wrap">
           <span class="ex-name">${exDef.name}</span>
+          ${ex.optional ? '<span class="badge badge-optional">OPTIONAL</span>' : ''}
           ${isDailyMax ? '<span class="badge badge-gold">DAILY MAX</span>' : ''}
           ${isMaxEffort ? '<span class="badge badge-gold">MAX EFFORT</span>' : ''}
           ${ex.cutNote ? `<span class="badge badge-cut">${ex.cutNote}</span>` : ''}
@@ -900,6 +902,7 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
       </div>
 
       <div class="ex-body ${collapsed ? 'hidden' : ''}">
+        ${ex.optNote ? `<div class="ex-notes ex-notes-warn">○ ${ex.optNote}</div>` : ''}
         ${exDef.notes ? `<div class="ex-notes">${exDef.notes}</div>` : ''}
         ${ex.note ? `<div class="ex-notes ex-notes-warn">⚠ ${ex.note}</div>` : ''}
         ${exDef.cues && exDef.cues.length ? `
@@ -1250,9 +1253,10 @@ function renderGuide() {
         </ul>`)}
 
       ${sec('Cardio Protocol', `
-        <p><b>Polarized — 80% easy / 20% hard.</b></p>
-        <p><b>Zone 2 (~90–110 min/week):</b> Sunday 60–75 min mandatory; Mon + Thu 15–20 min as session warm-up. Bike/rower preferred. Conversational pace (~60–70% max HR).</p>
-        <p><b>VO₂max intervals (Wed, 1×/week):</b> 5 × 3 min @ ~95% max HR / 3 min easy. Done after the technical block while fresh. Alternative: 10 × 30s max sprints / 90s recovery (more power-oriented, more lower-body fatigue before Thursday).</p>`)}
+        <p><b>Polarized — 80% easy / 20% hard.</b> The hard 20% is supplied by your ~2 weekly running-sport sessions, so <b>no structured intervals are programmed.</b> The easy 80% base is NOT covered by sport (pickup is high-intensity) — so all Zone 2 stays in full. Preserving the Zone 2 base keeps the polarized ratio intact and speeds recovery between hard sessions.</p>
+        <p><b>Zone 2 (~90–110 min/week — keep in full):</b> Sunday 60–75 min; Mon + Thu 15–20 min as session warm-up. Bike/rower preferred. Conversational pace (~60–70% max HR).</p>
+        <p><b>High-intensity / VO₂max — supplied by sport (~2×/week):</b> Basketball, flag football, etc. is repeated-sprint interval work and is your VO₂max stimulus. Adding structured intervals on top would be redundant volume competing with Oly recovery.</p>
+        <p><b>Only if a week passes with no sport:</b> do the optional Wednesday interval — 5 × 3 min @ ~95% max HR / 3 min easy (bike/rower). Power alternative: 10 × 30s max sprints / 90s recovery.</p>`)}
 
       ${sec('Mobility Protocol', `
         <p><b>Daily (10–15 min):</b> Ankle wall drill 3×10/side · Couch stretch 90s/side · Thoracic ext over foam roller 2 min · Wrist mobility (circles + loaded flexion/extension) 2 min.</p>
@@ -1269,6 +1273,40 @@ function renderGuide() {
           <li><b>Sleep:</b> 9–10 h/night — non-optional for an adolescent athlete (Mah 2011). The single most impactful recovery intervention.</li>
           <li><b>Weight class:</b> At 175 lb, lean-bulking to ~183–190 lb sits solidly in the 89 kg class (196 lb). Don't rush past it.</li>
         </ul>`)}
+
+      ${sec('Lifestyle Integration &amp; Autoregulation', `
+        <p>The program assumes ~2 recreational sport sessions/week and occasional heavy drinking. <b>Both are unscheduled and unpredictable</b> — so the program absorbs them through in-the-moment autoregulation, not advance placement. This is exactly why the lifts use a daily-max approach: a beat-up day simply produces a lower daily max — the system working as designed, not a missed target. React correctly on the day; don't try to schedule the chaos.</p>
+
+        <div class="guide-sub">Recovery red flags → convert Sunday to full rest</div>
+        <p>Sunday is active recovery, not a mandatory 7th session. Convert it to passive rest — and pull the next daily-max day back to technical work — if <b>two or more</b> of these show up:</p>
+        <ul class="guide-ul">
+          <li>Morning resting HR &gt;7 bpm above your norm</li>
+          <li>Suppressed HRV for 2+ consecutive days (if tracked)</li>
+          <li>Bar speed visibly down on submaximal lifts</li>
+          <li>Sleep quality degrading despite adequate time in bed</li>
+          <li>Joints/tendons achy or "beat up" for several days running</li>
+          <li>Motivation/mood persistently flat</li>
+        </ul>
+        <p>The rigidity is the risk, not the structure. A true rest day when your body asks for one is sanctioned, not a failure of discipline.</p>
+
+        <div class="guide-sub">Recreational sports (~2×/week)</div>
+        <ul class="guide-ul">
+          <li><b>Total leg/landing/CNS load is the constraint.</b> Sport stacks on heavy squats, Nordics, plyos, calves. It <i>replaces</i> athletic/conditioning work — it does not add on top.</li>
+          <li><b>React, don't plan.</b> You can't keep spontaneous games off heavy days. If you played hard and the next session is a max/skill day, autoregulate it down — lower daily max, don't force it.</li>
+          <li><b>Plyo primers (box/broad jumps) are cut by default.</b> With regular pickup you already get ample jumping/cutting; removing a stressor you control offsets the sport load you don't. Reinstate only after a week+ with no play. <i>(Marked OPTIONAL in the workout.)</i></li>
+          <li><b>No structured VO₂max intervals by default</b> — sport is the stimulus. Wednesday stays a lighter recovery day. Insert intervals only in a no-sport week.</li>
+          <li><b>Injury is the real threat to Goal 1.</b> A rolled ankle or cutting-sport knee injury costs months. Warm up before games; don't play hurt.</li>
+        </ul>
+
+        <div class="guide-sub">Heavy drinking (~1×/week)</div>
+        <p>The single largest <i>controllable</i> drag across all four goals. Mechanism, not moralizing: alcohol wrecks sleep architecture, blunts protein synthesis ~30–40% (Parr 2014), suppresses testosterone ~24h+, and impairs next-day coordination — one heavy night realistically compromises ~24–48h.</p>
+        <p><b>Reactive rule (the real tool, regardless of which night it lands on):</b></p>
+        <ul class="guide-ul">
+          <li><b>The morning after, demote whatever's scheduled.</b> If it's a max/skill day, drop it to technical quality — 60–75%, clean positions, no daily max, no maximal singles, no grinding. Don't cancel; strip the maximal intent.</li>
+          <li><b>Never attempt a daily max or maximal single hungover</b> — impaired coordination under a loaded bar is an injury, and you'd reinforce degraded motor patterns.</li>
+          <li><b>Mitigate:</b> hydrate aggressively, hit protein, don't skip meals. Softens the cost; doesn't erase it.</li>
+        </ul>
+        <p><b>Preference ranking</b> (only a tiebreaker <i>if</i> a night out happens to fall somewhere): Best — Saturday night (max session banked, Sunday is throwaway). Acceptable — Sunday night (Monday is only 74%). Worst — Wed/Thu/Fri nights (right before your skill + two daily-max days). The highest-leverage move for "maximally optimal" is moving drinking to Saturday or cutting its frequency — that outweighs every exercise tweak here.</p>`)}
 
       ${sec('Coaching Note', `
         <p>Get a coach. Even bi-monthly video review from a USAW-certified coach accelerates technical development faster than any programming variable here. Find one at <b>usaweightlifting.org → Find a Coach</b>.</p>`)}
