@@ -8,6 +8,7 @@ const STATE = {
   view: 'home',
   maxes: { snatch: null, cj: null, bs: null, fs: null, pp: null, bench: null },
   program: { blockId: 0, weekInBlock: 0 }, // start on Week 0 Testing; weekInBlock is 0-indexed
+  cutting: false, // training phase: false = lean bulk, true = cutting (deficit)
   log: {},           // { 'YYYY-MM-DD': { dayKey, sections: [...], sessionMin } }
   hypertrophyWeights: {}, // { exerciseId: { weight, sets } } last logged weights
   restTimer: { active: false, end: 0, prescribed: 0, interval: null },
@@ -26,6 +27,7 @@ function save() {
   localStorage.setItem('oly_state', JSON.stringify({
     maxes: STATE.maxes,
     program: STATE.program,
+    cutting: STATE.cutting,
     log: STATE.log,
     hypertrophyWeights: STATE.hypertrophyWeights,
   }));
@@ -38,9 +40,16 @@ function load() {
     const data = JSON.parse(raw);
     Object.assign(STATE.maxes, data.maxes || {});
     Object.assign(STATE.program, data.program || {});
+    STATE.cutting = !!data.cutting;
     STATE.log = data.log || {};
     STATE.hypertrophyWeights = data.hypertrophyWeights || {};
   } catch (e) { console.warn('Load error', e); }
+}
+
+// Resolve today's-block workout for a day key, with cutting applied if active.
+function dayFor(dayKey) {
+  const { blockId, weekInBlock } = STATE.program;
+  return PROGRAM.getWorkout(blockId, weekInBlock, dayKey, STATE.cutting);
 }
 
 // ─── Audio ────────────────────────────────────────────────────────────────────
@@ -511,6 +520,19 @@ function renderIntervalOverlay(done = false) {
     </div>`;
 }
 
+// Short focus label from a day title, e.g. "Snatch + Back Squat + Push Hypertrophy".
+function dayFocus(day) {
+  if (!day || !day.title) return '';
+  const idx = day.title.indexOf('—');
+  return idx >= 0 ? day.title.slice(idx + 1).trim() : day.title;
+}
+
+// Expected session length in minutes (trimmed slightly when cutting).
+function dayEstMin(day) {
+  if (!day || !day.totalMin) return null;
+  return STATE.cutting && day.sections ? Math.round(day.totalMin * 0.85) : day.totalMin;
+}
+
 // ─── Render: Home ─────────────────────────────────────────────────────────────
 function renderHome() {
   const app = $('app');
@@ -531,7 +553,9 @@ function renderHome() {
         <div class="home-logo">🏋️</div>
         <div>
           <div class="home-title">Oly Tracker</div>
-          <div class="home-sub">${blockName}</div>
+          <div class="home-sub">${blockName}
+            <span class="phase-chip ${STATE.cutting ? 'phase-cut' : 'phase-bulk'}">${STATE.cutting ? 'CUTTING' : 'LEAN BULK'}</span>
+          </div>
         </div>
       </div>
 
@@ -544,25 +568,48 @@ function renderHome() {
           <b>Set your maxes first</b> — run Week 0: Testing (switch in Settings) or enter them directly in Settings.
         </div>` : ''}
 
+      ${(() => {
+        const todayDay = dayFor(dayKey);
+        const est = dayEstMin(todayDay);
+        return `
       <div class="today-card">
-        <div class="today-label">TODAY</div>
-        <div class="today-day">${dayName}</div>
-        <div class="today-meta">${isTestingBlock ? 'Week 0 · Testing' : `Week ${weekNum} · ${blockName.split(':')[0]}`}</div>
+        <div class="today-label">TODAY · ${dayName}</div>
+        <div class="today-day">${dayFocus(todayDay) || dayName}</div>
+        <div class="today-meta">
+          ${isTestingBlock ? 'Week 0 · Testing' : `Week ${weekNum} · ${blockName.split(':')[0]}`}
+          ${est ? ` · ~${est} min` : todayDay && todayDay.isRest ? ' · Rest day' : ''}
+        </div>
         <button class="btn-primary btn-lg" onclick="startWorkout('${dayKey}')" ${blockStartDisabled ? 'disabled' : ''}>
-          Start ${isTestingBlock ? 'Testing Session' : 'Workout'}
+          Start ${isTestingBlock ? 'Testing Session' : todayDay && todayDay.isRest ? 'Recovery Day' : 'Workout'}
         </button>
-      </div>
+      </div>`;
+      })()}
 
-      <div class="week-grid">
+      <div class="daylist-title">This Week — tap any day to start it</div>
+      <div class="day-list">
         ${PROGRAM.dayKeys.map((d, i) => {
           const name = PROGRAM.dayNames[i];
           const isToday = d === dayKey;
-          const cellDate = dateForWeekday(i);
-          const logged = !!STATE.log[cellDate];
-          return `<div class="week-cell ${isToday ? 'week-cell-today' : ''} ${logged ? 'week-cell-done' : ''}">
-            <div class="week-cell-day">${name.slice(0,3)}</div>
-            <div class="week-cell-dot">${logged ? '✓' : isToday ? '●' : '○'}</div>
-          </div>`;
+          const logged = !!STATE.log[dateForWeekday(i)];
+          const wd = dayFor(d);
+          const focus = dayFocus(wd) || name;
+          const est = dayEstMin(wd);
+          const rest = wd && wd.isRest;
+          const meta = rest ? 'Rest' : est ? `~${est} min` : '';
+          const disabledCls = blockStartDisabled ? 'day-row-disabled' : '';
+          const tap = blockStartDisabled ? '' : `onclick="startWorkout('${d}')"`;
+          return `
+            <div class="day-row ${isToday ? 'day-row-today' : ''} ${logged ? 'day-row-done' : ''} ${disabledCls}" ${tap}>
+              <div class="day-row-left">
+                <div class="day-row-abbr">${name.slice(0, 3)}</div>
+                ${logged ? '<div class="day-row-check">✓</div>' : isToday ? '<div class="day-row-now">●</div>' : ''}
+              </div>
+              <div class="day-row-mid">
+                <div class="day-row-focus">${focus}</div>
+                <div class="day-row-meta">${meta}</div>
+              </div>
+              <div class="day-row-go">${blockStartDisabled ? '' : '▶'}</div>
+            </div>`;
         }).join('')}
       </div>
 
@@ -587,8 +634,7 @@ function renderHome() {
 // ─── Render: Workout ──────────────────────────────────────────────────────────
 function startWorkout(dayKey) {
   initAudio();
-  const { blockId, weekInBlock } = STATE.program;
-  const day = PROGRAM.getDayWorkout(blockId, weekInBlock, dayKey);
+  const day = dayFor(dayKey);
   if (!day) { alert('No workout found for this day.'); return; }
 
   STATE.activeWorkout = {
@@ -746,6 +792,7 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
           <span class="ex-name">${exDef.name}</span>
           ${isDailyMax ? '<span class="badge badge-gold">DAILY MAX</span>' : ''}
           ${isMaxEffort ? '<span class="badge badge-gold">MAX EFFORT</span>' : ''}
+          ${ex.cutNote ? `<span class="badge badge-cut">${ex.cutNote}</span>` : ''}
           ${collapsed ? '<span class="badge badge-green">✓ Done</span>' : ''}
         </div>
         <div class="ex-meta">
@@ -1020,6 +1067,106 @@ function renderExerciseHistory() {
 }
 
 // ─── Render: Settings ─────────────────────────────────────────────────────────
+// ─── Render: Guide ────────────────────────────────────────────────────────────
+// The full reference content of the program document — everything that isn't a
+// loggable workout (rationale, rules, nutrition, mobility, cardio, blocks, cut).
+function renderGuide() {
+  const app = $('app');
+  const sec = (title, bodyHtml) => `
+    <details class="guide-sec">
+      <summary class="guide-sum">${title}</summary>
+      <div class="guide-body">${bodyHtml}</div>
+    </details>`;
+
+  app.innerHTML = `
+    <div class="page guide-page">
+      <div class="page-title">Program Guide</div>
+      <div class="guide-intro">
+        <b>Olympic Foundation Program.</b> 6 days/week, 12-week blocks
+        (Accumulation → Intensification → Realization → Deload).
+        <div class="guide-intro-goals">Goals, in priority order: Olympic weightlifting development →
+        Aesthetics (side delts &amp; upper chest) → Athleticism → Longevity.</div>
+      </div>
+
+      ${sec('Non-Negotiable Rules', `
+        <ol class="guide-ol">
+          <li><b>No miss policy.</b> Never attempt a lift you expect to miss. Stop the moment technique degrades. If you miss, drop 5% and retry once. Miss again and that movement is done for the day — every miss reinforces the broken motor pattern that caused it.</li>
+          <li><b>Hypertrophy always comes after the Olympic block.</b> If time runs short, cut hypertrophy — never the Oly block.</li>
+          <li><b>Percentages are guidelines.</b> On subpar days, back off 5–7% without guilt. The Thu/Fri/Sat daily-max sessions self-regulate upward on good days.</li>
+          <li><b>All Oly lifts should feel technically sound at the prescribed %.</b> If a movement is consistently compromised at an intensity, drop 5% and accumulate quality reps until it isn't.</li>
+          <li><b>Hypertrophy uses double progression, not percentages.</b> Once you hit the top of the rep range on all sets at RPE 8, add the smallest increment next session and work back up from the bottom. (The app tracks this for you.)</li>
+        </ol>`)}
+
+      ${sec('Design Rationale', `
+        <ul class="guide-ul">
+          <li><b>High Oly frequency (4–5×/week).</b> Ballistic motor patterns need high-frequency practice. Elite national programs all use ≥4 competition-lift sessions/week.</li>
+          <li><b>Block periodization (Issurin).</b> Three 4-week blocks is the best model for concurrent multi-quality development.</li>
+          <li><b>Hypertrophy after Oly work.</b> Accessory fatigue must never compromise the primary quality.</li>
+          <li><b>Stretch-mediated hypertrophy.</b> Isolation work prioritizes the lengthened position (Pedrosa 2022; Kassiano 2023).</li>
+          <li><b>Side delt specialization at 22 sets/week.</b> Upper range of evidence-supported volume for a lagging muscle (Schoenfeld 2017).</li>
+          <li><b>Polarized cardio (Seiler).</b> 80% Zone 2 / 20% Zone 4–5. VO₂max is the strongest independent predictor of all-cause mortality (Kokkinos 2022; Mandsager 2018). Intervals on Wednesday, when fresh enough to truly reach 95% max HR.</li>
+        </ul>`)}
+
+      ${sec('The Blocks', `
+        <div class="guide-block"><b>Week 0 — Testing.</b> Build to a 1RM on each lift; these maxes anchor every percentage.</div>
+        <div class="guide-block"><b>Block 1 — Volume Accumulation (Wk 1–4).</b> Foundation volume at moderate intensity. Sets 70–83%, daily-max targets ~82–94%, technique first.</div>
+        <div class="guide-block"><b>Block 2 — Intensification (Wk 5–8).</b> Intensity 80–93%, volume −1 set/movement, reps shift to singles/doubles, pulls 100–107%, hypertrophy −20–25%, Oly rest +30–60s.</div>
+        <div class="guide-block"><b>Block 3 — Peaking / Realization (Wk 9–11).</b> Volume −35%, intensity 88–103%+, mostly competition lifts from the floor, true PR attempts, hypertrophy to maintenance (4–6 sets, RPE 6–7). Comp simulation Wk 10–11.</div>
+        <div class="guide-block"><b>Week 12 — Deload.</b> 50% volume, 60–70% intensity, one 30-min Zone 2, no intervals. Re-test all maxes at the end → next macrocycle's training maxes.</div>
+        <div class="guide-sub">Block 1 weekly progression (Oly sets % / daily-max target):</div>
+        <table class="guide-table">
+          <tr><th>Wk</th><th>Sets %</th><th>Daily Max</th><th>BS Mon/Thu</th><th>FS Tue/Fri</th></tr>
+          <tr><td>1</td><td>70–74%</td><td>~82–85%</td><td>70/78%</td><td>74/80%</td></tr>
+          <tr><td>2</td><td>73–77%</td><td>~85–88%</td><td>72/80%</td><td>76/83%</td></tr>
+          <tr><td>3</td><td>76–80%</td><td>~88–91%</td><td>75/82%</td><td>79/86%</td></tr>
+          <tr><td>4</td><td>79–83%</td><td>~90–94%</td><td>78/85%</td><td>82/89%</td></tr>
+        </table>`)}
+
+      ${sec('Competition Attempt Selection (Wk 10–11)', `
+        <p>Base attempts on daily maxes hit in the context of a full training week — not fresh training PRs.</p>
+        <ul class="guide-ul">
+          <li><b>A (opener):</b> 90–93% of peak daily max. Near-guaranteed — something you could triple on a bad day. A missed opener is catastrophic.</li>
+          <li><b>B:</b> 97–100% of peak daily max. Your realistic best on the day.</li>
+          <li><b>C:</b> 101–105% — a true PR. Only if B was fast and easy.</li>
+        </ul>`)}
+
+      ${sec('Cutting Phase Modifications', `
+        <p>In a deficit the goal shifts from building to <b>retaining</b> muscle, which needs ~⅓–½ the volume provided intensity holds. Recovery capacity is the constraint. <i>(Toggle this in Settings → Training Phase; the app applies it automatically.)</i></p>
+        <ul class="guide-ul">
+          <li><b>Hypertrophy −50%.</b> Drop to 2 working sets, raise to RPE 9–10. Exception: face pulls stay full (shoulder health).</li>
+          <li><b>Olympic lifting, reduce minimally.</b> The lifts are a skill — drop just one working set per exercise (e.g. 5×2 → 4×2), keep frequency and percentages identical. Intensity preserves strength and neural adaptation.</li>
+          <li><b>Cardio +Zone 2.</b> Add 15–20 min to Sunday (lowest recovery cost way to widen the deficit). VO₂max unchanged.</li>
+          <li><b>Plyometrics — no change.</b> Volume is already minimal.</li>
+        </ul>`)}
+
+      ${sec('Cardio Protocol', `
+        <p><b>Polarized — 80% easy / 20% hard.</b></p>
+        <p><b>Zone 2 (~90–110 min/week):</b> Sunday 60–75 min mandatory; Mon + Thu 15–20 min as session warm-up. Bike/rower preferred. Conversational pace (~60–70% max HR).</p>
+        <p><b>VO₂max intervals (Wed, 1×/week):</b> 5 × 3 min @ ~95% max HR / 3 min easy. Done after the technical block while fresh. Alternative: 10 × 30s max sprints / 90s recovery (more power-oriented, more lower-body fatigue before Thursday).</p>`)}
+
+      ${sec('Mobility Protocol', `
+        <p><b>Daily (10–15 min):</b> Ankle wall drill 3×10/side · Couch stretch 90s/side · Thoracic ext over foam roller 2 min · Wrist mobility (circles + loaded flexion/extension) 2 min.</p>
+        <p><b>Pre-session (5 min):</b> PVC overhead squat 2×10 · PVC shoulder dislocates 2×15 · Hip &amp; leg swings 1 min.</p>
+        <p><b>Sunday deep session (20 min):</b> Pigeon 2 min/side · Couch stretch 2 min/side · Deep squat hold 3×60s · OHS w/ pause 3×5 @ bar · Lat stretch 1 min/side · Quadruped thoracic rotation 2×10/side.</p>`)}
+
+      ${sec('Nutrition', `
+        <ul class="guide-ul">
+          <li><b>Surplus:</b> 250–350 kcal over maintenance (lean-bulk rate; Barakat 2020). More isn't faster.</li>
+          <li><b>Protein:</b> 0.82–1.0 g/lb (~143–175 g/day). No benefit beyond ~0.82 g/lb in trained lifters (Morton 2018).</li>
+          <li><b>Carbs:</b> Front-load 2–4 h pre-training and within 1 h post. This volume depletes glycogen aggressively.</li>
+          <li><b>Creatine:</b> 3–5 g/day, any time, no loading (Lanhers 2017).</li>
+          <li><b>Caffeine:</b> 3–6 mg/kg (~240–480 mg) 45–60 min pre-training. Not within 8–10 h of sleep (half-life 5–7 h; sleep outranks pre-workout).</li>
+          <li><b>Sleep:</b> 9–10 h/night — non-optional for an adolescent athlete (Mah 2011). The single most impactful recovery intervention.</li>
+          <li><b>Weight class:</b> At 175 lb, lean-bulking to ~183–190 lb sits solidly in the 89 kg class (196 lb). Don't rush past it.</li>
+        </ul>`)}
+
+      ${sec('Coaching Note', `
+        <p>Get a coach. Even bi-monthly video review from a USAW-certified coach accelerates technical development faster than any programming variable here. Find one at <b>usaweightlifting.org → Find a Coach</b>.</p>`)}
+
+      <div class="guide-foot">Program designed June 2026 · evidence base current as of June 2026.</div>
+    </div>`;
+}
+
 function renderSettings() {
   const app = $('app');
   const { blockId, weekInBlock } = STATE.program;
@@ -1029,6 +1176,25 @@ function renderSettings() {
   app.innerHTML = `
     <div class="page settings-page">
       <div class="page-title">Settings</div>
+
+      <div class="settings-section">
+        <div class="settings-label">Training Phase</div>
+        <div class="phase-toggle">
+          <button class="phase-btn ${!STATE.cutting ? 'phase-btn-active' : ''}" onclick="setCutting(false)">
+            <div class="phase-btn-title">Lean Bulk</div>
+            <div class="phase-btn-sub">Full program volume</div>
+          </button>
+          <button class="phase-btn ${STATE.cutting ? 'phase-btn-active phase-btn-cut' : ''}" onclick="setCutting(true)">
+            <div class="phase-btn-title">Cutting</div>
+            <div class="phase-btn-sub">Retention volume</div>
+          </button>
+        </div>
+        <div class="settings-note">
+          ${STATE.cutting
+            ? 'Cutting active: hypertrophy drops to 2 sets at RPE 9–10 (face pulls stay full), Olympic lifts lose one set per exercise but keep all percentages, and Sunday Zone 2 is extended. Plyometrics unchanged.'
+            : 'Lean bulk: full program as written. Switch to Cutting when in a deficit to shift from building to retention volume.'}
+        </div>
+      </div>
 
       <div class="settings-section">
         <div class="settings-label">Training Maxes (lbs)</div>
@@ -1090,6 +1256,12 @@ function updateBlock(val) {
   renderSettings();
 }
 
+function setCutting(on) {
+  STATE.cutting = !!on;
+  save();
+  renderSettings();
+}
+
 function updateWeek(val) {
   const block = PROGRAM.blocks.find(b => b.id === STATE.program.blockId);
   const max = block?.weeks || 4;
@@ -1147,6 +1319,7 @@ function render() {
     case 'home':    renderHome(); break;
     case 'workout': renderWorkout(); break;
     case 'history': renderHistory(); break;
+    case 'guide':   renderGuide(); break;
     case 'settings': renderSettings(); break;
   }
 }

@@ -825,6 +825,50 @@ const PROGRAM = {
     return block.getDay(dayKey, weekInBlock);
   },
 
+  // Full resolver: block/week day, with cutting modifications applied if active.
+  getWorkout(blockId, weekInBlock, dayKey, cutting) {
+    const day = this.getDayWorkout(blockId, weekInBlock, dayKey);
+    return cutting ? this.applyCutting(day) : day;
+  },
+
+  // ── Cutting Phase Modifications (from the program document) ────────────────
+  // In a deficit the goal is muscle RETENTION, which needs far less volume than
+  // building — provided intensity holds. Applied as a transform over any block:
+  //   • Hypertrophy: drop to 2 working sets, RPE 9–10. Exception: face pulls
+  //     (shoulder-health work) stay at full volume.
+  //   • Olympic lifting (lifts, derivatives, pulls, squats, technical, push press):
+  //     drop ONE working set per exercise; keep frequency and percentages identical
+  //     (intensity is what preserves strength and skill in a deficit).
+  //   • Cardio: add ~15–20 min to the Sunday Zone 2 session. VO₂max unchanged.
+  //   • Plyometrics (jumps): no change — volume is already minimal.
+  applyCutting(day) {
+    if (!day || !day.sections) return day; // rest / testing days unaffected
+    const clone = JSON.parse(JSON.stringify(day));
+    clone.cutting = true;
+    clone.sections.forEach(sec => {
+      sec.exercises.forEach(ex => {
+        const def = EX[ex.id];
+        if (!def) return;
+        const t = def.type;
+        if (t === 'hypertrophy') {
+          if (ex.id === 'face_pull') return; // mandatory shoulder health — keep full
+          if (typeof ex.sets === 'number' && ex.sets > 2) ex.sets = 2;
+          ex.cutNote = 'Cut: 2 sets · RPE 9–10';
+        } else if (t === 'oly' || t === 'strength' || t === 'technical') {
+          if (typeof ex.sets === 'number' && ex.sets > 1) {
+            ex.sets = ex.sets - 1;
+            ex.cutNote = '−1 set (cut)';
+          }
+        } else if (t === 'cardio' && ex.id === 'zone2_warmup' &&
+                   typeof ex.duration === 'string' && ex.duration.includes('60–75')) {
+          ex.duration = '75–95 min';
+          ex.cutNote = '+15–20 min (cut)';
+        }
+      });
+    });
+    return clone;
+  },
+
   // Day order for the week
   dayKeys: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
   dayNames: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
