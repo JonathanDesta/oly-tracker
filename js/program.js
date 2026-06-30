@@ -381,6 +381,55 @@ const B3 = {
 // Each section has: title, exercises[]
 // Each exercise has: id, sets, reps/repRange/duration, prescription, rest (seconds)
 
+// ─── Build-up ladders (from the program document) ────────────────────────────
+// Each step: { pct, reps, rest(seconds), top? }. Weights are computed from the
+// athlete's max at render time. These drive both the on-screen ramp and the
+// session time estimate.
+
+// Thu/Fri Olympic daily max: after the block work, ramp 80 → 83 → 86 (3% steps),
+// then +2% singles to the week's daily-max target.
+function rampOlyDaily(targetPct, reps) {
+  const t = Math.round(targetPct);
+  const steps = [];
+  [[80, 180], [83, 240], [86, 240]].forEach(([p, r]) => { if (p <= t) steps.push({ pct: p, reps, rest: r }); });
+  let p = (steps.length ? steps[steps.length - 1].pct : 78) + 2;
+  while (p <= t) { steps.push({ pct: p, reps, rest: 270 }); p += 2; }
+  if (!steps.length) steps.push({ pct: t, reps, rest: 240 });
+  if (steps[steps.length - 1].pct !== t) steps.push({ pct: t, reps, rest: 270 });
+  steps[steps.length - 1].top = true;
+  return steps;
+}
+
+// Saturday Olympic max effort: full warm-up ramp, then 2–3% jumps to daily max.
+function rampOlySaturday(targetPct, reps) {
+  const t = Math.round(targetPct);
+  const steps = [
+    { pct: 65, reps: '2', rest: 90 },
+    { pct: 73, reps, rest: 120 },
+    { pct: 78, reps, rest: 180 },
+    { pct: 82, reps, rest: 240 },
+  ];
+  let p = 85;
+  while (p < t) { steps.push({ pct: p, reps, rest: 270 }); p += 3; }
+  if (steps[steps.length - 1].pct !== t) steps.push({ pct: t, reps, rest: 300 });
+  steps[steps.length - 1].top = true;
+  return steps;
+}
+
+// Saturday heavy compounds — fixed ramps straight from the document.
+const RAMP_SAT_BS = [
+  { pct: 60, reps: '5', rest: 120 }, { pct: 72, reps: '3', rest: 180 },
+  { pct: 80, reps: '3', rest: 240 }, { pct: 85, reps: '3', rest: 270, top: true },
+];
+const RAMP_SAT_PP = [
+  { pct: 60, reps: '5', rest: 90 }, { pct: 72, reps: '3', rest: 120 },
+  { pct: 80, reps: '3', rest: 180 }, { pct: 85, reps: '3', rest: 210, top: true },
+];
+const RAMP_SAT_BENCH = [
+  { pct: 60, reps: '5', rest: 90 }, { pct: 70, reps: '4', rest: 120 },
+  { pct: 78, reps: '3', rest: 180 }, { pct: 84, reps: '3–5', rest: 210, top: true },
+];
+
 function makeDays(B, weekIdx) {
   const w = weekIdx; // 0-based index into progression arrays
 
@@ -504,7 +553,9 @@ function makeDays(B, weekIdx) {
             { id: 'broad_jumps', sets: 3, reps: '3–5', rest: 90 },
             { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
             { id: 'snatch_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'snatch', rest: 150 },
-            { id: 'snatch_daily_max', sets: null, reps: '1–2', pct: dmPct, baseLift: 'snatch', rest: 240, isDailyMax: true },
+            { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 240, isDailyMax: true,
+              buildup: rampOlyDaily(dmPct, '1'),
+              buildupNote: 'After the block snatches, rest 3 min, then ramp as below. Stop at the last technically clean lift — never chase weight after a degraded rep.' },
             { id: 'snatch_pull', sets: 4, reps: 3, pct: Math.min(pullPct + 3, 100), baseLift: 'snatch', rest: 180 },
             { id: 'back_squat', sets: 5, reps: 3, pct: bsThuPct, baseLift: 'bs', rest: 180 },
             { id: 'rdl', sets: 3, reps: 6, pct: 60, baseLift: 'bs', rest: 120 },
@@ -543,8 +594,9 @@ function makeDays(B, weekIdx) {
           exercises: [
             { id: 'cj_warmup', sets: 3, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
             { id: 'clean_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'cj', rest: 150 },
-            { id: 'cj_daily_max', sets: null, reps: '1+1', pct: Math.round(dmPct * 0.84), baseLift: 'cj', rest: 240, isDailyMax: true,
-              note: 'Stop at ~84% effort — Saturday is the true max day.' },
+            { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 240, isDailyMax: true,
+              buildup: rampOlyDaily(dmPct, '1+1'),
+              buildupNote: 'After the block cleans, rest 3 min, then ramp as below. Each attempt = 1 clean + 1 jerk. Stop at the last technically clean lift.' },
             { id: 'jerk_rack', sets: 4, reps: 2, pct: jerkFriPct, baseLift: 'cj', rest: 180 },
             { id: 'clean_pull', sets: 4, reps: 3, pct: Math.min(pullPct + 3, 100), baseLift: 'cj', rest: 180 },
             { id: 'front_squat', sets: 5, reps: 3, pct: fsFriPct, baseLift: 'fs', rest: 180 },
@@ -572,12 +624,17 @@ function makeDays(B, weekIdx) {
           color: 'gold',
           exercises: [
             { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 270, isDailyMax: true,
-              note: '3% jumps above 80%. Stop before a miss.' },
+              buildup: rampOlySaturday(dmPct, '1'),
+              buildupNote: 'Then 2–3% jumps with 4–5 min rest to your daily max. Stop before a miss.' },
             { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 270, isDailyMax: true,
-              note: 'Same protocol as snatch.' },
-            { id: 'back_squat', sets: null, reps: 3, pct: 87, baseLift: 'bs', rest: 270, isMaxEffort: true, note: 'Work to heavy triple — RPE 9.' },
-            { id: 'push_press', sets: null, reps: 3, pct: 85, baseLift: 'pp', rest: 240, isMaxEffort: true, note: 'RPE 9.' },
-            { id: 'flat_bench', sets: null, repRange: [3, 5], pct: 87, baseLift: 'bench', rest: 210, isMaxEffort: true, note: 'RPE 8–9. Work up in 5–10 lb jumps. No grinding.' },
+              buildup: rampOlySaturday(dmPct, '1+1'),
+              buildupNote: 'Same ramp as snatch. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
+            { id: 'back_squat', sets: null, reps: 3, pct: 85, baseLift: 'bs', rest: 270, isMaxEffort: true,
+              buildup: RAMP_SAT_BS, buildupNote: '85% is the RPE 9 target. Only attempt 88%×3 if 85% moved fast and clean.' },
+            { id: 'push_press', sets: null, reps: 3, pct: 85, baseLift: 'pp', rest: 210, isMaxEffort: true,
+              buildup: RAMP_SAT_PP, buildupNote: '85% is the RPE 9 target.' },
+            { id: 'flat_bench', sets: null, repRange: [3, 5], pct: 84, baseLift: 'bench', rest: 210, isMaxEffort: true,
+              buildup: RAMP_SAT_BENCH, buildupNote: 'Continue in 2–3% jumps if moving well. RPE 8–9, no grinding.' },
           ],
         },
         {
@@ -722,7 +779,7 @@ const PROGRAM = {
                 { id: 'zone2_warmup', duration: '15–20 min', rest: 0 },
                 { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
                 { id: 'snatch_floor', sets: 3, reps: 2, pct: olyPct, baseLift: 'snatch', rest: 180 },
-                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 300, isDailyMax: true },
+                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1'), buildupNote: 'Peaking — true PR attempt. Stop before a miss.' },
                 { id: 'snatch_pull', sets: 3, reps: 2, pct: pullPct, baseLift: 'snatch', rest: 180 },
                 { id: 'back_squat', sets: 3, reps: 2, pct: B3.bs_mon_pct[w], baseLift: 'bs', rest: 240 },
               ]},
@@ -739,7 +796,7 @@ const PROGRAM = {
               { title: 'Olympic Block', color: 'gold', exercises: [
                 { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
                 { id: 'cj_floor', sets: 3, reps: '1+1', pct: olyPct, baseLift: 'cj', rest: 240 },
-                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true },
+                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Peaking — true PR attempt. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
                 { id: 'clean_pull', sets: 3, reps: 2, pct: pullPct, baseLift: 'cj', rest: 180 },
                 { id: 'front_squat', sets: 3, reps: 2, pct: B3.fs_tue_pct[w], baseLift: 'fs', rest: 240 },
               ]},
@@ -764,7 +821,7 @@ const PROGRAM = {
                 { id: 'zone2_warmup', duration: '15 min', rest: 0 },
                 { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
                 { id: 'snatch_floor', sets: 2, reps: 2, pct: olyPct, baseLift: 'snatch', rest: 240 },
-                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 300, isDailyMax: true },
+                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1'), buildupNote: 'Peaking — true PR attempt. Stop before a miss.' },
                 { id: 'snatch_pull', sets: 2, reps: 2, pct: pullPct, baseLift: 'snatch', rest: 180 },
                 { id: 'back_squat', sets: 3, reps: 2, pct: B3.bs_thu_pct[w], baseLift: 'bs', rest: 240 },
               ]},
@@ -777,7 +834,7 @@ const PROGRAM = {
               { title: 'Olympic Block', color: 'gold', exercises: [
                 { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
                 { id: 'cj_floor', sets: 2, reps: '1+1', pct: olyPct, baseLift: 'cj', rest: 240 },
-                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true },
+                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Peaking — true PR attempt. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
                 { id: 'jerk_rack', sets: 3, reps: 2, pct: 88, baseLift: 'cj', rest: 240 },
                 { id: 'clean_pull', sets: 2, reps: 2, pct: pullPct, baseLift: 'cj', rest: 180 },
                 { id: 'front_squat', sets: 3, reps: 2, pct: B3.fs_fri_pct[w], baseLift: 'fs', rest: 240 },
@@ -792,8 +849,8 @@ const PROGRAM = {
             totalMin: 90,
             sections: [
               { title: 'Max Effort Block', color: 'gold', note: 'Weeks 10–11: select attempts based on daily max performances in Weeks 9–10.', exercises: [
-                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 360, isDailyMax: true },
-                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 360, isDailyMax: true },
+                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 360, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1'), buildupNote: 'Competition simulation — pick attempts per the Guide. Stop before a miss.' },
+                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 360, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Competition simulation. Each attempt = 1 clean + 1 jerk.' },
               ]},
             ],
           },

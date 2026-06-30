@@ -555,8 +555,12 @@ function exerciseRawSec(ex, def) {
       c.rounds * c.workSec + (c.lastRest ? c.rounds : c.rounds - 1) * c.restSec;
   }
   if (def.type === 'cardio' || def.type === 'mobility') return durationSec(ex);
+  if (ex.buildup && ex.buildup.length) {
+    // Sum the actual ramp: ~30s to perform each step + its prescribed rest.
+    return ex.buildup.reduce((t, s) => t + 30 + (s.rest || 0), 0);
+  }
   if (ex.isDailyMax || ex.isMaxEffort) {
-    // Building to a top single/triple: several ramping attempts at long rest.
+    // Fallback for any build-to-max without an explicit ladder.
     const rest = ex.rest || 240;
     return 6 * (25 + rest * 0.6);
   }
@@ -885,7 +889,7 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
           ${collapsed ? '<span class="badge badge-green">✓ Done</span>' : ''}
         </div>
         <div class="ex-meta">
-          ${ex._startSec != null ? `<span class="ex-start">⏱ Start @ ${fmtTime(ex._startSec)}</span>` : ''}
+          ${ex._startSec != null && STATE.activeWorkout ? `<span class="ex-start">⏱ Start @ ${fmtTime(Math.max(0, STATE.activeWorkout.totalSec - ex._startSec))}</span>` : ''}
           ${setsDisplay ? `<span>${setsDisplay}</span>` : ''}
           ${repDisplay ? `<span>${repDisplay}</span>` : ''}
           ${pwDisplay ? `<span class="ex-pct">${pwDisplay} (${ex.pct}%)</span>` : ''}
@@ -901,6 +905,22 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
         ${exDef.cues && exDef.cues.length ? `
           <div class="cues">
             ${exDef.cues.map(c => `<div class="cue">• ${c}</div>`).join('')}
+          </div>` : ''}
+
+        ${ex.buildup && ex.buildup.length ? `
+          <div class="buildup">
+            <div class="buildup-title">Build-up ladder — tap a step to start its rest</div>
+            ${ex.buildup.map(s => {
+              const w = PROGRAM.calcWeight(STATE.maxes, ex.baseLift, s.pct);
+              return `<button class="buildup-step ${s.top ? 'buildup-top' : ''}" onclick="startRestTimer(${s.rest})">
+                <span class="bs-pct">${s.pct}%</span>
+                <span class="bs-w">${w ? fmtWeight(w) : '—'}</span>
+                <span class="bs-reps">× ${s.reps}</span>
+                <span class="bs-rest">rest ${fmtTime(s.rest)}</span>
+                ${s.top ? '<span class="bs-tag">TOP</span>' : ''}
+              </button>`;
+            }).join('')}
+            ${ex.buildupNote ? `<div class="buildup-note">${ex.buildupNote}</div>` : ''}
           </div>` : ''}
 
         ${ex.interval ? `
