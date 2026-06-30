@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="OlyTracker">
+  <title>Oly Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <style>
+    /* ── Reset & base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f0f;
+      --bg2: #1a1a1a;
+      --bg3: #242424;
+      --gold: #e8c547;
+      --gold-dim: #b89c30;
+      --blue: #5b8dee;
+      --green: #4ade80;
+      --red: #f87171;
+      --orange: #fb923c;
+      --text: #f0f0f0;
+      --text2: #aaa;
+      --text3: #666;
+      --border: #2e2e2e;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --nav-h: 64px;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.4; -webkit-text-size-adjust: 100%; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+    input, select { font-family: inherit; color: inherit; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 15px; width: 100%; outline: none; }
+    input:focus, select:focus { border-color: var(--gold); }
+    .hidden { display: none !important; }
+
+    /* ── Layout ───────────────────────────────────────────── */
+    #app {
+      position: fixed; top: var(--safe-top); left: 0; right: 0;
+      bottom: calc(var(--nav-h) + var(--safe-bottom));
+      overflow-y: auto; overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    .page { padding: 16px 16px 24px; max-width: 600px; margin: 0 auto; }
+
+    /* ── Bottom nav ───────────────────────────────────────── */
+    #bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: calc(var(--nav-h) + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      background: rgba(15,15,15,0.95);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: stretch;
+      z-index: 100;
+    }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; color: var(--text3); font-size: 10px; font-weight: 500; letter-spacing: .3px;
+      padding-bottom: 2px; transition: color .15s;
+    }
+    .nav-btn .nav-icon { font-size: 22px; line-height: 1; }
+    .nav-btn.active { color: var(--gold); }
+    .nav-btn:active { opacity: .7; }
+
+    /* ── Buttons ──────────────────────────────────────────── */
+    .btn-primary {
+      background: var(--gold); color: #0f0f0f; font-weight: 700;
+      border-radius: var(--radius); padding: 14px 20px; font-size: 15px;
+      transition: opacity .15s;
+    }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary:active { opacity: .8; }
+    .btn-lg { width: 100%; padding: 16px; font-size: 17px; margin-top: 16px; }
+    .btn-outline {
+      border: 1.5px solid var(--border); color: var(--text); border-radius: var(--radius);
+      padding: 10px 18px; font-size: 14px; transition: border-color .15s;
+    }
+    .btn-outline:active { border-color: var(--gold); color: var(--gold); }
+    .btn-full { width: 100%; text-align: center; display: block; }
+    .btn-ghost { color: var(--gold); font-size: 14px; padding: 4px; }
+    .btn-ghost-sm { color: var(--text2); font-size: 14px; padding: 6px 10px; border-radius: 8px; }
+    .btn-ghost-sm:active { color: var(--text); background: var(--bg3); }
+    .btn-danger { background: var(--red); color: #fff; font-weight: 700; border-radius: var(--radius); padding: 14px 20px; font-size: 15px; width: 100%; }
+    .btn-danger:active { opacity: .8; }
+    .btn-danger-outline { border: 1.5px solid var(--red); color: var(--red); background: none; border-radius: var(--radius); padding: 12px; font-size: 14px; }
+    .btn-timer { background: var(--bg3); color: var(--text2); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; width: 100%; margin-top: 8px; }
+    .btn-timer:active { background: var(--bg2); color: var(--text); }
+    .btn-log { background: var(--gold); color: #000; font-weight: 700; border-radius: var(--radius-sm); padding: 12px; font-size: 14px; width: 100%; margin-top: 10px; }
+    .btn-log:active { opacity: .8; }
+
+    /* ── Home ─────────────────────────────────────────────── */
+    .home-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-top: 4px; }
+    .home-logo { font-size: 36px; }
+    .home-title { font-size: 22px; font-weight: 800; color: var(--gold); }
+    .home-sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
+    .alert { border-radius: var(--radius); padding: 12px 14px; font-size: 13px; margin-bottom: 16px; }
+    .alert-warn { background: rgba(251,146,60,.15); border: 1px solid rgba(251,146,60,.3); color: var(--orange); }
+    .today-card { background: var(--bg2); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; border: 1px solid var(--border); }
+    .today-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--gold); text-transform: uppercase; }
+    .today-day { font-size: 28px; font-weight: 800; margin-top: 4px; }
+    .today-meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
+    .week-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; margin-bottom: 16px; }
+    .week-cell { background: var(--bg2); border-radius: 8px; padding: 8px 4px; text-align: center; border: 1.5px solid transparent; }
+    .week-cell-today { border-color: var(--gold); }
+    .week-cell-done { background: rgba(74,222,128,.1); border-color: rgba(74,222,128,.3); }
+    .week-cell-day { font-size: 10px; font-weight: 600; color: var(--text2); }
+    .week-cell-dot { font-size: 11px; margin-top: 4px; color: var(--text3); }
+    .week-cell-today .week-cell-dot { color: var(--gold); }
+    .week-cell-done .week-cell-dot { color: var(--green); }
+    .rules-card { background: var(--bg2); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); margin-top: 8px; }
+    .rules-title { font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--text2); text-transform: uppercase; margin-bottom: 10px; }
+    .rules-list { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+    .rules-list li { font-size: 12px; color: var(--text2); line-height: 1.4; }
+    .recent-card { background: var(--bg2); border-radius: var(--radius); padding: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); }
+    .recent-label { font-size: 13px; color: var(--green); }
+
+    /* ── Workout ──────────────────────────────────────────── */
+    .workout-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0 16px; position: sticky; top: 0; background: var(--bg); z-index: 10;
+    }
+    .workout-title { font-size: 15px; font-weight: 700; flex: 1; text-align: center; }
+    .session-timer-wrap { display: flex; flex-direction: column; align-items: flex-end; }
+    .session-timer-label { font-size: 9px; font-weight: 700; letter-spacing: .8px; color: var(--text3); text-transform: uppercase; }
+    .session-timer { font-size: 17px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+    .workout-footer { padding: 20px 0 8px; }
+
+    /* ── Sections ─────────────────────────────────────────── */
+    .section { margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+    .section-header { padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+    .section-title { font-size: 12px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; }
+    .section-note { font-size: 11px; font-style: italic; opacity: .8; }
+    .sec-gold .section-header { background: rgba(232,197,71,.12); border-bottom: 1px solid rgba(232,197,71,.2); }
+    .sec-gold .section-title { color: var(--gold); }
+    .sec-blue .section-header { background: rgba(91,141,238,.1); border-bottom: 1px solid rgba(91,141,238,.2); }
+    .sec-blue .section-title { color: var(--blue); }
+    .sec-green .section-header { background: rgba(74,222,128,.08); border-bottom: 1px solid rgba(74,222,128,.2); }
+    .sec-green .section-title { color: var(--green); }
+    .sec-red .section-header { background: rgba(248,113,113,.08); border-bottom: 1px solid rgba(248,113,113,.2); }
+    .sec-red .section-title { color: var(--red); }
+
+    /* ── Exercise cards ───────────────────────────────────── */
+    .ex-card { background: var(--bg2); border-bottom: 1px solid var(--border); }
+    .ex-card:last-child { border-bottom: none; }
+    .ex-done { opacity: .7; }
+    .ex-header { padding: 12px 14px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+    .ex-header:active { background: var(--bg3); }
+    .ex-name-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+    .ex-name { font-size: 15px; font-weight: 700; }
+    .ex-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--text2); }
+    .ex-pct { color: var(--gold); font-weight: 600; }
+    .ex-rest { color: var(--blue); }
+    .badge { font-size: 10px; font-weight: 800; letter-spacing: .5px; padding: 2px 7px; border-radius: 20px; }
+    .badge-gold { background: rgba(232,197,71,.2); color: var(--gold); }
+    .badge-green { background: rgba(74,222,128,.2); color: var(--green); }
+    .progress-banner { margin-top: 6px; background: rgba(74,222,128,.15); border: 1px solid rgba(74,222,128,.3); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 700; color: var(--green); }
+    .last-weight { margin-top: 4px; font-size: 12px; color: var(--text3); }
+    .ex-body { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg); }
+    .ex-notes { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 10px; padding: 10px; background: var(--bg2); border-radius: var(--radius-sm); }
+    .ex-notes-warn { background: rgba(251,146,60,.08); color: var(--orange); }
+    .cues { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+    .cue { font-size: 12px; color: var(--text3); padding-left: 4px; }
+    .set-log { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+    .logged-set { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--bg2); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; }
+    .set-num { color: var(--text3); font-size: 11px; font-weight: 700; }
+    .set-weight { font-weight: 700; color: var(--gold); }
+    .set-reps { color: var(--text); }
+    .set-rir { color: var(--blue); font-size: 11px; }
+    .set-note { color: var(--text2); font-style: italic; font-size: 11px; }
+
+    /* ── Log Set Modal ────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 200;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding-bottom: var(--safe-bottom);
+    }
+    .modal {
+      background: var(--bg2); border-radius: 20px 20px 0 0; padding: 20px 20px 28px;
+      width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+    .modal-sub { font-size: 13px; color: var(--text2); margin-bottom: 18px; }
+    .form-label { display: block; font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; margin-top: 14px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal-actions .btn-outline { flex: 1; text-align: center; }
+    .modal-actions .btn-primary { flex: 2; }
+    .rep-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .rep-btn { background: var(--bg3); color: var(--text); border-radius: 8px; padding: 8px; min-width: 40px; font-size: 14px; font-weight: 600; }
+    .rep-btn.active { background: var(--gold); color: #000; }
+    .rep-btn:active { opacity: .8; }
+    .rir-picker { display: flex; gap: 8px; margin-bottom: 8px; }
+    .rir-btn { flex: 1; background: var(--bg3); color: var(--text); border-radius: 8px; padding: 10px 4px; font-size: 14px; font-weight: 600; text-align: center; }
+    .rir-btn.active { background: var(--blue); color: #fff; }
+    .rir-btn:active { opacity: .8; }
+
+    /* ── Rest Timer Overlay ───────────────────────────────── */
+    #timer-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 300;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .timer-card { text-align: center; padding: 30px 20px; }
+    .timer-label { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: var(--text2); text-transform: uppercase; margin-bottom: 16px; }
+    .timer-circle-wrap { position: relative; width: 180px; height: 180px; margin: 0 auto 16px; }
+    .timer-svg { width: 100%; height: 100%; }
+    .timer-track { fill: none; stroke: var(--bg3); stroke-width: 8; }
+    .timer-progress { fill: none; stroke: var(--gold); stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray .25s linear; }
+    .timer-num {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 42px; font-weight: 900; font-variant-numeric: tabular-nums; color: var(--text);
+    }
+    .timer-prescribed { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
+    .timer-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .timer-actions .btn-outline { padding: 12px 20px; }
+    .timer-actions .btn-primary { padding: 12px 28px; }
+
+    /* ── Interval Timer Overlay ───────────────────────────── */
+    #interval-overlay {
+      position: fixed; inset: 0; z-index: 320;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .4s ease;
+    }
+    .interval-card { text-align: center; padding: 30px 24px; width: 100%; max-width: 460px; }
+    /* Phase-driven full-screen tint for at-a-glance status */
+    #interval-overlay:has(.ip-work)    { background: radial-gradient(circle at 50% 40%, #3a0f12, #120607 70%); }
+    #interval-overlay:has(.ip-rest)    { background: radial-gradient(circle at 50% 40%, #0f2a3a, #06121a 70%); }
+    #interval-overlay:has(.ip-warmup)  { background: radial-gradient(circle at 50% 40%, #2e2410, #120f06 70%); }
+    #interval-overlay:has(.ip-cooldown){ background: radial-gradient(circle at 50% 40%, #122e16, #06120a 70%); }
+    #interval-overlay:has(.ip-done)    { background: radial-gradient(circle at 50% 40%, #122e16, #06120a 70%); }
+    .ip-round { font-size: 14px; font-weight: 700; letter-spacing: .5px; color: var(--text2); margin-bottom: 6px; }
+    .ip-phase { font-size: 34px; font-weight: 900; letter-spacing: 3px; margin-bottom: 18px; }
+    .ip-work .ip-phase { color: #ff6b6b; }
+    .ip-rest .ip-phase { color: #5bc0ee; }
+    .ip-warmup .ip-phase { color: var(--gold); }
+    .ip-cooldown .ip-phase, .ip-done .ip-phase { color: var(--green); }
+    .ip-progress { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray .2s linear; }
+    .ip-work .ip-progress { stroke: #ff6b6b; }
+    .ip-rest .ip-progress { stroke: #5bc0ee; }
+    .ip-warmup .ip-progress { stroke: var(--gold); }
+    .ip-cooldown .ip-progress, .ip-done .ip-progress { stroke: var(--green); }
+    .interval-card .timer-num { font-size: 52px; }
+    .ip-total { font-size: 13px; color: var(--text3); margin: 14px 0 16px; font-variant-numeric: tabular-nums; }
+    .ip-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 22px; }
+    .ip-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border); }
+    .ip-dot-done { background: var(--green); border-color: var(--green); }
+    .ip-dot-now { background: #ff6b6b; border-color: #ff6b6b; box-shadow: 0 0 0 4px rgba(255,107,107,.25); }
+    .interval-preview { font-size: 12px; color: var(--text3); margin-top: 8px; text-align: center; }
+
+    /* ── History ──────────────────────────────────────────── */
+    .history-page {}
+    .page-title { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
+    .page-subtitle { font-size: 14px; font-weight: 700; color: var(--text2); margin: 20px 0 12px; text-transform: uppercase; letter-spacing: .5px; }
+    .history-card { background: var(--bg2); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; border: 1px solid var(--border); cursor: pointer; }
+    .history-card:active { background: var(--bg3); }
+    .history-date { font-size: 12px; color: var(--text3); }
+    .history-day { font-size: 15px; font-weight: 700; margin: 2px 0; }
+    .history-meta { font-size: 12px; color: var(--text2); }
+    .history-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .hd-ex { margin-bottom: 12px; }
+    .hd-ex-name { font-size: 13px; font-weight: 700; color: var(--gold); margin-bottom: 4px; }
+    .hd-set { font-size: 12px; color: var(--text2); padding-left: 8px; margin-bottom: 2px; }
+    .history-lifts { margin-top: 8px; }
+    .ex-history-card { background: var(--bg2); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; border: 1px solid var(--border); }
+    .ex-history-name { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+    .mini-chart { display: flex; align-items: flex-end; gap: 4px; height: 50px; }
+    .mini-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+    .mini-bar { background: var(--gold); border-radius: 3px 3px 0 0; width: 100%; min-height: 4px; }
+    .mini-label { font-size: 8px; color: var(--text3); margin-top: 2px; text-align: center; }
+    .ex-history-best { font-size: 12px; color: var(--text2); margin-top: 8px; }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 14px; }
+
+    /* ── Rest day ─────────────────────────────────────────── */
+    .rest-day { text-align: center; padding: 60px 24px; }
+    .rest-day-icon { font-size: 56px; margin-bottom: 16px; }
+    .rest-day-title { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+    .rest-day-note { font-size: 14px; color: var(--text2); line-height: 1.5; max-width: 360px; margin: 0 auto; }
+
+    /* ── Settings ─────────────────────────────────────────── */
+    .settings-section { background: var(--bg2); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; border: 1px solid var(--border); }
+    .settings-label { font-size: 12px; font-weight: 800; letter-spacing: .5px; color: var(--text2); text-transform: uppercase; margin-bottom: 12px; }
+    .settings-note { font-size: 12px; color: var(--text3); margin-top: 10px; line-height: 1.5; }
+    .maxes-grid { display: flex; flex-direction: column; gap: 10px; }
+    .max-row { display: flex; align-items: center; gap: 10px; }
+    .max-label { flex: 1; font-size: 14px; min-width: 100px; }
+    .max-input { flex: 1; text-align: right; }
+    .max-unit { color: var(--text3); font-size: 13px; min-width: 22px; }
+    .program-pos { display: flex; flex-direction: column; gap: 10px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <nav id="bottom-nav">
+    <button class="nav-btn active" data-view="home">
+      <span class="nav-icon">🏠</span>Home
+    </button>
+    <button class="nav-btn" data-view="workout">
+      <span class="nav-icon">🏋️</span>Workout
+    </button>
+    <button class="nav-btn" data-view="history">
+      <span class="nav-icon">📊</span>History
+    </button>
+    <button class="nav-btn" data-view="settings">
+      <span class="nav-icon">⚙️</span>Settings
+    </button>
+  </nav>
+
+  <div id="timer-overlay" class="hidden"></div>
+  <div id="interval-overlay" class="hidden"></div>
+
+  <script src="js/program.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
