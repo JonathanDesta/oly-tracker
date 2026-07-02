@@ -821,6 +821,38 @@ function makeDeloadDays() {
   };
 }
 
+// ─── Block 2: Intensification transform ───────────────────────────────────────
+// The doc's "what changes from Block 1" beyond percentages (which B2's tables
+// already handle): oly movements lose one set and shift to doubles (5×3 → 4×2,
+// 2+1 → 1+1), squat reps compress (5s → 3s, 3s → 2s), Olympic-block rest grows
+// 30–60s, and hypertrophy drops one set per movement. Daily-max ladders are left
+// alone — their intensity already climbs via B2's daily-max targets.
+function applyBlock2(day) {
+  if (!day || !day.sections) return day;
+  day.sections.forEach(sec => sec.exercises.forEach(ex => {
+    const def = EX[ex.id];
+    if (!def) return;
+    if (ex.isDailyMax || ex.isMaxEffort || ex.buildup) return;
+    const t = def.type;
+    if (t === 'oly' || t === 'technical') {
+      if (typeof ex.sets === 'number' && ex.sets > 2) ex.sets -= 1;
+      if (ex.reps === 3) ex.reps = 2;
+      if (ex.reps === '2+1') ex.reps = '1+1';
+      if (ex.rest) ex.rest += 45;
+    } else if (ex.id === 'back_squat' || ex.id === 'front_squat') {
+      // Sets hold, reps compress: 4×5 → 4×3, 5×3 → 5×2 (per the doc's sample table)
+      if (ex.reps === 5 || ex.reps === 4) ex.reps = 3;
+      else if (ex.reps === 3) ex.reps = 2;
+      if (ex.rest) ex.rest += 45;
+    } else if (ex.id === 'snatch_pull' || ex.id === 'clean_pull' || ex.id === 'push_press') {
+      if (ex.rest) ex.rest += 45; // load already climbs via B2 percentage tables
+    } else if (t === 'hypertrophy') {
+      if (typeof ex.sets === 'number' && ex.sets > 2) ex.sets -= 1; // −20–25% volume
+    }
+  }));
+  return day;
+}
+
 // ─── Main program export ──────────────────────────────────────────────────────
 const PROGRAM = {
   exercises: EX,
@@ -849,7 +881,7 @@ const PROGRAM = {
       weeks: 4,
       startWeek: 5,
       description: 'Intensity climbs, volume drops ~20–25%. Daily max attempts are true max attempts. Rest periods increase 30–60s across the board.',
-      getDay: (dayKey, weekInBlock) => makeDays(B2, weekInBlock)[dayKey],
+      getDay: (dayKey, weekInBlock) => applyBlock2(makeDays(B2, weekInBlock)[dayKey]),
     },
     {
       id: 3,
@@ -977,9 +1009,11 @@ const PROGRAM = {
   },
 
   // Full resolver: block/week day, with cutting modifications applied if active.
+  // Deload (block 4) is exempt — Week 12 prescribes its own reduced volume, and
+  // stacking the cutting reduction on top would cut below the doc's prescription.
   getWorkout(blockId, weekInBlock, dayKey, cutting) {
     const day = this.getDayWorkout(blockId, weekInBlock, dayKey);
-    return cutting ? this.applyCutting(day) : day;
+    return (cutting && blockId !== 4) ? this.applyCutting(day) : day;
   },
 
   // ── Cutting Phase Modifications (from the program document) ────────────────
@@ -990,7 +1024,8 @@ const PROGRAM = {
   //   • Olympic lifting (lifts, derivatives, pulls, squats, technical, push press):
   //     drop ONE working set per exercise; keep frequency and percentages identical
   //     (intensity is what preserves strength and skill in a deficit).
-  //   • Cardio: add ~15–20 min to the Sunday Zone 2 session. VO₂max unchanged.
+  //   • Cardio: the doc suggests extra Zone 2 to widen the deficit — Sunday is
+  //     passive rest in this app, so that's a walk on your own time, not a slot here.
   //   • Plyometrics (jumps): no change — volume is already minimal.
   applyCutting(day) {
     if (!day || !day.sections) return day; // rest / testing days unaffected
@@ -1010,10 +1045,6 @@ const PROGRAM = {
             ex.sets = ex.sets - 1;
             ex.cutNote = '−1 set (cut)';
           }
-        } else if (t === 'cardio' && ex.id === 'zone2_warmup' &&
-                   typeof ex.duration === 'string' && ex.duration.includes('60–75')) {
-          ex.duration = '75–95 min';
-          ex.cutNote = '+15–20 min (cut)';
         }
       });
     });

@@ -19,7 +19,7 @@ build step. This doc is the orientation for a fresh debugging session.
 | `index.html` | App shell, **all CSS** (in one `<style>`), bottom nav, overlay containers (`#timer-overlay`, `#interval-overlay`). |
 | `js/program.js` | **All program data**: exercise library (`EX`), blocks, day generators, build-up ladders, progression %s, cutting transform, schedule helpers. Defines global `PROGRAM`. |
 | `js/app.js` | **All app logic**: `STATE`, persistence, render functions, all three timers, scheduling, double-progression. |
-| `sw.js` | Network-first service worker. Bump `CACHE` version string each deploy (currently `oly-tracker-v11`). |
+| `sw.js` | Network-first service worker. Bump `CACHE` version string each deploy (check the file for the current version). |
 | `manifest.json`, `icon.svg` | PWA metadata + icon. |
 | `.claude/launch.json` | Preview config. **The one actually used by the preview tool is `C:\.claude\launch.json`** (currently port 3143). |
 

@@ -60,6 +60,9 @@ let audioCtx = null;
 
 function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // iOS suspends the context when the page is backgrounded/locked — resume or
+  // every subsequent beep is silent.
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 }
 
 function beep(freq = 880, dur = 0.4, vol = 0.6) {
@@ -1271,13 +1274,13 @@ function renderGuide() {
         <ul class="guide-ul">
           <li><b>Hypertrophy −50%.</b> Drop to 2 working sets, raise to RPE 9–10. Exception: face pulls stay full (shoulder health).</li>
           <li><b>Olympic lifting, reduce minimally.</b> The lifts are a skill — drop just one working set per exercise (e.g. 5×2 → 4×2), keep frequency and percentages identical. Intensity preserves strength and neural adaptation.</li>
-          <li><b>Cardio +Zone 2.</b> Add 15–20 min to Sunday (lowest recovery cost way to widen the deficit). VO₂max unchanged.</li>
+          <li><b>Cardio +Zone 2.</b> Zone 2 is the lowest-recovery-cost way to widen the deficit — add a short easy walk/bike on your own time (Sunday stays passive rest in this app). Sport stays the high-intensity stimulus; don't add structured intervals in a deficit.</li>
           <li><b>Plyometrics — no change.</b> Volume is already minimal.</li>
         </ul>`)}
 
       ${sec('Cardio Protocol', `
         <p><b>Polarized — 80% easy / 20% hard.</b> The hard 20% is supplied by your ~2 weekly running-sport sessions, so <b>no structured intervals are programmed.</b> The easy 80% base is NOT covered by sport (pickup is high-intensity) — so all Zone 2 stays in full. Preserving the Zone 2 base keeps the polarized ratio intact and speeds recovery between hard sessions.</p>
-        <p><b>Zone 2 (~90–110 min/week — keep in full):</b> Sunday 60–75 min; Mon + Thu 15–20 min as session warm-up. Bike/rower preferred. Conversational pace (~60–70% max HR).</p>
+        <p><b>Zone 2:</b> Mon + Thu 15–20 min as session warm-up (mandatory), conversational pace (~60–70% max HR), bike/rower preferred. <i>Note: the original program also prescribed a 60–75 min Sunday Zone 2 session; in this app Sunday is full passive rest by choice, so the dedicated aerobic base is ~30–40 min/week — add easy walks/rides on your own time if you want to keep the polarized base larger.</i></p>
         <p><b>High-intensity / VO₂max — supplied by sport (~2×/week):</b> Basketball, flag football, etc. is repeated-sprint interval work and is your VO₂max stimulus. Adding structured intervals on top would be redundant volume competing with Oly recovery.</p>
         <p><b>Only if a week passes with no sport:</b> do the optional Wednesday interval — 5 × 3 min @ ~95% max HR / 3 min easy (bike/rower). Power alternative: 10 × 30s max sprints / 90s recovery.</p>`)}
 
@@ -1300,8 +1303,8 @@ function renderGuide() {
       ${sec('Lifestyle Integration &amp; Autoregulation', `
         <p>The program assumes ~2 recreational sport sessions/week and occasional heavy drinking. <b>Both are unscheduled and unpredictable</b> — so the program absorbs them through in-the-moment autoregulation, not advance placement. This is exactly why the lifts use a daily-max approach: a beat-up day simply produces a lower daily max — the system working as designed, not a missed target. React correctly on the day; don't try to schedule the chaos.</p>
 
-        <div class="guide-sub">Recovery red flags → convert Sunday to full rest</div>
-        <p>Sunday is active recovery, not a mandatory 7th session. Convert it to passive rest — and pull the next daily-max day back to technical work — if <b>two or more</b> of these show up:</p>
+        <div class="guide-sub">Recovery red flags → back off the next hard day</div>
+        <p>Sunday is already full passive rest in this app. If <b>two or more</b> of these show up, pull the next daily-max day back to technical work (60–75%, no max attempts) until they clear:</p>
         <ul class="guide-ul">
           <li>Morning resting HR &gt;7 bpm above your norm</li>
           <li>Suppressed HRV for 2+ consecutive days (if tracked)</li>
@@ -1563,6 +1566,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Re-sync the interval timer if phases elapsed while backgrounded
     if (document.visibilityState === 'visible' && STATE.intervalTimer.active) {
       catchUpIntervalTimer();
+    }
+    // iOS suspends the AudioContext on background/lock — resume so alarms sound
+    if (document.visibilityState === 'visible' && audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
     }
   });
 });
