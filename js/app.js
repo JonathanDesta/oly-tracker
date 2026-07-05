@@ -33,6 +33,32 @@ function save() {
     log: STATE.log,
     hypertrophyWeights: STATE.hypertrophyWeights,
   }));
+  publishDayDurations();
+}
+
+// Publish this week's expected session lengths (minutes, keyed mon…sun; 0 = rest)
+// into shared storage so the Day life-manager app — served from the same origin —
+// sizes its timeline gym block from the program itself instead of keeping its own
+// copy of these numbers. Recomputed on every save so block/week/cutting/no-sport
+// changes propagate immediately. The snapshot records the program state it was
+// computed from so a consumer can tell when it's stale.
+function publishDayDurations() {
+  try {
+    const min = {};
+    PROGRAM.dayKeys.forEach(k => {
+      const day = PROGRAM.getWorkout(STATE.program.blockId, STATE.program.weekInBlock, k, STATE.cutting);
+      min[k.slice(0, 3)] = (day && !day.isRest && dayEstMin(day)) || 0;
+    });
+    localStorage.setItem('oly_day_durations', JSON.stringify({
+      v: 1,
+      blockId: STATE.program.blockId,
+      weekInBlock: STATE.program.weekInBlock || 0,
+      cutting: !!STATE.cutting,
+      noSport: !!STATE.noSport,
+      min,
+      ts: Date.now(),
+    }));
+  } catch (e) { /* storage unavailable — non-critical, Day falls back to its table */ }
 }
 
 function load() {
@@ -1537,6 +1563,7 @@ function render() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   load();
+  publishDayDurations(); // keep the shared duration snapshot fresh on every open
   render();
 
   // Bottom nav
