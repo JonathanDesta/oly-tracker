@@ -30,7 +30,7 @@ Single-page, no framework, no router. `STATE.view` + `render()` switch between v
 
 ### STATE (in `app.js`)
 ```
-maxes              { snatch, cj, bs, fs, pp, bench }  — 1RM training maxes
+maxes              { snatch, cj, clean, bs, fs, pp, bench }  — 1RM training maxes; `clean` is optional (calcWeight falls back to cj when null)
 program            { blockId, weekInBlock }            — blockId 0=Testing,1,2,3,4=Deload; week is 0-indexed
 cutting            bool   — deficit mode (reduces volume)
 noSport            bool   — false = assume ~2 sport sessions (default); true = reinstate plyos + Wed intervals
@@ -103,7 +103,7 @@ bump is belt-and-suspenders. Windows `LF will be replaced by CRLF` warnings are 
 
 ```js
 // seed maxes + jump to a block/week
-STATE.maxes={snatch:185,cj:235,bs:315,fs:265,pp:185,bench:225};
+STATE.maxes={snatch:185,cj:235,clean:255,bs:315,fs:265,pp:185,bench:225};
 STATE.program={blockId:1,weekInBlock:0}; STATE.cutting=false; STATE.noSport=false; save(); nav('home');
 
 // inspect a day's schedule
@@ -112,7 +112,7 @@ STATE.program={blockId:1,weekInBlock:0}; STATE.cutting=false; STATE.noSport=fals
 
 // reset to clean Week-0 state
 localStorage.removeItem('oly_state');
-Object.assign(STATE,{maxes:{snatch:null,cj:null,bs:null,fs:null,pp:null,bench:null},
+Object.assign(STATE,{maxes:{snatch:null,cj:null,clean:null,bs:null,fs:null,pp:null,bench:null},
   program:{blockId:0,weekInBlock:0},cutting:false,noSport:false,log:{},hypertrophyWeights:{},activeWorkout:null});
 save(); nav('home');
 ```

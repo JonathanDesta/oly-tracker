@@ -6,7 +6,7 @@ const EX_CACHE = {};
 // ─── State ────────────────────────────────────────────────────────────────────
 const STATE = {
   view: 'home',
-  maxes: { snatch: null, cj: null, bs: null, fs: null, pp: null, bench: null },
+  maxes: { snatch: null, cj: null, clean: null, bs: null, fs: null, pp: null, bench: null },
   program: { blockId: 0, weekInBlock: 0 }, // start on Week 0 Testing; weekInBlock is 0-indexed
   cutting: false, // training phase: false = lean bulk, true = cutting (deficit)
   noSport: false, // false = assume ~2 sport sessions this week; true = reinstate plyos + VO₂max intervals
@@ -1427,7 +1427,7 @@ function renderSettings() {
               <span class="max-unit">lb</span>
             </div>`).join('')}
         </div>
-        <div class="settings-note">These are your 1RM training maxes from Week 0. All percentages in the program reference these numbers.</div>
+        <div class="settings-note">These are your 1RM training maxes from Week 0. All percentages in the program reference these numbers. Clean (only) is optional — if blank, clean pulls, hang cleans, and block cleans use your C&J max. Set it if your clean is well ahead of your jerk.</div>
       </div>
 
       <div class="settings-section">
@@ -1540,7 +1540,7 @@ function clearAllData() {
   if (!confirm('Delete ALL workout data? This cannot be undone.')) return;
   localStorage.removeItem('oly_state');
   Object.assign(STATE, {
-    maxes: {snatch:null,cj:null,bs:null,fs:null,pp:null,bench:null},
+    maxes: {snatch:null,cj:null,clean:null,bs:null,fs:null,pp:null,bench:null},
     program: {blockId:0,weekInBlock:0},
     cutting: false, noSport: false,
     log: {}, hypertrophyWeights: {}, activeWorkout: null,

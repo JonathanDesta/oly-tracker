@@ -101,22 +101,22 @@ const EX = {
   clean_blocks_low: {
     name: 'Clean from Blocks (below knee)',
     type: 'oly',
-    baseLift: 'cj',
-    notes: 'Second pull and receiving position isolation. Same as snatch blocks but for the clean. Static start each rep.',
+    baseLift: 'clean',
+    notes: 'Second pull and receiving position isolation. Same as snatch blocks but for the clean. Static start each rep. Percentages reference your clean-only max (falls back to C&J until you record one).',
     cues: ['Elbows lead the bar into the rack', 'Keep hips in — don\'t let them shoot back', 'Soft landing, immediate stand'],
   },
   hang_clean: {
     name: 'Hang Clean (above knee)',
     type: 'oly',
-    baseLift: 'cj',
+    baseLift: 'clean',
     notes: 'Hip contact and aggressive turnover. Done after C&J as supplemental work. Focus on the speed of the elbows rotating under.',
     cues: ['Load at the hips', 'Violent extension', 'Elbows through fast — don\'t muscle the bar up'],
   },
   clean_pull: {
     name: 'Clean Pull',
     type: 'strength',
-    baseLift: 'cj',
-    notes: 'Same as snatch pull but at clean grip. Builds clean pulling strength. Finish tall on toes with a forceful shrug.',
+    baseLift: 'clean',
+    notes: 'Same as snatch pull but at clean grip. Builds clean pulling strength. Finish tall on toes with a forceful shrug. Percentages reference your clean-only max (falls back to C&J until you record one).',
     cues: ['Same back angle as clean', 'Legs first, then hips, then shrug', 'No arm bend'],
   },
   cj_daily_max: {
@@ -493,9 +493,9 @@ function makeDays(B, weekIdx) {
           exercises: [
             { id: 'cj_warmup', sets: 3, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
             { id: 'cj_floor', sets: 5, reps: '2+1', pct: olyPct, baseLift: 'cj', rest: 180 },
-            { id: 'hang_clean', sets: 4, reps: 3, pct: hangPct ?? olyPct - 2, baseLift: 'cj', rest: 120 },
+            { id: 'hang_clean', sets: 4, reps: 3, pct: hangPct ?? olyPct - 2, baseLift: 'clean', rest: 120 },
             { id: 'push_press', sets: 3, reps: 4, pct: ppPct, baseLift: 'pp', rest: 120 },
-            { id: 'clean_pull', sets: 4, reps: 3, pct: pullPct, baseLift: 'cj', rest: 120 },
+            { id: 'clean_pull', sets: 4, reps: 3, pct: pullPct, baseLift: 'clean', rest: 120 },
             { id: 'front_squat', sets: 4, reps: 4, pct: fsTuePct, baseLift: 'fs', rest: 120 },
           ],
         },
@@ -599,12 +599,12 @@ function makeDays(B, weekIdx) {
           color: 'gold',
           exercises: [
             { id: 'cj_warmup', sets: 3, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
-            { id: 'clean_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'cj', rest: 150 },
+            { id: 'clean_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'clean', rest: 150 },
             { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 240, isDailyMax: true,
               buildup: rampOlyDaily(dmPct, '1+1'),
               buildupNote: 'After the block cleans, rest 3 min, then ramp as below. Each attempt = 1 clean + 1 jerk. Stop at the last technically clean lift.' },
             { id: 'jerk_rack', sets: 4, reps: 2, pct: jerkFriPct, baseLift: 'cj', rest: 180 },
-            { id: 'clean_pull', sets: 4, reps: 3, pct: Math.min(pullPct + 3, 100), baseLift: 'cj', rest: 180 },
+            { id: 'clean_pull', sets: 4, reps: 3, pct: Math.min(pullPct + 3, 100), baseLift: 'clean', rest: 180 },
             { id: 'front_squat', sets: 5, reps: 3, pct: fsFriPct, baseLift: 'fs', rest: 180 },
           ],
         },
@@ -684,9 +684,10 @@ const TESTING_WEEK = {
     title: 'Day 2 — Clean & Jerk 1RM',
     isTesting: true,
     totalMin: 90,
-    note: 'Same protocol as Day 1. If the jerk is the limiter, note the clean and jerk separately — record the full C&J here.',
+    note: 'Same protocol as Day 1. Test the full C&J first. If the jerk is your limiter, keep taking clean-only singles after your last made C&J and record that as your Clean max — clean pulls, hang cleans, and block cleans run off it.',
     lifts: [
       { lift: 'cj', label: 'Clean & Jerk — 1RM', cues: ['The recorded max is the heaviest completed C&J', 'If you clean it but miss the jerk, it does not count'] },
+      { lift: 'clean', label: 'Clean — 1RM (optional)', cues: ['After your last made C&J, keep going with clean-only singles', 'Skip if your clean and C&J are within ~5% — the program will use your C&J instead'] },
     ],
   },
   wednesday: { title: 'Day 3 — Rest', isRest: true, note: 'Rest. Light Zone 2 and mobility optional.' },
@@ -807,6 +808,7 @@ function makeDeloadDays() {
       lifts: [
         { lift: 'snatch', label: 'Snatch — 1RM' },
         { lift: 'cj', label: 'Clean & Jerk — 1RM' },
+        { lift: 'clean', label: 'Clean — 1RM (optional, clean-only singles after your last made C&J)' },
         { lift: 'bs', label: 'Back Squat — 1RM' },
         { lift: 'fs', label: 'Front Squat — 1RM' },
         { lift: 'pp', label: 'Push Press — 1RM' },
@@ -922,7 +924,7 @@ const PROGRAM = {
                 { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
                 { id: 'cj_floor', sets: 3, reps: '1+1', pct: olyPct, baseLift: 'cj', rest: 240 },
                 { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Peaking — true PR attempt. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
-                { id: 'clean_pull', sets: 3, reps: 2, pct: pullPct, baseLift: 'cj', rest: 180 },
+                { id: 'clean_pull', sets: 3, reps: 2, pct: pullPct, baseLift: 'clean', rest: 180 },
                 { id: 'front_squat', sets: 3, reps: 2, pct: B3.fs_tue_pct[w], baseLift: 'fs', rest: 240 },
               ]},
             ],
@@ -961,7 +963,7 @@ const PROGRAM = {
                 { id: 'cj_floor', sets: 2, reps: '1+1', pct: olyPct, baseLift: 'cj', rest: 240 },
                 { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Peaking — true PR attempt. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
                 { id: 'jerk_rack', sets: 3, reps: 2, pct: 88, baseLift: 'cj', rest: 240 },
-                { id: 'clean_pull', sets: 2, reps: 2, pct: pullPct, baseLift: 'cj', rest: 180 },
+                { id: 'clean_pull', sets: 2, reps: 2, pct: pullPct, baseLift: 'clean', rest: 180 },
                 { id: 'front_squat', sets: 3, reps: 2, pct: B3.fs_fri_pct[w], baseLift: 'fs', rest: 240 },
               ]},
               { title: 'Maintenance Hypertrophy', color: 'blue', exercises: [
@@ -995,7 +997,10 @@ const PROGRAM = {
 
   // ── Helper: get prescribed weight ─────────────────────────────────────────
   calcWeight(maxes, baseLift, pct) {
-    const max = maxes[baseLift];
+    let max = maxes[baseLift];
+    // Clean-only max is optional — jerk-limited lifters set it so clean
+    // variations aren't undertrained; everyone else falls back to C&J.
+    if (baseLift === 'clean' && !max) max = maxes.cj;
     if (!max || !pct) return null;
     // Round to nearest 2.5 lbs
     return Math.round((max * pct / 100) / 2.5) * 2.5;
@@ -1059,6 +1064,7 @@ const PROGRAM = {
   liftNames: {
     snatch: 'Snatch',
     cj: 'Clean & Jerk',
+    clean: 'Clean (only)',
     bs: 'Back Squat',
     fs: 'Front Squat',
     pp: 'Push Press',
