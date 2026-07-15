@@ -38,7 +38,7 @@ log                { 'YYYY-MM-DD': { dayKey, title, setsLogged, sessionMin } }
 hypertrophyWeights { exId: { weight, sets[], prevSets[], repTop, setCount, progressNext } }
 restTimer / sessionTimer / intervalTimer / activeWorkout / wakeLock
 ```
-- **Persistence:** `save()`/`load()` → localStorage key `oly_state`. Persists maxes, program, cutting, noSport, log, hypertrophyWeights. **`activeWorkout` is NOT persisted** — reloading mid-workout loses the in-progress session.
+- **Persistence:** `save()`/`load()` → localStorage key `oly_state`. Persists maxes, program, cutting, noSport, log, hypertrophyWeights, **and the in-progress `activeWorkout` + running timers** (as of v17). Timers are stored as absolute timestamps (`restTimer.end`, `sessionTimer.start`), so a reload recomputes remaining time correctly. On launch, `load()` restores `activeWorkout` if it's <6h old (`startedAt` guard), init sets `view='workout'`, and `resumeSessionTimer`/`resumeRestTimer` re-arm the intervals. `save()` is called at every session transition (start/log-set/rest-start/skip/add/end).
 
 ### Program data model (`program.js`)
 - `EX` — exercise library keyed by id: `{ name, type, notes, cues[], baseLift }`. `type` ∈ oly|strength|hypertrophy|technical|cardio|core|jump|warmup|max_effort|mobility.
@@ -91,7 +91,7 @@ bump is belt-and-suspenders. Windows `LF will be replaced by CRLF` warnings are 
    `setInterval` keeps the page from going idle). Freeze first: `clearInterval(STATE.sessionTimer.interval)`
    (and `intervalTimer.interval`) before screenshotting. **Verify via `preview_eval` DOM
    inspection instead — it's reliable when screenshots aren't.**
-3. **`activeWorkout` isn't persisted** — a mid-session reload drops it. Re-start the workout.
+3. **`activeWorkout` + timers are persisted (v17+)** — a mid-session reload (incl. iOS tearing down a backgrounded PWA between sets) restores the session and re-arms the timers. Stale sessions are dropped after 6h via the `startedAt` guard. The `intervalTimer` (Wed VO₂max) is the one timer NOT persisted across a full reload — it still relies on `catchUpIntervalTimer` while the context survives.
 4. **Log is keyed by calendar date** (`today()`), so doing two different days in one calendar
    day overwrites the first.
 5. **Time estimates are heuristic** for set execution (20–40s/set) but use exact rest periods

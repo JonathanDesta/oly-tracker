@@ -32,6 +32,17 @@ function save() {
     noSport: STATE.noSport,
     log: STATE.log,
     hypertrophyWeights: STATE.hypertrophyWeights,
+    // Persist the in-progress session + timers so an iOS PWA teardown between
+    // sets (lock screen / app switch) restores instead of resetting. Timers are
+    // stored as absolute timestamps, so elapsed background time is accounted for
+    // on restore. Only the running (active) timers are worth saving.
+    activeWorkout: STATE.activeWorkout,
+    timers: {
+      rest: STATE.restTimer.active
+        ? { end: STATE.restTimer.end, prescribed: STATE.restTimer.prescribed } : null,
+      session: STATE.sessionTimer.active
+        ? { start: STATE.sessionTimer.start } : null,
+    },
   }));
   publishDayDurations();
 }
@@ -72,6 +83,15 @@ function load() {
     STATE.noSport = !!data.noSport;
     STATE.log = data.log || {};
     STATE.hypertrophyWeights = data.hypertrophyWeights || {};
+    // Restore an in-progress session so it survives the PWA being torn down
+    // mid-workout. Discard anything older than 6h — that's well past any real
+    // session (incl. long rests), so it cleanly drops a stale one from earlier
+    // in the day or a previous day without a fragile calendar-date check.
+    if (data.activeWorkout &&
+        (Date.now() - (data.activeWorkout.startedAt || 0)) < 6 * 60 * 60 * 1000) {
+      STATE.activeWorkout = data.activeWorkout;
+      STATE._restoreTimers = data.timers || null; // applied after render() in init
+    }
   } catch (e) { console.warn('Load error', e); }
 }
 
@@ -160,6 +180,24 @@ function startRestTimer(seconds) {
   STATE.restTimer.active = true;
   renderTimerOverlay();
   STATE.restTimer.interval = setInterval(tickRestTimer, 250);
+  save(); // persist so a reload during rest keeps counting
+}
+
+// Re-arm a rest timer from a persisted end-time after a page reload.
+function resumeRestTimer(end, prescribed) {
+  clearRestTimer();
+  STATE.restTimer.prescribed = prescribed;
+  STATE.restTimer.end = end;
+  STATE.restTimer.active = true;
+  if (end - Date.now() <= 0) {
+    // Rest elapsed while the app was gone — show the done state (no sound, since
+    // audio is blocked until a user gesture on a fresh load).
+    clearRestTimer();
+    renderTimerOverlay(true);
+    return;
+  }
+  renderTimerOverlay();
+  STATE.restTimer.interval = setInterval(tickRestTimer, 250);
 }
 
 function tickRestTimer() {
@@ -169,6 +207,7 @@ function tickRestTimer() {
     timerDoneSound();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
     renderTimerOverlay(true);
+    save(); // rest no longer active — keep the persisted snapshot in sync
     return;
   }
   renderTimerOverlay();
@@ -183,6 +222,7 @@ function clearRestTimer() {
 function skipRestTimer() {
   clearRestTimer();
   document.getElementById('timer-overlay').classList.add('hidden');
+  save();
 }
 
 function addRestTime(sec) {
@@ -192,6 +232,7 @@ function addRestTime(sec) {
   if (!STATE.restTimer.active) { startRestTimer(sec); return; }
   STATE.restTimer.end += sec * 1000;
   renderTimerOverlay();
+  save();
 }
 
 // ─── Interval timer ───────────────────────────────────────────────────────────
@@ -313,11 +354,22 @@ function startSessionTimer() {
   STATE.sessionTimer.start = Date.now();
   STATE.sessionTimer.active = true;
   STATE.sessionTimer.interval = setInterval(updateSessionTimerDisplay, 1000);
+  save();
+}
+
+// Re-arm the session timer from a persisted start-time after a page reload.
+// It's count-down-from-start math, so the display self-corrects for the gap.
+function resumeSessionTimer(start) {
+  clearInterval(STATE.sessionTimer.interval);
+  STATE.sessionTimer.start = start;
+  STATE.sessionTimer.active = true;
+  STATE.sessionTimer.interval = setInterval(updateSessionTimerDisplay, 1000);
 }
 
 function stopSessionTimer() {
   clearInterval(STATE.sessionTimer.interval);
   STATE.sessionTimer.active = false;
+  save();
 }
 
 function updateSessionTimerDisplay() {
@@ -779,6 +831,7 @@ function startWorkout(dayKey) {
 
   STATE.activeWorkout = {
     date: today(),
+    startedAt: Date.now(), // drives the 6h staleness window on restore
     dayKey,
     day,
     setsLogged: {}, // exerciseId → array of set objects
@@ -788,7 +841,7 @@ function startWorkout(dayKey) {
   };
 
   acquireWakeLock();
-  startSessionTimer();
+  startSessionTimer(); // calls save() — persists the new activeWorkout too
   nav('workout');
 }
 
@@ -1112,6 +1165,7 @@ function submitSet(cacheKey) {
   // Auto-start rest timer
   if (ex.rest > 0) startRestTimer(ex.rest);
 
+  save(); // persist the logged set (startRestTimer also saves, but not every set rests)
   closeModal();
   renderWorkout();
 }
@@ -1564,7 +1618,19 @@ function render() {
 document.addEventListener('DOMContentLoaded', () => {
   load();
   publishDayDurations(); // keep the shared duration snapshot fresh on every open
+  // A session was restored from storage — land back in it, not on home.
+  if (STATE.activeWorkout) STATE.view = 'workout';
   render();
+
+  // Re-arm the timers for a restored session (after render so the overlay/DOM
+  // nodes they update exist).
+  if (STATE.activeWorkout) {
+    const t = STATE._restoreTimers;
+    delete STATE._restoreTimers;
+    acquireWakeLock();
+    if (t && t.session) resumeSessionTimer(t.session.start);
+    if (t && t.rest) resumeRestTimer(t.rest.end, t.rest.prescribed);
+  }
 
   // Bottom nav
   document.querySelectorAll('.nav-btn').forEach(btn => {
