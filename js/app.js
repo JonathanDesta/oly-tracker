@@ -1155,6 +1155,9 @@ function submitSet(cacheKey) {
   const setObj = { weight, reps, rir, note, ts: Date.now() };
   STATE.activeWorkout.setsLogged[key].push(setObj);
 
+  // Auto-bump the training max when a genuine top attempt beats it.
+  maybeUpdateMax(ex, weight, reps);
+
   // Track hypertrophy progression
   const exDef = PROGRAM.exercises[exId];
   if (exDef.type === 'hypertrophy' || (ex.repRange && !ex.pct)) {
@@ -1168,6 +1171,42 @@ function submitSet(cacheKey) {
   save(); // persist the logged set (startRestTimer also saves, but not every set rests)
   closeModal();
   renderWorkout();
+}
+
+// Raise the stored 1RM when a top attempt exceeds it. Only fires on genuine
+// max-intent slots (daily-max Olympic singles, RPE-9 max-effort compounds) — so
+// submaximal/technique/hypertrophy work never touches your maxes. A single sets
+// the 1RM exactly; a multi-rep set uses an Epley estimate. Only ever raises the
+// number, and never overstates (a normal working set won't beat a current max).
+function maybeUpdateMax(ex, weight, reps) {
+  if (!weight || !reps) return;
+  if (!(ex.isDailyMax || ex.isMaxEffort)) return;
+  const lift = ex.baseLift;
+  if (!lift || !(lift in STATE.maxes)) return;
+  const cur = STATE.maxes[lift] || 0;
+  const est = reps === 1
+    ? weight
+    : Math.round((weight * (1 + reps / 30)) / 2.5) * 2.5; // Epley, rounded to 2.5
+  if (est <= cur) return;
+  STATE.maxes[lift] = est;
+  save();
+  toast(`🎉 New ${PROGRAM.liftNames[lift]} max: ${fmtWeight(est)}`
+    + (cur ? ` (was ${fmtWeight(cur)})` : '')
+    + (reps > 1 ? ` — est. from ${reps} reps` : ''));
+}
+
+// Lightweight transient toast (self-contained styles so it needs no CSS).
+function toast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;left:50%;bottom:88px;transform:translateX(-50%);'
+    + 'z-index:9999;background:var(--gold);color:#0f0f0f;font-weight:700;'
+    + 'padding:12px 18px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.45);'
+    + 'max-width:88%;text-align:center;font-size:15px;line-height:1.35;';
+  document.body.appendChild(t);
+  if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+  setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 3200);
+  setTimeout(() => t.remove(), 3700);
 }
 
 function endWorkout() {

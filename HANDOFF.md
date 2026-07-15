@@ -126,3 +126,4 @@ save(); nav('home');
 - Countdown timer + start times → `updateSessionTimerDisplay`, `computeSchedule`, `.ex-start` / `.ex-now`.
 - Guide tab → `renderGuide()` (full program reference: rules, blocks, cutting, cardio, mobility, nutrition, lifestyle/autoregulation, coaching).
 - Home day list (tap any day, shows focus + est time) → `renderHome()`.
+- Auto-max-update → `maybeUpdateMax(ex, weight, reps)` in `submitSet`: on `isDailyMax`/`isMaxEffort` slots only, raises `STATE.maxes[baseLift]` when a top attempt beats it (single = exact 1RM; multi-rep = Epley estimate, rounded 2.5). Only ever raises. Fires a `toast()` (self-contained styles). Recalibrates all percentage work immediately — including remaining sets this session.
