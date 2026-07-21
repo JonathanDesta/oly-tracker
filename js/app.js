@@ -26,6 +26,7 @@ const STATE = {
 // ─── Persistence ──────────────────────────────────────────────────────────────
 function save() {
   localStorage.setItem('oly_state', JSON.stringify({
+    ts: Date.now(), // stamps every save so cloud sync can pick the newest copy
     maxes: STATE.maxes,
     program: STATE.program,
     cutting: STATE.cutting,
@@ -45,6 +46,7 @@ function save() {
     },
   }));
   publishDayDurations();
+  if (typeof schedulePush === 'function') schedulePush(); // debounced Drive sync
 }
 
 // Publish this week's expected session lengths (minutes, keyed mon…sun; 0 = rest)
@@ -1538,6 +1540,8 @@ function renderSettings() {
         </div>
         <div class="settings-note">Block: ${blockName} · Program Week ${block ? block.startWeek + weekInBlock : 0}</div>
       </div>
+
+      ${typeof syncSettingsHTML === 'function' ? syncSettingsHTML() : ''}
 
       <div class="settings-section">
         <div class="settings-label">Data</div>

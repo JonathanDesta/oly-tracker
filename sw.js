@@ -1,13 +1,14 @@
 // Network-first service worker.
 // Online: always fetch the latest (so pushed updates reach the device immediately),
 // and refresh the cache. Offline: fall back to the last cached copy.
-const CACHE = 'oly-tracker-v18';
+const CACHE = 'oly-tracker-v19';
 const ASSETS = [
   './index.html',
   './manifest.json',
   './icon.svg',
   './js/program.js',
-  './js/app.js'
+  './js/app.js',
+  './js/sync.js'
 ];
 
 self.addEventListener('install', e => {
