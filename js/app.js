@@ -127,6 +127,7 @@ function beep(freq = 880, dur = 0.4, vol = 0.6) {
 }
 
 function timerDoneSound() {
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
   // Three ascending beeps
   setTimeout(() => beep(660, 0.2, 0.5), 0);
   setTimeout(() => beep(770, 0.2, 0.6), 220);
@@ -176,6 +177,11 @@ function releaseWakeLock() {
 
 // ─── Rest timer ───────────────────────────────────────────────────────────────
 function startRestTimer(seconds) {
+  // Every rest start is a user gesture — unlock/resume audio here so the done
+  // alarm works even when the session was restored by a reload (startWorkout's
+  // initAudio never ran in that page load).
+  initAudio();
+  clearTimeout(restDoneHide);
   clearRestTimer();
   STATE.restTimer.prescribed = seconds;
   STATE.restTimer.end = Date.now() + seconds * 1000;
@@ -194,8 +200,7 @@ function resumeRestTimer(end, prescribed) {
   if (end - Date.now() <= 0) {
     // Rest elapsed while the app was gone — show the done state (no sound, since
     // audio is blocked until a user gesture on a fresh load).
-    clearRestTimer();
-    renderTimerOverlay(true);
+    restTimerDone(true);
     return;
   }
   renderTimerOverlay();
@@ -204,15 +209,25 @@ function resumeRestTimer(end, prescribed) {
 
 function tickRestTimer() {
   const rem = Math.ceil((STATE.restTimer.end - Date.now()) / 1000);
-  if (rem <= 0) {
-    clearRestTimer();
+  if (rem <= 0) { restTimerDone(); return; }
+  renderTimerOverlay();
+}
+
+// Rest elapsed: alarm, show the done screen, then auto-dismiss it. +30s/+1m on
+// the done screen restart the timer, which cancels the pending dismiss.
+let restDoneHide = null;
+function restTimerDone(silent = false) {
+  clearRestTimer();
+  if (!silent) {
     timerDoneSound();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
-    renderTimerOverlay(true);
-    save(); // rest no longer active — keep the persisted snapshot in sync
-    return;
   }
-  renderTimerOverlay();
+  renderTimerOverlay(true);
+  clearTimeout(restDoneHide);
+  restDoneHide = setTimeout(() => {
+    if (!STATE.restTimer.active) skipRestTimer();
+  }, 4000);
+  save(); // rest no longer active — keep the persisted snapshot in sync
 }
 
 function clearRestTimer() {
@@ -222,6 +237,7 @@ function clearRestTimer() {
 }
 
 function skipRestTimer() {
+  clearTimeout(restDoneHide);
   clearRestTimer();
   document.getElementById('timer-overlay').classList.add('hidden');
   save();
@@ -534,26 +550,35 @@ function renderTimerOverlay(done = false) {
   const circumference = 2 * Math.PI * 54;
   const dash = (pct / 100) * circumference;
 
-  overlay.innerHTML = `
-    <div class="timer-card">
-      <div class="timer-label">${done ? 'REST COMPLETE' : 'REST'}</div>
-      <div class="timer-circle-wrap">
-        <svg viewBox="0 0 120 120" class="timer-svg">
-          <circle cx="60" cy="60" r="54" class="timer-track"/>
-          <circle cx="60" cy="60" r="54" class="timer-progress"
-            stroke-dasharray="${dash} ${circumference}"
-            stroke-dashoffset="0"
-            style="transform:rotate(-90deg);transform-origin:50% 50%"/>
-        </svg>
-        <div class="timer-num">${done ? '✓' : fmtTime(rem)}</div>
-      </div>
-      <div class="timer-prescribed">Prescribed: ${fmtTime(STATE.restTimer.prescribed)}</div>
-      <div class="timer-actions">
-        <button class="btn-outline" onclick="addRestTime(30)">+30s</button>
-        <button class="btn-outline" onclick="addRestTime(60)">+1m</button>
-        <button class="btn-primary" onclick="skipRestTimer()">Skip</button>
-      </div>
-    </div>`;
+  // Build the card once, then mutate it in place. Rebuilding innerHTML on every
+  // 250ms tick destroyed the buttons mid-tap — iOS drops the click if the
+  // element under the finger is replaced between touchstart and touchend.
+  if (!overlay.querySelector('.timer-card')) {
+    overlay.innerHTML = `
+      <div class="timer-card">
+        <div class="timer-label"></div>
+        <div class="timer-circle-wrap">
+          <svg viewBox="0 0 120 120" class="timer-svg">
+            <circle cx="60" cy="60" r="54" class="timer-track"/>
+            <circle cx="60" cy="60" r="54" class="timer-progress"
+              stroke-dashoffset="0"
+              style="transform:rotate(-90deg);transform-origin:50% 50%"/>
+          </svg>
+          <div class="timer-num"></div>
+        </div>
+        <div class="timer-prescribed"></div>
+        <div class="timer-actions">
+          <button class="btn-outline" onclick="addRestTime(30)">+30s</button>
+          <button class="btn-outline" onclick="addRestTime(60)">+1m</button>
+          <button class="btn-primary timer-skip" onclick="skipRestTimer()">Skip</button>
+        </div>
+      </div>`;
+  }
+  overlay.querySelector('.timer-label').textContent = done ? 'REST COMPLETE' : 'REST';
+  overlay.querySelector('.timer-progress').setAttribute('stroke-dasharray', `${dash} ${circumference}`);
+  overlay.querySelector('.timer-num').textContent = done ? '✓' : fmtTime(rem);
+  overlay.querySelector('.timer-prescribed').textContent = `Prescribed: ${fmtTime(STATE.restTimer.prescribed)}`;
+  overlay.querySelector('.timer-skip').textContent = done ? 'Done' : 'Skip';
 }
 
 // ─── Render: Interval Timer Overlay ───────────────────────────────────────────
@@ -1693,11 +1718,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if rest timer elapsed while backgrounded
     if (document.visibilityState === 'visible' && STATE.restTimer.active) {
       const rem = STATE.restTimer.end - Date.now();
-      if (rem <= 0) {
-        clearRestTimer();
-        timerDoneSound();
-        renderTimerOverlay(true);
-      }
+      if (rem <= 0) restTimerDone();
     }
     // Re-sync the interval timer if phases elapsed while backgrounded
     if (document.visibilityState === 'visible' && STATE.intervalTimer.active) {
