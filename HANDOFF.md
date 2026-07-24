@@ -54,8 +54,8 @@ restTimer / sessionTimer / intervalTimer / activeWorkout / wakeLock
 - `PROGRAM.applyCutting(day)` → deep-clones, drops hypertrophy to 2 sets (face_pull exempt), oly/strength/technical −1 set.
 
 ### Key app.js functions
-- `dayFor(dayKey)` — resolves the current block/week day, cutting applied. Use this everywhere a day is needed.
-- `computeSchedule(day)` — assigns `_startSec` to each exercise; anchors total to `dayEstMin(day)`; **skips `optional` items unless `STATE.noSport`**. Returns `{ totalSec, list }`, stored on `activeWorkout`.
+- `dayFor(dayKey)` — resolves the current block/week day, cutting applied. Use this everywhere a day is needed. `PROGRAM.getWorkout` also prepends a "Mobility & Prep" section (daily mobility 12 min + dynamic prep 5 min, +17 on `totalMin`) to every sectioned training day; testing days render the same two slots inline in `renderTestingDay`.
+- `computeSchedule(day)` — assigns `_startSec` to each exercise; anchors the lifting work to `dayDocMin(day)` (the doc's total), then adds real-world overhead: `TRANSITION_SEC` (45s) per exercise + `MISC_BUFFER_SEC` (8 min/session) spread across sets via `itemSetCount`. **Skips `optional` items unless `STATE.noSport`**. Returns `{ totalSec, list }`, stored on `activeWorkout`. `dayEstMin(day)` = doc total + overhead and is what home/countdown/weekly-export all show.
 - `exerciseRawSec(ex, def)` — per-exercise time estimate: build-ups sum their ladder; cardio/mobility/intervals use real duration; else `sets × (exec + rest)` with exec 20–40s by type.
 - `dayEstMin(day)` — expected minutes. Uses `totalMinNoSport` when `noSport`; ×0.85 when `cutting`.
 - **Timers:**

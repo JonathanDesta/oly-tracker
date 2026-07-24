@@ -653,14 +653,50 @@ function dayFocus(day) {
   return idx >= 0 ? day.title.slice(idx + 1).trim() : day.title;
 }
 
-// Expected session length in minutes (trimmed slightly when cutting; longer in a
-// no-sport week when the plyos / VO₂max intervals are reinstated).
-function dayEstMin(day) {
+// Documented session length in minutes (trimmed slightly when cutting; longer
+// in a no-sport week when the plyos / VO₂max intervals are reinstated). This is
+// the program doc's number — pure lifting + rest, no real-world overhead.
+function dayDocMin(day) {
   if (!day) return null;
   let base = day.totalMin;
   if (STATE.noSport && day.totalMinNoSport) base = day.totalMinNoSport;
   if (!base) return null;
   return STATE.cutting && day.sections ? Math.round(base * 0.85) : base;
+}
+
+// Real-world overhead the doc's totals don't include: moving between stations /
+// loading plates (per exercise) plus misc stoppage — restroom, waiting for a
+// rack or machine, chalk (per session, spread evenly across every set).
+const TRANSITION_SEC = 45;
+const MISC_BUFFER_SEC = 8 * 60;
+
+// Sets an exercise slot will actually take, for spreading the misc buffer.
+function itemSetCount(ex, def) {
+  if (!def || def.type === 'cardio' || def.type === 'mobility' || ex.interval) return 1;
+  if (ex.buildup && ex.buildup.length) return ex.buildup.length;
+  if (typeof ex.sets === 'number') return ex.sets;
+  if (ex.isDailyMax || ex.isMaxEffort) return 6; // matches exerciseRawSec's fallback
+  return 3;
+}
+
+function dayOverheadSec(day) {
+  if (!day || !day.sections) return 0;
+  let count = 0;
+  day.sections.forEach(sec => sec.exercises.forEach(ex => {
+    const def = PROGRAM.exercises[ex.id];
+    if (!def) return;
+    if (ex.optional && !STATE.noSport) return;
+    count++;
+  }));
+  return count ? count * TRANSITION_SEC + MISC_BUFFER_SEC : 0;
+}
+
+// Expected real session length = doc total + transition/misc overhead. This is
+// what the home page, weekly export, and session countdown all use.
+function dayEstMin(day) {
+  const base = dayDocMin(day);
+  if (base == null) return null;
+  return base + Math.round(dayOverheadSec(day) / 60);
 }
 
 // ─── Session scheduling ───────────────────────────────────────────────────────
@@ -713,15 +749,21 @@ function computeSchedule(day) {
     items.push({ si, ei, ex, fixed, raw });
     if (fixed) fixedSec += raw; else variableRaw += raw;
   }));
-  // Anchor to the cutting-adjusted estimate so the countdown matches the home page.
-  const totalSec = (dayEstMin(day) || day.totalMin || 0) * 60;
+  // Anchor the lifting work to the doc's total, then add real-world overhead on
+  // top: a transition allowance per exercise plus the misc buffer spread evenly
+  // across every set. The countdown and home estimate both include the overhead.
+  const totalSec = (dayDocMin(day) || day.totalMin || 0) * 60;
   // Distribute the time left after fixed-duration items across the lifting work.
   const remaining = Math.max(totalSec - fixedSec, variableRaw > 0 ? 60 : 0);
   const scale = variableRaw > 0 ? remaining / variableRaw : 1;
+  const totalSets = items.reduce((t, it) => t + itemSetCount(it.ex, PROGRAM.exercises[it.ex.id]), 0);
+  const miscPerSet = totalSets ? MISC_BUFFER_SEC / totalSets : 0;
   let offset = 0;
   const list = [];
   items.forEach(it => {
-    const dur = it.fixed ? it.raw : Math.round(it.raw * scale);
+    const base = it.fixed ? it.raw : Math.round(it.raw * scale);
+    const sets = itemSetCount(it.ex, PROGRAM.exercises[it.ex.id]);
+    const dur = base + TRANSITION_SEC + Math.round(sets * miscPerSet);
     it.ex._startSec = offset;
     it.ex._durSec = dur;
     list.push({ si: it.si, ei: it.ei, startSec: offset, durSec: dur });
@@ -922,7 +964,30 @@ function renderWorkout() {
 
 // ─── Render: Testing Day ──────────────────────────────────────────────────────
 function renderTestingDay(day) {
+  // Testing days bypass the section/exercise model, so the Mobility & Prep slots
+  // PROGRAM.getWorkout prepends elsewhere are rendered inline here instead.
+  const prep = ['daily_mobility', 'presession_prep'].map(id => {
+    const def = PROGRAM.exercises[id];
+    const sec = id === 'daily_mobility' ? 720 : 300;
+    return `
+      <div class="ex-card">
+        <div class="ex-header" style="cursor:default">
+          <div class="ex-name-wrap"><span class="ex-name">${def.name}</span></div>
+        </div>
+        <div class="ex-body" style="border-top:1px solid var(--border)">
+          <div class="ex-notes">${def.notes}</div>
+          <button class="btn-outline btn-full" onclick="startRestTimer(${sec})">⏱ Start Timer (${fmtTime(sec)})</button>
+        </div>
+      </div>`;
+  }).join('');
   return `
+    <div class="section sec-green">
+      <div class="section-header">
+        <span class="section-title">Mobility & Prep</span>
+        <span class="section-note">Before touching a bar — matters most on max days.</span>
+      </div>
+      ${prep}
+    </div>
     <div class="section sec-gold">
       <div class="section-header">
         <span class="section-title">${day.title}</span>

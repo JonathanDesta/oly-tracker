@@ -325,6 +325,18 @@ const EX = {
   },
 
   // ── Mobility ──
+  daily_mobility: {
+    name: 'Daily Mobility',
+    type: 'mobility',
+    notes: 'The Guide\'s daily routine, done before every session: Ankle wall drill 3×10/side · Couch stretch 90s/side · Thoracic extension over foam roller 2 min · Wrist circles + loaded flexion/extension 2 min.',
+    cues: ['Ankle wall drill 3×10/side — knee tracks over toes', 'Couch stretch 90s/side', 'Thoracic extension over foam roller 2 min', 'Wrist circles + loaded flexion/extension 2 min'],
+  },
+  presession_prep: {
+    name: 'Pre-Session Prep (dynamic)',
+    type: 'mobility',
+    notes: 'Dynamic prep only — save long static holds for after training (they acutely blunt power output): PVC overhead squat 2×10 · PVC shoulder dislocates 2×15 · Hip & leg swings 1 min/side.',
+    cues: ['PVC overhead squat 2×10 — pause in the bottom', 'PVC shoulder dislocates 2×15', 'Hip & leg swings 1 min/side'],
+  },
   ankle_wall_drill: { name: 'Ankle Wall Drill (dorsiflexion)', type: 'mobility', notes: '#1 Oly squat limiter. 3×10/side.' },
   couch_stretch: { name: 'Couch Stretch (hip flexor)', type: 'mobility', notes: '2 min/side. Hip extension for jerk and athletic output.' },
   thoracic_ext: { name: 'Thoracic Extension (foam roller)', type: 'mobility', notes: '2–3 min. Overhead position and front rack.' },
@@ -1013,12 +1025,38 @@ const PROGRAM = {
     return block.getDay(dayKey, weekInBlock);
   },
 
+  // The Guide's daily mobility + dynamic prep, as loggable slots at the top of
+  // every training day. Built fresh per call — some blocks' day objects are
+  // shared module constants, so the section must never be a shared reference.
+  makePrepSection() {
+    return {
+      title: 'Mobility & Prep',
+      color: 'green',
+      note: 'Before touching a bar: daily mobility first, then dynamic prep.',
+      exercises: [
+        { id: 'daily_mobility', duration: '12 min', rest: 0 },
+        { id: 'presession_prep', duration: '5 min', rest: 0 },
+      ],
+    };
+  },
+
   // Full resolver: block/week day, with cutting modifications applied if active.
   // Deload (block 4) is exempt — Week 12 prescribes its own reduced volume, and
   // stacking the cutting reduction on top would cut below the doc's prescription.
   getWorkout(blockId, weekInBlock, dayKey, cutting) {
-    const day = this.getDayWorkout(blockId, weekInBlock, dayKey);
-    return (cutting && blockId !== 4) ? this.applyCutting(day) : day;
+    let day = this.getDayWorkout(blockId, weekInBlock, dayKey);
+    if (cutting && blockId !== 4) day = this.applyCutting(day);
+    // Prepend mobility/prep to every training day (17 min on top of the doc's
+    // total). Shallow copy — never mutate shared day constants in place.
+    if (day && day.sections && !day.isRest) {
+      day = {
+        ...day,
+        totalMin: (day.totalMin || 0) + 17,
+        ...(day.totalMinNoSport ? { totalMinNoSport: day.totalMinNoSport + 17 } : {}),
+        sections: [this.makePrepSection(), ...day.sections],
+      };
+    }
+    return day;
   },
 
   // ── Cutting Phase Modifications (from the program document) ────────────────
