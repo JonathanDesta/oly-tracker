@@ -484,7 +484,8 @@ function makeDays(B, weekIdx) {
           title: 'Hypertrophy Block',
           color: 'blue',
           exercises: [
-            { id: 'incline_db_press', sets: 4, repRange: [10, 12], rest: 165 },
+            { id: 'incline_db_press', sets: 4, repRange: [10, 12], rest: 165,
+              note: 'Feeder set first: 1×10 @ ~half working weight, ~60s rest. First press of the day — shoulders/elbows are cold. Don\'t log it.' },
             { id: 'low_high_cable_fly', sets: 3, repRange: [12, 15], rest: 90 },
             { id: 'cable_lateral', sets: 4, repRange: [15, 20], rest: 60 },
             { id: 'face_pull', sets: 3, repRange: [15, 20], rest: 60 },
@@ -659,7 +660,8 @@ function makeDays(B, weekIdx) {
           title: 'Weak Point Hypertrophy',
           color: 'blue',
           exercises: [
-            { id: 'incline_bar_press', sets: 4, repRange: [6, 10], rest: 165 },
+            { id: 'incline_bar_press', sets: 4, repRange: [6, 10], rest: 165,
+              note: 'Feeder set first: 1×8 @ ~half working weight, ~60s rest. Heaviest hypertrophy press of the week — earn the working weight. Don\'t log it.' },
             { id: 'low_high_cable_fly', sets: 3, repRange: [12, 15], rest: 90 },
             { id: 'cable_lateral', sets: 4, repRange: [15, 25], rest: 60 },
             { id: 'face_pull', sets: 3, reps: 20, rest: 60 },
