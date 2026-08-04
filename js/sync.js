@@ -141,12 +141,15 @@ function adoptRemote(remote) {
   if (remote.durations && remote.durations.min) {
     try { localStorage.setItem('oly_day_durations', JSON.stringify(remote.durations)); } catch (e) {}
   }
-  // Reload the running app from the adopted state (keeps any active session UI).
+  // Reload the running app from the adopted state. An authoritative remote
+  // active session resumes in Workout; a removed/expired one cannot leave a
+  // ghost Workout view behind.
   const keepView = STATE.view;
   load();
   publishDayDurations();
-  STATE.view = keepView;
+  STATE.view = STATE.activeWorkout ? 'workout' : (keepView === 'workout' ? 'home' : keepView);
   render();
+  if (STATE.activeWorkout && typeof restoreRuntimeTimers === 'function') restoreRuntimeTimers();
 }
 async function syncNow() {
   const tok = syncToken();
