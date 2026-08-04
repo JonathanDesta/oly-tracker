@@ -1,1113 +1,642 @@
-'use strict';
+// ─────────────────────────────────────────────────────────────────────────────
+// PROGRAM DATA — 13-week block
+// Priority order: Olympic weightlifting → Hypertrophy → Athleticism → Longevity
+// Mirrors ~/Desktop/OL-Program-FINAL.md. Edit that doc first, then mirror here.
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Exercise library ────────────────────────────────────────────────────────
-// type: 'oly'|'strength'|'hypertrophy'|'technical'|'cardio'|'core'|'jump'|'warmup'|'max_effort'|'mobility'
 const EX = {
-  // ── Warm-ups / cardio ──
-  zone2_warmup: {
-    name: 'Zone 2 Warm-up',
-    type: 'cardio',
-    notes: '15–20 min easy bike or row. Conversational pace — you should be able to speak in full sentences. Mandatory before Olympic block on Mon/Thu.',
+  // ── Olympic / technical ───────────────────────────────────────────────────
+  tall_snatch: {
+    name: 'Tall Snatch', type: 'technical', baseLift: 'snatch',
+    notes: 'Turnover with zero leg drive — the most specific drill for pulling under.',
+    cues: ['Feet stay flat', 'Punch under, do not lift the bar', 'Full depth catch'],
   },
-  box_jumps: {
-    name: 'Box Jumps',
-    type: 'jump',
-    notes: 'Maximal intent on every jump. Step DOWN — never jump down. Develops vertical explosive power and PAP (post-activation potentiation) for subsequent snatch. 3–5 reps × 3 sets.',
-  },
-  broad_jumps: {
-    name: 'Broad Jumps',
-    type: 'jump',
-    notes: 'Maximal horizontal distance on every jump. Develops horizontal power — an athletic quality not trained by the vertical-dominant Oly lifts. Also provides PAP for subsequent snatch. 3–5 reps × 3 sets.',
-  },
-
-  // ── Snatch family ──
-  snatch_warmup: {
-    name: 'Snatch Warm-up',
-    type: 'warmup',
-    baseLift: 'snatch',
-    notes: 'Position focus only. 3 sets × 3 reps at 50–60% of snatch max.',
+  drop_snatch: {
+    name: 'Drop Snatch', type: 'technical', baseLift: 'snatch',
+    notes: 'Speed under the bar plus footwork. No dip-drive — just drop.',
+    cues: ['Fast feet', 'Punch to lockout as you drop', 'Stand up every rep'],
   },
   snatch_floor: {
-    name: 'Snatch (from floor)',
-    type: 'oly',
-    baseLift: 'snatch',
-    notes: 'Full competition lift. Done first while freshest — primary movement takes absolute priority. Focus on consistent setup, full extension through toes, and aggressive hip contact.',
-    cues: ['Full extension — tall as possible before pulling under', 'Aggressive hip contact, not arm pull', 'Fast elbows under the bar', 'Receive in a strong overhead squat'],
-  },
-  snatch_blocks_low: {
-    name: 'Snatch from Blocks (below knee)',
-    type: 'oly',
-    baseLift: 'snatch',
-    notes: 'Isolates the second pull and receiving position. Start each rep from a static position off the blocks — no dip and swing. Focuses on everything that happens above the knee.',
-    cues: ['Maintain back angle off the blocks', 'Push the floor away', 'Aggressive second pull — hip contact with the bar'],
-  },
-  hang_snatch: {
-    name: 'Hang Snatch (above knee)',
-    type: 'oly',
-    baseLift: 'snatch',
-    notes: 'Teaches second pull and hip contact. Done after floor snatch as supplemental work. Hinge to above-knee position, maintain tension, then fire.',
-    cues: ['Load the hips at the hang position', 'Violent hip extension', 'Bar stays close throughout'],
-  },
-  snatch_pull: {
-    name: 'Snatch Pull',
-    type: 'strength',
-    baseLift: 'snatch',
-    notes: 'Full extension through shrug. Load is heavier than the snatch itself — builds pulling strength. Finish on toes, shrug forcefully at the top.',
-    cues: ['Same setup as snatch', 'Push the floor away — leg drive first', 'Full extension: ankles, knees, hips, shrug', 'Do not bend arms'],
+    name: 'Snatch (full, from floor)', type: 'oly', baseLift: 'snatch',
+    notes: 'The lift. Catch depth is NOT a criterion here — a controlled high catch you stand up is a make.',
+    cues: ['Drive the floor away', 'Bar close', 'Finish tall, then move'],
   },
   snatch_balance: {
-    name: 'Snatch Balance',
-    type: 'technical',
-    baseLift: 'snatch',
-    notes: 'Most important drill for fixing a slow receive. Bar starts on back, dip and drive bar overhead while simultaneously dropping under it. Speed under the bar — zero hesitation in the receive.',
-    cues: ['Dip is narrow and vertical', 'Drive the bar UP, pull yourself DOWN simultaneously', 'Receive with locked elbows and active shoulders', 'No starfishing — feet land where they\'ll be in the snatch'],
+    name: 'Snatch Balance', type: 'technical', baseLift: 'snatch',
+    notes: 'Receiving position under load. Commit down; do not press up.',
+    cues: ['Dip, drive, drop', 'Lock before you land', 'Stand under control'],
   },
-  power_snatch: {
-    name: 'Power Snatch',
-    type: 'technical',
-    baseLift: 'snatch',
-    notes: 'Forces pulling height — you must pull high enough to receive above parallel. Great diagnostic: if you can\'t power snatch 80%+ of your full snatch, your pull is leaving early.',
-    cues: ['Pull higher than you think you need to', 'Upright torso at the catch', 'Receive with slightly bent knees — not deep'],
-  },
-  snatch_daily_max: {
-    name: 'Snatch — Daily Max',
-    type: 'max_effort',
-    baseLift: 'snatch',
-    notes: 'Build up in singles. Stop at the last technically clean lift — this is not a max-miss session. On good days you\'ll go higher; on bad days stop earlier. No grinding, no misses.',
-    cues: ['3% jumps above 80%', 'Stop before you think you need to on bad days', 'A technically perfect 93% beats a grind at 97%'],
+  hh_snatch: {
+    name: 'High-Hang Snatch → Full Catch', type: 'technical', baseLift: 'snatch',
+    notes: 'RECEIVING DRILL — below parallel is mandatory, 1s pause in the receive. A high catch is a failed rep.',
+    cues: ['Bar at the hip crease', 'Turn over fast', 'Pause 1s in the bottom, then stand'],
   },
   ohs: {
-    name: 'Overhead Squat',
-    type: 'technical',
-    baseLift: 'snatch',
-    notes: 'Position work — never skip. Twice weekly (Mon + Thu) to build the snatch receiving position. Slow descent, pause at bottom, drive out of the hole with locked elbows.',
-    cues: ['Wide grip — snatch grip', 'Push the bar apart (external rotation)', 'Chest up, active shoulders', 'Knees track over toes'],
+    name: 'Overhead Squat', type: 'technical', baseLift: 'snatch',
+    notes: 'Positional exposure. Slow and controlled, full depth.',
+    cues: ['Bar over mid-foot', 'Push up into the bar', 'Knees out'],
   },
-
-  // ── Clean & Jerk family ──
-  cj_warmup: {
-    name: 'C&J Warm-up',
-    type: 'warmup',
-    baseLift: 'cj',
-    notes: 'Use power cleans to groove the pull pattern. 3 sets × 3 reps at 55–65% of C&J max.',
+  jerk_balance: {
+    name: 'Jerk Balance', type: 'technical', baseLift: 'jerk',
+    notes: 'DEFAULT jerk drill — hold one drill for the whole 4-week block; rotating every session teaches nothing. Substitute only if you know a different fault: pause/dip-hold jerk (forward dip displacement) · press in split or jerk recovery (unstable split) · tall jerk (not moving under at all).',
+    cues: ['Front foot lands first and stays', 'Commit under, do not press', 'Recover front foot, then back'],
   },
   cj_floor: {
-    name: 'Clean & Jerk',
-    type: 'oly',
-    baseLift: 'cj',
-    notes: '2 cleans then 1 jerk per set. Done first while freshest. Jerk only from the last clean — do not re-dip. If the jerk is the limiter, note it.',
-    cues: ['Elbows high in the front rack', 'Dip is vertical — weight stays midfoot', 'Drive through the heels on the jerk dip', 'Aggressive lock-out overhead'],
-  },
-  clean_blocks_low: {
-    name: 'Clean from Blocks (below knee)',
-    type: 'oly',
-    baseLift: 'clean',
-    notes: 'Second pull and receiving position isolation. Same as snatch blocks but for the clean. Static start each rep. Percentages reference your clean-only max (falls back to C&J until you record one).',
-    cues: ['Elbows lead the bar into the rack', 'Keep hips in — don\'t let them shoot back', 'Soft landing, immediate stand'],
-  },
-  hang_clean: {
-    name: 'Hang Clean (above knee)',
-    type: 'oly',
-    baseLift: 'clean',
-    notes: 'Hip contact and aggressive turnover. Done after C&J as supplemental work. Focus on the speed of the elbows rotating under.',
-    cues: ['Load at the hips', 'Violent extension', 'Elbows through fast — don\'t muscle the bar up'],
-  },
-  clean_pull: {
-    name: 'Clean Pull',
-    type: 'strength',
-    baseLift: 'clean',
-    notes: 'Same as snatch pull but at clean grip. Builds clean pulling strength. Finish tall on toes with a forceful shrug. Percentages reference your clean-only max (falls back to C&J until you record one).',
-    cues: ['Same back angle as clean', 'Legs first, then hips, then shrug', 'No arm bend'],
-  },
-  cj_daily_max: {
-    name: 'Clean & Jerk — Daily Max',
-    type: 'max_effort',
-    baseLift: 'cj',
-    notes: 'Build up in singles (1+1). Stop at your last technically clean C&J. On Fridays in Block 1, stop at ~84% effort — Saturdays are the true max day.',
-    cues: ['3% jumps above 80%', 'If the jerk fails, it counts as a miss', 'Stop before the bar slows significantly'],
+    name: 'Clean & Jerk (full)', type: 'oly', baseLift: 'cj',
+    notes: 'The lift. Catch depth is NOT a criterion here.',
+    cues: ['Bar close off the floor', 'Elbows fast', 'Deliberate split, no chase'],
   },
   jerk_rack: {
-    name: 'Jerk from Rack',
-    type: 'oly',
-    baseLift: 'cj',
-    notes: 'Pure jerk technique with zero clean fatigue. Set up in rack with bar in front rack position. Isolated work on dip-drive timing.',
-    cues: ['Vertical dip — no forward lean', 'Drive bar off shoulders, not just push', 'Split position: front foot punches forward, back knee drops', 'Lock out arms before landing'],
+    name: 'Jerk from Rack — technical', type: 'technical', baseLift: 'jerk',
+    notes: 'Footwork, timing, consistency. No press-outs count as makes.',
+    cues: ['Vertical dip', 'Drive through the whole foot', 'Punch and lock before the feet land'],
   },
-  push_press: {
-    name: 'Push Press',
-    type: 'strength',
-    baseLift: 'pp',
-    notes: 'Leg drive timing for the jerk. Placed before pulls and squats — technical overhead work is best done while still in pressing mode, before lower body fatigue accumulates.',
-    cues: ['Dip is shallow (2–3 inches)', 'Drive legs first, then press', 'Receive with locked elbows at top of press — no re-dip'],
+  jerk_rack_heavy: {
+    name: 'Jerk from Rack — heavy singles', type: 'oly', baseLift: 'jerk',
+    notes: 'Your binding constraint, loaded. No press-outs or unstable recoveries count as makes.',
+    cues: ['Same dip every rep', 'Commit to the split', 'Stable overhead before recovering'],
   },
-
-  // ── Squats ──
-  back_squat: {
-    name: 'Back Squat',
-    type: 'strength',
-    baseLift: 'bs',
-    notes: 'High bar squat — same stance as your squat clean receive. Builds leg drive out of the hole.',
-    cues: ['Brace hard before unracking', 'Controlled descent — 2–3 sec', 'Drive knees out at the bottom', 'Bar path stays vertical'],
+  split_jerk_rack: {
+    name: 'Split Jerk from Rack', type: 'technical', baseLift: 'jerk',
+    notes: 'Third weekly jerk exposure, loaded off the jerk TM rather than buried in a complex.',
+    cues: ['Deliberate split', 'Lock before the feet land'],
   },
-  front_squat: {
-    name: 'Front Squat',
-    type: 'strength',
-    baseLift: 'fs',
-    notes: 'Clean receiving position. Elbows high throughout — if elbows drop, the bar dumps forward. Builds the upright torso strength needed for heavy cleans.',
-    cues: ['Elbows up — higher than you think', 'Chest tall throughout', 'Knees forward and out', 'Full depth'],
+  hh_clean: {
+    name: 'High-Hang Clean → Full Catch', type: 'technical', recvKey: 'hh_clean',
+    notes: 'RECEIVING DRILL — below parallel mandatory, 1s pause. Load progresses on CATCH QUALITY, not a percentage: +5 lb next week only if all 8 catches were below parallel. Cap 210.',
+    cues: ['Bar at the hip crease', 'Elbows around fast', 'Pause 1s in the bottom, stand it up'],
   },
-  pause_front_squat: {
-    name: 'Pause Front Squat (2s in hole)',
-    type: 'technical',
-    baseLift: 'fs',
-    notes: 'Position strength and ankle/hip mobility. 2-second pause at full depth — no bouncing out. Builds the specific strength to recover from a heavy clean.',
-    cues: ['Elbows must stay up during the pause', 'Stay tight — don\'t relax at the bottom', 'Drive straight up out of pause'],
-  },
-  rdl: {
-    name: 'Romanian Deadlift',
-    type: 'hypertrophy',
-    notes: 'Posterior chain work. Maintain a flat back throughout — this is not a deadlift. Hip hinge until you feel a deep hamstring stretch, then drive hips forward.',
-    cues: ['Soft knee bend throughout', 'Bar slides down the legs', 'Stop when back starts to round — not at the floor'],
+  recv_clean: {
+    name: 'Clean, Received Below Parallel', type: 'technical', recvKey: 'recv_clean',
+    notes: 'RECEIVING DRILL from the floor. +5 lb next week only if all 3 were below parallel and stood up cleanly. Cap 220. A high catch is a failed rep — drop 10 lb and repeat.',
+    cues: ['Full pull, then move under', 'Catch low, not high', 'Stand under control'],
   },
 
-  // ── Upper Push ──
-  incline_db_press: {
-    name: 'Incline DB Press (30–45°)',
-    type: 'hypertrophy',
-    notes: '30–45° is the optimal range for clavicular (upper) head activation. Front deltoid dominance doesn\'t meaningfully increase until above ~50°. Use a full stretch at the bottom — slight pause, no bounce.',
-    cues: ['Elbows at ~45° from torso (not flared)', 'Full stretch at bottom, full press at top', 'Control the descent — 2 sec down'],
-  },
-  incline_bar_press: {
-    name: 'Incline Barbell Press (30–45°)',
-    type: 'hypertrophy',
-    notes: 'Heavier upper chest loading on Saturdays. Same angle rules as DB press — stay below 50°. Compound — longer rest.',
-    cues: ['Grip just outside shoulder width', 'Slight arch — do not flatten your back', 'Touch the upper chest, not the neck'],
-  },
-  low_high_cable_fly: {
-    name: 'Low-to-High Cable Fly',
-    type: 'hypertrophy',
-    notes: 'Anchor at lowest point. Pull upward and across the body. Upper chest isolation — loads the clavicular head at stretch. RPE 8.',
-    cues: ['Anchor cable at floor or lowest setting', 'Arc upward toward the opposite shoulder', 'Slight forward lean', 'Feel the stretch at the bottom of each rep'],
-  },
-  flat_bench: {
-    name: 'Flat Bench Press',
-    type: 'strength',
-    baseLift: 'bench',
-    notes: 'Work up to a heavy set on Saturdays. On subsequent blocks, these become maintenance sets.',
-    cues: ['Retract scapula before unracking', 'Touch lower chest (not neck)', 'Leg drive into the floor'],
-  },
+  // ── Strength ──────────────────────────────────────────────────────────────
+  back_squat: { name: 'Back Squat', type: 'strength', baseLift: 'bs', notes: 'No grinding. Stop if the next rep would exceed ~RPE 8.5.', cues: ['Brace before you unrack', 'Knees track toes', 'Drive the floor away'] },
+  front_squat: { name: 'Front Squat', type: 'strength', baseLift: 'fs', notes: 'Specific to the clean receive. Elbows high throughout.', cues: ['Elbows up', 'Upright torso', 'No collapse out of the hole'] },
+  rdl: { name: 'Romanian Deadlift', type: 'hypertrophy', notes: 'Long-length hip extension — squats and cleans do not supply it. ~2 RIR. On Friday so the soreness lands in the weekend, not on heavy cleans.', cues: ['Push the hips back', 'Bar drags the thigh', 'Stop where the hamstring ends, not the back'] },
+  bench: { name: 'Bench Press', type: 'hypertrophy', baseLift: 'bench', notes: '3–6 reps — strength-biased on purpose. The three incline slots carry upper-chest hypertrophy.', cues: ['Shoulder blades down and back', 'Touch, no bounce', 'Full lockout'] },
+  weighted_pullup: { name: 'Weighted Pull-Up (neutral grip)', type: 'hypertrophy', notes: 'Dip belt. An effective loadable vertical pull.', cues: ['Full hang at the bottom', 'Chest toward the bar', 'Control the descent'] },
 
-  // ── Side Delts ──
-  cable_lateral: {
-    name: 'Cable Lateral Raise',
-    type: 'hypertrophy',
-    notes: 'Constant tension throughout — superior to dumbbell version due to tension at the bottom position where dumbbells go slack. RPE 8. Lean slightly away from the cable.',
-    cues: ['Lead with the elbow — not the wrist', 'Slight forward lean of the arm (30° in front of body plane)', 'Control the descent — don\'t let cable drag arm down', 'Slight stretch at bottom of each rep'],
-  },
-  db_lateral_partial: {
-    name: 'DB Lateral Raise (bottom-range partial)',
-    type: 'hypertrophy',
-    notes: 'Emphasize the bottom 60% of ROM only — keeps load on the stretch position where the delt is most stimulated. 20–25 reps. This is a finisher, not a heavy exercise.',
-    cues: ['Never raise above parallel', 'Focus on the stretch — feel it at the bottom', 'Slow controlled movement', 'High reps, light weight'],
-  },
-  crossbody_cable_lateral: {
-    name: 'Crossbody Cable Lateral Raise',
-    type: 'hypertrophy',
-    notes: 'Cable from the opposite side — arm crosses body at start. Loads the lateral delt in deep stretch. RPE 8.',
-    cues: ['Cable comes from the opposite hip', 'Arm starts crossed in front of body', 'Pull directly out to the side', 'Maximum stretch at the bottom'],
-  },
-  cable_upright_row: {
-    name: 'Wide-Grip Cable Upright Row',
-    type: 'hypertrophy',
-    notes: 'Grip wider than shoulders — elbows flare outward. Wide grip = lateral delt dominant. Narrow grip = trap dominant (avoid that here).',
-    cues: ['Elbows must be higher than wrists at the top', 'Pull to upper chest level', 'Lead with the elbows, not the hands'],
-  },
+  // ── Upper chest (SPECIALIZATION) ──────────────────────────────────────────
+  incline_db_press: { name: '30° Incline Dumbbell Press', type: 'hypertrophy', notes: 'Upper chest — lagging. 30°, not 45°.', cues: ['Deep stretch at the bottom', 'Do not clash the bells', '~2s eccentric'] },
+  low_high_fly: { name: 'Low-to-High Cable Fly', type: 'hypertrophy', notes: 'Resisted shoulder adduction for the clavicular pec — additive to pressing, not a replacement.', cues: ['Slight forward lean', 'Wide arc, soft elbows', 'Squeeze up and across'] },
 
-  // ── Upper Pull / Back ──
-  pendlay_row: {
-    name: 'Pendlay Row',
-    type: 'hypertrophy',
-    notes: 'Bar starts from the floor each rep (dead stop). Builds upper back positional strength for pulling mechanics. Horizontal pull that complements the vertical pulling of the Oly lifts.',
-    cues: ['Torso parallel to floor or close to it', 'Explode the bar to the lower chest', 'Lower under control to dead stop on the floor'],
-  },
-  lat_pulldown: {
-    name: 'Lat Pulldown (wide neutral grip)',
-    type: 'hypertrophy',
-    notes: 'Neutral or supinated grip, slightly wider than shoulder width. Drives lat development critical for bar path control in the pull. RPE 8.',
-    cues: ['Slight lean back', 'Pull to upper chest — not behind the neck', 'Squeeze the lats at the bottom', 'Slow controlled ascent'],
-  },
-  straight_arm_pulldown: {
-    name: 'Straight-Arm Cable Pulldown',
-    type: 'hypertrophy',
-    notes: 'Arms stay straight throughout — isolates the lat entirely without bicep involvement. The most lat-specific single exercise. RPE 8.',
-    cues: ['Arms perfectly straight throughout', 'Hinge slightly at the hips', 'Drive the bar to your hips with your lats — not your arms', 'Full stretch overhead at top'],
-  },
-  rear_delt_fly: {
-    name: 'Rear Delt Cable Fly',
-    type: 'hypertrophy',
-    notes: 'RPE 7. Shoulder balance work. Cable crosses over — pull from opposite side. Keep arms almost straight throughout.',
-    cues: ['Almost straight arms', 'Pull arc out and back — not just back', 'Squeeze rear delts at end range'],
-  },
-  face_pull: {
-    name: 'Face Pull (rope)',
-    type: 'hypertrophy',
-    notes: 'MANDATORY — non-negotiable shoulder health work every push day. Light weight. External rotation at the end of each rep is the whole point.',
-    cues: ['Cable at upper chest height', 'Pull to forehead — not chin', 'Externally rotate at the end: hands go wider than elbows', 'Never go heavy on this'],
-  },
+  // ── Side delts (SPECIALIZATION) ───────────────────────────────────────────
+  cable_lateral_behind: { name: 'Cable Lateral Raise (cable behind body)', type: 'hypertrophy', notes: 'Side delts — lagging. Cable behind you so the bottom position stays loaded.', cues: ['Lead with the elbow', 'Stop at shoulder height', 'Slow negative'] },
+  cable_lateral: { name: 'Cable Lateral Raise', type: 'hypertrophy', notes: 'Side delts — lagging. Constant tension. Direct comparison shows growth similar to dumbbells, not superior — cable is the default, not a proven winner.', cues: ['Lead with the elbow', 'No shrugging', 'Control down'] },
 
-  // ── Biceps ──
-  incline_db_curl: {
-    name: 'Incline DB Curl',
-    type: 'hypertrophy',
-    notes: '~45° incline. Loads the long head of the bicep at full stretch. Most important single bicep exercise. RPE 8.',
-    cues: ['Arms hang behind you — full stretch at the bottom', 'Do not swing — keep upper arm vertical throughout', 'Supinate at the top (pinky up)'],
-  },
-  cable_curl: {
-    name: 'Cable Curl (low anchor)',
-    type: 'hypertrophy',
-    notes: 'Constant tension throughout the range. Finisher after incline curls. RPE 8.',
-    cues: ['Keep elbows pinned to sides', 'Full extension at the bottom', 'Squeeze hard at the top'],
-  },
+  // ── Traps (SPECIALIZATION) ────────────────────────────────────────────────
+  db_shrug: { name: 'Dumbbell Shrug', type: 'hypertrophy', notes: 'Traps — lagging. Straps if grip limits. Controlled elevation, 2s pause at the top.', cues: ['Straight up, no rolling', '2s squeeze', 'Full controlled descent'] },
 
-  // ── Triceps ──
-  cable_overhead_tricep: {
-    name: 'Cable Overhead Tricep Extension',
-    type: 'hypertrophy',
-    notes: 'Arm overhead — this is essential. Overhead position loads the long head, which is the largest and most visible head of the tricep. Full stretch at the bottom. RPE 8.',
-    cues: ['Upper arm stays vertical and still throughout', 'Full stretch — feel it in the armpit area', 'Extend fully overhead on each rep'],
-  },
+  // ── Back ──────────────────────────────────────────────────────────────────
+  cs_row: { name: 'Chest-Supported Row', type: 'hypertrophy', notes: 'Mid-back with ZERO spinal loading — protects a day that also has front squats. That is priority 1 doing the choosing.', cues: ['Natural protraction/retraction', 'Elbows to the hips', 'No torso english'] },
+  cs_high_row: { name: 'Chest-Supported High Row', type: 'hypertrophy', notes: 'High elbow angle — traps and rhomboids under a different line than shrugs.', cues: ['Elbows high and wide', 'Pull to the upper chest'] },
+  oa_cable_row: { name: 'One-Arm Cable Row', type: 'hypertrophy', notes: 'Lats, deep stretch, unilateral.', cues: ['Let the shoulder travel at the stretch', 'Drive the elbow back and down'] },
+  reverse_pec_deck: { name: 'Reverse Pec Deck', type: 'hypertrophy', notes: 'Rear delts.', cues: ['Soft elbows, fixed angle', 'Lead with the pinkies'] },
+  reverse_cable_fly: { name: 'Reverse Cable Fly', type: 'hypertrophy', notes: 'Rear delts. Replaced face pulls — the rear-delt growth benefit is real; the shoulder-health case for face pulls is mechanistic and weakly evidenced.', cues: ['Cables crossed, high pulley', 'Wide arc', 'Squeeze at the back'] },
 
-  // ── Core ──
-  ab_wheel: {
-    name: 'Ab Wheel Rollout',
-    type: 'core',
-    notes: 'Full extension — go as far as you can while keeping your back from sagging. Core stiffness transfers directly to Oly positions.',
-    cues: ['Brace your core before rolling out', 'Keep hips in line — no sag or pike', 'Pull back with lats as well as abs'],
-  },
-  pallof_press: {
-    name: 'Pallof Press',
-    type: 'core',
-    notes: 'Anti-rotation stability. Cable at chest height, press straight out and hold 1–2 sec, return. The goal is to resist the cable pulling you sideways.',
-    cues: ['Stand perpendicular to the cable', 'Do not rotate — that\'s the whole point', '10 reps per side'],
-  },
-  weighted_plank: {
-    name: 'Weighted Plank',
-    type: 'core',
-    notes: 'Plate on back. 30–45 seconds. Quality over duration.',
-    cues: ['Perfectly neutral spine', 'Glutes and quads tight — not just abs', 'Plate sits on upper back'],
-  },
+  // ── Arms ──────────────────────────────────────────────────────────────────
+  incline_db_curl: { name: 'Incline Dumbbell Curl', type: 'hypertrophy', notes: 'Bench 45–60°, biceps at a long muscle length. Recent direct work on lengthened-position biceps training returned null findings — reasonable, not proven.', cues: ['Arms hang behind the torso', 'Full stretch at the bottom', 'No swing'] },
+  cable_curl: { name: 'Standing Cable Curl', type: 'hypertrophy', notes: 'Constant tension through the mid-range.', cues: ['Elbows pinned', 'Squeeze at the top'] },
+  oh_cable_tri: { name: 'Overhead Cable Triceps Extension (rope)', type: 'hypertrophy', notes: 'Triceps long head at length.', cues: ['Elbows in and high', 'Full stretch behind the head', 'Lock out'] },
+  cable_pressdown: { name: 'Cable Rope Pressdown', type: 'hypertrophy', notes: 'Triceps lateral and medial heads.', cues: ['Elbows pinned to the ribs', 'Spread the rope at lockout'] },
 
-  // ── Lower Accessory ──
-  nordic_curl: {
-    name: 'Nordic Hamstring Curl',
-    type: 'hypertrophy',
-    notes: 'Single most important injury-prevention exercise for Olympic lifters. Eccentric control throughout — the lowering phase is the stimulus. If new, start with partial reps from the knees and lower only halfway.',
-    cues: ['Hips extended throughout — no bending at the hip', 'Lower as slowly as possible', 'Use hands to push back up — that\'s fine', 'Full extension at the top'],
-  },
-  bss: {
-    name: 'Bulgarian Split Squat',
-    type: 'hypertrophy',
-    notes: 'Rear foot elevated. Switch legs immediately between, rest 2 min between full sets. Builds single-leg strength and hip flexor mobility.',
-    cues: ['Front foot far enough forward that your shin stays vertical', 'Back knee drops straight down', 'Drive through the heel of the front foot'],
-  },
-  calf_raise: {
-    name: 'Calf Raise (weighted, full ROM)',
-    type: 'hypertrophy',
-    notes: 'Full dorsiflexion at bottom, full plantarflexion at top. The full range matters — partial calf raises produce partial results.',
-    cues: ['Pause at the bottom (max stretch)', 'Rise all the way up on every rep', 'Single-leg if you have the balance'],
-  },
+  // ── Legs, calves, trunk ───────────────────────────────────────────────────
+  leg_ext: { name: 'Leg Extension', type: 'hypertrophy', notes: 'Rectus femoris — squats under-stimulate it because it crosses the hip. Friday so it cannot degrade Thursday.', cues: ['Full extension', 'Pause at the top', 'Control down'] },
+  seated_leg_curl: { name: 'Seated Leg Curl', type: 'hypertrophy', notes: 'Knee-flexion hamstring hypertrophy. Loads better than a Nordic.', cues: ['Full range', 'Slow eccentric'] },
+  nordic: { name: 'Nordic Curl (band-assisted)', type: 'hypertrophy', notes: 'Injury-prevention exposure, not physique volume. Weeks 1–2: 2×3 assisted. Week 3+: 2×4–6 toward unassisted. Stop before uncontrolled collapse.', cues: ['Hips locked out', 'Lower as slowly as you can control', 'Catch with the hands'] },
+  standing_calf: { name: 'Standing Calf Raise', type: 'hypertrophy', notes: 'Gastrocnemius. 2s pause in the stretch.', cues: ['Full stretch at the bottom', 'Pause 2s', 'All the way up'] },
+  seated_calf: { name: 'Seated Calf Raise', type: 'hypertrophy', notes: 'Soleus bias — the gastroc goes slack at 90° knee flexion. Whether that yields better chronic soleus growth than standing work is unconfirmed and trials disagree; one seated exposure of three is a hedge.', cues: ['Full range', 'Pause at the bottom'] },
+  copenhagen: { name: 'Copenhagen Plank', type: 'core', notes: 'Adductors — the common injury in cutting sports. Progresses: 1) bottom knee on bench 2×20s · 2) 2×40s · 3) foot on bench 2×20s · 4) 2×30–40s · 5) + dumbbell on the top hip. Advance when you clear the top of the range on both sides.', cues: ['Hips stacked', 'Do not let the hip sag'] },
+  cable_crunch: { name: 'Cable Crunch', type: 'hypertrophy', notes: 'Loaded spinal flexion — small increments, safe near failure. Strong inference, not a head-to-head winner.', cues: ['Curl the ribs to the pelvis', 'Hips stay put', 'Do not hinge'] },
+  hanging_pelvic_curl: { name: 'Hanging Pelvic Curl', type: 'hypertrophy', notes: 'Curl the PELVIS toward the ribs. A straight hanging leg raise is mostly hip flexor.', cues: ['Posterior tilt is the rep', 'Hips curl up, not just legs', 'No swing'] },
 
-  // ── Cardio ──
-  vo2max_intervals: {
-    name: 'VO₂max Intervals',
-    type: 'cardio',
-    notes: '5 × 3 min at ~95% max HR / 3 min easy recovery. Bike or rower preferred (lower joint stress). You should only be able to sustain each 3-min effort for exactly 3 minutes. If you feel comfortable at the end, you are not going hard enough.',
-  },
+  // ── Field / aerobic ───────────────────────────────────────────────────────
+  jumps_cod: { name: 'Jumps + Reactive Agility', type: 'jump', notes: 'AM session, ≥6h before lifting. Maximal intent, low volume. STOP when jump height drops, contacts slow, or landings deteriorate.' },
+  sprints_sled: { name: 'Sprints + Resisted Sled', type: 'jump', notes: 'AM session, ≥6h before lifting. Sled ~30% BW is a STARTING load — friction varies by sled and surface, so keep both constant and adjust by feel.' },
+  bike_intervals: { name: 'Bike Intervals', type: 'cardio', notes: 'Build INTO each interval, climbing toward ~90–95% max HR in the latter portion. Do not sprint the first minute to force HR up. Skip if pickup already gave ~12+ min above 90% HRmax this week.' },
+  zone2: { name: 'Zone 2 Cycling', type: 'cardio', notes: 'Separated ≥6h from lifting. Conversational, ~117–137 bpm. Cycling not running — less impact and eccentric cost.' },
 
-  // ── Mobility ──
-  daily_mobility: {
-    name: 'Daily Mobility',
-    type: 'mobility',
-    notes: 'The Guide\'s daily routine, done before every session: Ankle wall drill 3×10/side · Couch stretch 90s/side · Thoracic extension over foam roller 2 min · Wrist circles + loaded flexion/extension 2 min.',
-    cues: ['Ankle wall drill 3×10/side — knee tracks over toes', 'Couch stretch 90s/side', 'Thoracic extension over foam roller 2 min', 'Wrist circles + loaded flexion/extension 2 min'],
-  },
-  presession_prep: {
-    name: 'Pre-Session Prep (dynamic)',
-    type: 'mobility',
-    notes: 'Dynamic prep only — save long static holds for after training (they acutely blunt power output): PVC overhead squat 2×10 · PVC shoulder dislocates 2×15 · Hip & leg swings 1 min/side.',
-    cues: ['PVC overhead squat 2×10 — pause in the bottom', 'PVC shoulder dislocates 2×15', 'Hip & leg swings 1 min/side'],
-  },
-  ankle_wall_drill: { name: 'Ankle Wall Drill (dorsiflexion)', type: 'mobility', notes: '#1 Oly squat limiter. 3×10/side.' },
-  couch_stretch: { name: 'Couch Stretch (hip flexor)', type: 'mobility', notes: '2 min/side. Hip extension for jerk and athletic output.' },
-  thoracic_ext: { name: 'Thoracic Extension (foam roller)', type: 'mobility', notes: '2–3 min. Overhead position and front rack.' },
-  pvc_dislocates: { name: 'PVC Shoulder Dislocates', type: 'mobility', notes: '2×15. Snatch-width shoulder mobility.' },
-  ohs_bodyweight: { name: 'Overhead Squat (bodyweight)', type: 'mobility', notes: '3×5 with pause at bottom. Integrates all mobility patterns.' },
+  // ── Prep ──────────────────────────────────────────────────────────────────
+  daily_mobility: { name: 'Needs-Based Positional Work', type: 'mobility', notes: 'Only what you need that day: ankle knee-to-wall, adductor rock-backs, thoracic rotations, scapular push-ups, band pull-aparts, PVC pass-throughs, deep-squat pry. If everything moves fine, skip to the bar.' },
+  presession_prep: { name: 'Raise + Empty-Bar Round', type: 'warmup', notes: '3–5 min easy bike/rower/rope, then ONE empty-bar round for the day. Snatch: muscle snatch ×3 · OHS ×3 · snatch press ×3 · hang snatch ×2. C&J: muscle clean ×3 · front squat ×3 · press in split ×3 · tall clean ×2 · jerk footwork ×3. A second round only if the first did not prepare you.' },
 };
 
-// ─── Block 1 progression tables ───────────────────────────────────────────────
-// Index = week within block (0=week1, 1=week2, 2=week3, 3=week4)
-const B1 = {
-  oly_sets_pct:    [72, 75, 78, 81],   // main oly lift sets (snatch floor, C&J floor)
-  hang_pct:        [70, 73, 76, 79],   // hang variations (2% below floor)
-  blocks_pct:      [76, 79, 82, 85],   // block variations (Thu/Fri, slightly heavier)
-  daily_max_pct:   [83, 86, 89, 92],   // daily max target (midpoint of range)
-  pull_pct:        [92, 92, 95, 95],   // snatch/clean pull (% of respective lift)
-  bs_mon_pct:      [70, 72, 75, 78],
-  bs_thu_pct:      [78, 80, 82, 85],
-  fs_tue_pct:      [74, 76, 79, 82],
-  fs_fri_pct:      [80, 83, 86, 89],
-  jerk_rack_wed_pct:  [70, 70, 72, 74],
-  jerk_rack_fri_pct:  [80, 82, 85, 87],
-  push_press_pct:  [70, 70, 72, 74],   // % of PP max
+// ─── Progression tables ───────────────────────────────────────────────────────
+const LOAD1 = { // Weeks 1–3
+  snatch_vol: [65, 70, 72.5], snatch_hvy: [75, 80, 82.5],
+  cj_vol: [65, 70, 72.5], cj_hvy: [75, 80, 82.5],
+  jerk_tue: [70, 72.5, 75], jerk_wed: [72.5, 75, 77.5], jerk_fri: [80, 82.5, 85],
+  hh_snatch: [55, 60, 65],
+  bs_mon: [70, 72.5, 75], bs_thu: [75, 77.5, 80],
+  fs_tue: [70, 72.5, 75], fs_fri: [75, 77.5, 80],
+  sets: { snVol: 5, cjVol: 5, snHvy: 5, cjHvy: 5, bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: 3 },
+  reps: { bsMon: 5, bsThu: 3, fsTue: 4, fsFri: 3 },
+  intervalSec: 180,
 };
 
-// Block 2 progression (weeks 1-4 of block, i.e. program weeks 5-8)
-const B2 = {
-  oly_sets_pct:    [83, 86, 88, 90],
-  hang_pct:        [80, 83, 86, 88],
-  blocks_pct:      [86, 89, 91, 93],
-  daily_max_pct:   [93, 96, 98, 100],
-  pull_pct:        [100, 103, 105, 107],
-  bs_mon_pct:      [80, 82, 84, 86],
-  bs_thu_pct:      [85, 87, 89, 91],
-  fs_tue_pct:      [76, 79, 82, 84],
-  fs_fri_pct:      [83, 86, 88, 90],
-  jerk_rack_wed_pct:  [74, 77, 80, 82],
-  jerk_rack_fri_pct:  [88, 90, 92, 94],
-  push_press_pct:  [76, 79, 82, 84],
+const LOAD2 = { // Weeks 5–7
+  snatch_vol: [72.5, 75, 77.5], snatch_hvy: [82.5, 85, 87.5],
+  cj_vol: [72.5, 75, 77.5], cj_hvy: [82.5, 85, 87.5],
+  jerk_tue: [75, 77.5, 78], jerk_wed: [75, 77.5, 80], jerk_fri: [85, 87.5, 90],
+  hh_snatch: [60, 65, 70],
+  bs_mon: [75, 77.5, 80], bs_thu: [82.5, 85, 87.5],
+  fs_tue: [77.5, 80, 82.5], fs_fri: [80, 82.5, 85],
+  sets: { snVol: 5, cjVol: 5, snHvy: 5, cjHvy: 5, bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: 4 },
+  reps: { bsMon: 4, bsThu: 2, fsTue: 3, fsFri: 2 },
+  intervalSec: 240,
 };
 
-// Block 3 (weeks 1-3 of block, program weeks 9-11) — peak phase
-const B3 = {
-  oly_sets_pct:    [88, 90, 93],
-  daily_max_pct:   [100, 103, 105],
-  pull_pct:        [105, 108, 110],
-  bs_mon_pct:      [84, 86, 88],
-  bs_thu_pct:      [88, 90, 93],
-  fs_tue_pct:      [82, 85, 88],
-  fs_fri_pct:      [88, 91, 94],
+const LOAD3 = { // Weeks 9–11
+  snatch_vol: [75, 77.5, 80], snatch_hvy: [85, 87.5, 91],
+  cj_vol: [75, 77.5, 80], cj_hvy: [85, 87.5, 91],
+  jerk_tue: [75, 77.5, 80], jerk_wed: [77.5, 79, 80], jerk_fri: [85, 88.5, 92],
+  hh_snatch: [65, 67.5, 70],
+  bs_mon: [80, 82.5, 85], bs_thu: [85, 87.5, 90],
+  fs_tue: [80, 82.5, 85], fs_fri: [82.5, 85, 87.5],
+  sets: { snVol: 4, cjVol: 4, snHvy: 4, cjHvy: 4, bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: 4 },
+  reps: { bsMon: 3, bsThu: 2, fsTue: 3, fsFri: 2 },
+  intervalSec: 240,
 };
 
-// ─── Day definitions ──────────────────────────────────────────────────────────
-// Each day is an array of blocks (sections).
-// Each section has: title, exercises[]
-// Each exercise has: id, sets, reps/repRange/duration, prescription, rest (seconds)
-
-// ─── Build-up ladders (from the program document) ────────────────────────────
-// Each step: { pct, reps, rest(seconds), top? }. Weights are computed from the
-// athlete's max at render time. These drive both the on-screen ramp and the
-// session time estimate.
-
-// Thu/Fri Olympic daily max: after the block work, ramp 80 → 83 → 86 (3% steps),
-// then +2% singles to the week's daily-max target.
-function rampOlyDaily(targetPct, reps) {
-  const t = Math.round(targetPct);
-  const steps = [];
-  [[80, 180], [83, 240], [86, 240]].forEach(([p, r]) => { if (p <= t) steps.push({ pct: p, reps, rest: r }); });
-  let p = (steps.length ? steps[steps.length - 1].pct : 78) + 2;
-  while (p <= t) { steps.push({ pct: p, reps, rest: 270 }); p += 2; }
-  if (!steps.length) steps.push({ pct: t, reps, rest: 240 });
-  if (steps[steps.length - 1].pct !== t) steps.push({ pct: t, reps, rest: 270 });
-  steps[steps.length - 1].top = true;
-  return steps;
+// Accessory ramp across weeks 1–3 of a loading block, and the RIR wave.
+const RAMP = { 2: [1, 2, 2], 3: [2, 3, 3], 4: [3, 3, 4], 5: [4, 4, 5] };
+const RIR = ['~3 RIR', '~2 RIR', '~1 RIR'];
+function rampSets(full, w) { const r = RAMP[full]; return r ? r[Math.min(w, 2)] : full; }
+function acc(id, full, w, repRange, rest, extra) {
+  return Object.assign({ id, sets: rampSets(full, w), repRange, rest, fullSets: full, rirNote: RIR[Math.min(w, 2)] }, extra || {});
 }
 
-// Saturday Olympic max effort: full warm-up ramp, then 2–3% jumps to daily max.
-function rampOlySaturday(targetPct, reps) {
-  const t = Math.round(targetPct);
-  const steps = [
-    { pct: 65, reps: '2', rest: 90 },
-    { pct: 73, reps, rest: 120 },
-    { pct: 78, reps, rest: 180 },
-    { pct: 82, reps, rest: 240 },
-  ];
-  let p = 85;
-  while (p < t) { steps.push({ pct: p, reps, rest: 270 }); p += 3; }
-  if (steps[steps.length - 1].pct !== t) steps.push({ pct: t, reps, rest: 300 });
-  steps[steps.length - 1].top = true;
+// ─── Warm-up ramps ────────────────────────────────────────────────────────────
+function rampOly(targetPct, reps) {
+  const t = Math.round(targetPct), steps = [];
+  [[40, '3', 60], [50, '3', 75], [60, '2', 90], [70, '1', 120]].forEach(([p, r, rest]) => { if (p < t) steps.push({ pct: p, reps: r, rest }); });
+  if (t >= 80) steps.push({ pct: Math.round(t - 8), reps: String(reps), rest: 150 });
+  steps.push({ pct: t, reps: String(reps), rest: 180, top: true });
   return steps;
 }
+const RAMP_PRESS = [{ pct: 50, reps: '5', rest: 60 }, { pct: 75, reps: '3', rest: 90, top: true }];
+const RAMP_PULL = [{ pct: 60, reps: '6', rest: 60, top: true }];
+const RAMP_ONE = [{ pct: 60, reps: '5', rest: 60, top: true }];
 
-// Saturday heavy compounds — fixed ramps straight from the document.
-const RAMP_SAT_BS = [
-  { pct: 60, reps: '5', rest: 120 }, { pct: 72, reps: '3', rest: 180 },
-  { pct: 80, reps: '3', rest: 240 }, { pct: 85, reps: '3', rest: 270, top: true },
-];
-const RAMP_SAT_PP = [
-  { pct: 60, reps: '5', rest: 90 }, { pct: 72, reps: '3', rest: 120 },
-  { pct: 80, reps: '3', rest: 180 }, { pct: 85, reps: '3', rest: 210, top: true },
-];
-const RAMP_SAT_BENCH = [
-  { pct: 60, reps: '5', rest: 90 }, { pct: 70, reps: '4', rest: 120 },
-  { pct: 78, reps: '3', rest: 180 }, { pct: 84, reps: '3–5', rest: 210, top: true },
-];
-
-function makeDays(B, weekIdx) {
-  const w = weekIdx; // 0-based index into progression arrays
-
-  const olyPct = B.oly_sets_pct[w];
-  const hangPct = B.hang_pct?.[w];
-  const blocksPct = B.blocks_pct?.[w];
-  const dmPct = B.daily_max_pct[w];
-  const pullPct = B.pull_pct[w];
-  const bsMonPct = B.bs_mon_pct[w];
-  const bsThuPct = B.bs_thu_pct[w];
-  const fsTuePct = B.fs_tue_pct[w];
-  const fsFriPct = B.fs_fri_pct[w];
-  const jerkWedPct = B.jerk_rack_wed_pct?.[w] ?? 70;
-  const jerkFriPct = B.jerk_rack_fri_pct?.[w] ?? 80;
-  const ppPct = B.push_press_pct?.[w] ?? 70;
+// ─── Loading-week day builder ─────────────────────────────────────────────────
+function makeDays(B, w) {
+  const P = (a) => a[Math.min(w, a.length - 1)];
+  const S = B.sets, R = B.reps;
 
   return {
-    // ── MONDAY ──────────────────────────────────────────────────────────────
     monday: {
-      title: 'Monday — Snatch + Back Squat + Push Hypertrophy',
-      totalMin: 105,
-      totalMinNoSport: 110, // box jumps reinstated
+      title: 'Monday — Snatch Volume · Back Squat · Push',
+      totalMin: 71,
       sections: [
-        {
-          title: 'Olympic Block',
-          color: 'gold',
-          exercises: [
-            { id: 'zone2_warmup', duration: '15–20 min', rest: 0 },
-            { id: 'box_jumps', sets: 3, reps: '3–5', rest: 90, optional: true,
-              optNote: 'Cut by default — pickup sport already supplies jumping/landing volume. Reinstate only after a week+ with no sport.' },
-            { id: 'snatch_warmup', sets: 3, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
-            { id: 'snatch_floor', sets: 5, reps: 2, pct: olyPct, baseLift: 'snatch', rest: 120 },
-            { id: 'hang_snatch', sets: 5, reps: 3, pct: hangPct ?? olyPct - 2, baseLift: 'snatch', rest: 120 },
-            { id: 'snatch_pull', sets: 4, reps: 3, pct: pullPct, baseLift: 'snatch', rest: 120 },
-            { id: 'back_squat', sets: 4, reps: 5, pct: bsMonPct, baseLift: 'bs', rest: 120 },
-            { id: 'ohs', sets: 3, reps: 3, pct: 60, baseLift: 'snatch', rest: 90 },
-          ],
-        },
-        {
-          title: 'Hypertrophy Block',
-          color: 'blue',
-          exercises: [
-            { id: 'incline_db_press', sets: 4, repRange: [10, 12], rest: 165,
-              note: 'Feeder set first: 1×10 @ ~half working weight, ~60s rest. First press of the day — shoulders/elbows are cold. Don\'t log it.' },
-            { id: 'low_high_cable_fly', sets: 3, repRange: [12, 15], rest: 90 },
-            { id: 'cable_lateral', sets: 4, repRange: [15, 20], rest: 60 },
-            { id: 'face_pull', sets: 3, repRange: [15, 20], rest: 60 },
-            { id: 'cable_overhead_tricep', sets: 3, repRange: [10, 12], rest: 90 },
-          ],
-        },
+        { title: 'Olympic Block', color: 'gold', exercises: [
+          { id: 'tall_snatch', sets: 2, reps: 3, pct: 30, baseLift: 'snatch', rest: 60 },
+          { id: 'drop_snatch', sets: 3, reps: 2, pct: 48, baseLift: 'snatch', rest: 90 },
+          { id: 'snatch_floor', sets: S.snVol, reps: 2, pct: P(B.snatch_vol), baseLift: 'snatch', rest: 150,
+            buildup: rampOly(P(B.snatch_vol), 2), buildupNote: 'Ramp to the work weight. Ramp sets never count toward a set total.' },
+          { id: 'snatch_balance', sets: 3, reps: 2, pct: 75, baseLift: 'snatch', rest: 150 },
+          { id: 'back_squat', sets: S.bsMon, reps: R.bsMon, pct: P(B.bs_mon), baseLift: 'bs', rest: 180, buildup: rampOly(P(B.bs_mon), R.bsMon) },
+        ]},
+        { title: 'Hypertrophy Block', color: 'blue', exercises: [
+          acc('incline_db_press', 4, w, [6, 8], 150, { buildup: RAMP_PRESS, buildupNote: 'First press of the session — ramp both steps.' }),
+          acc('cable_lateral_behind', 3, w, [12, 15], 90, { note: 'First isolation for this muscle — one set of 12–15 at ~half load first.' }),
+          acc('oh_cable_tri', 3, w, [10, 12], 90),
+          acc('standing_calf', 3, w, [8, 12], 90),
+          acc('cable_crunch', 3, w, [10, 15], 60, { note: 'Pairs with the lateral raise — same tower, different height.' }),
+        ]},
       ],
     },
 
-    // ── TUESDAY ─────────────────────────────────────────────────────────────
     tuesday: {
-      title: 'Tuesday — Clean & Jerk + Front Squat + Pull/Lats/Biceps',
-      totalMin: 110,
+      title: 'Tuesday — C&J · Technical Jerk · Front Squat · Bench',
+      totalMin: 129,
       sections: [
-        {
-          title: 'Olympic Block',
-          color: 'gold',
-          exercises: [
-            { id: 'cj_warmup', sets: 3, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
-            { id: 'cj_floor', sets: 5, reps: '2+1', pct: olyPct, baseLift: 'cj', rest: 180 },
-            { id: 'hang_clean', sets: 4, reps: 3, pct: hangPct ?? olyPct - 2, baseLift: 'clean', rest: 120 },
-            { id: 'push_press', sets: 3, reps: 4, pct: ppPct, baseLift: 'pp', rest: 120 },
-            { id: 'clean_pull', sets: 4, reps: 3, pct: pullPct, baseLift: 'clean', rest: 120 },
-            { id: 'front_squat', sets: 4, reps: 4, pct: fsTuePct, baseLift: 'fs', rest: 120 },
-          ],
-        },
-        {
-          title: 'Hypertrophy Block',
-          color: 'blue',
-          exercises: [
-            { id: 'pendlay_row', sets: 3, reps: 8, rest: 165 },
-            { id: 'lat_pulldown', sets: 3, repRange: [10, 12], rest: 90 },
-            { id: 'straight_arm_pulldown', sets: 3, repRange: [12, 15], rest: 60 },
-            { id: 'crossbody_cable_lateral', sets: 3, repRange: [15, 20], rest: 60 },
-            { id: 'rear_delt_fly', sets: 3, repRange: [15, 20], rest: 60 },
-            { id: 'incline_db_curl', sets: 3, repRange: [10, 15], rest: 90 },
-            { id: 'cable_curl', sets: 2, repRange: [12, 15], rest: 60 },
-          ],
-        },
+        { title: 'AM — Jumps + Reactive Agility (≥6h before lifting)', color: 'red',
+          note: '~35 min. Maximal intent, low volume. Stop when quality drops.', exercises: [
+          { id: 'jumps_cod', duration: '35 min', rest: 0, note: w === 0
+            ? 'Pogo 2×10 · CMJ 3×3 · Broad jump + stick 3×3 · Lateral bound + stick 3×3/side · 2 accel-to-stops + 2 submax cuts per side, then 5-10-5 ×3'
+            : 'Pogo 2×10 · Low drop jump 8–12" 3×3 (only if landings are sound) · Broad jump 3×3 · Lateral bound 3×3/side · 5-10-5 ×2 + reactive drill ×2' },
+        ]},
+        { title: 'Olympic Block', color: 'gold', exercises: [
+          { id: 'jerk_balance', sets: 3, reps: 3, pct: 38, baseLift: 'jerk', rest: 60 },
+          { id: 'cj_floor', sets: S.cjVol, reps: '1+1', pct: P(B.cj_vol), baseLift: 'cj', rest: 180, buildup: rampOly(P(B.cj_vol), '1+1') },
+          { id: 'jerk_rack', sets: 3, reps: 2, pct: P(B.jerk_tue), baseLift: 'jerk', rest: 150 },
+          { id: 'front_squat', sets: S.fsTue, reps: R.fsTue, pct: P(B.fs_tue), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_tue), R.fsTue) },
+        ]},
+        { title: 'Hypertrophy Block', color: 'blue', exercises: [
+          acc('bench', 4, w, [3, 6], 180, { buildup: RAMP_PRESS, buildupNote: 'At 3–6 reps near failure you need both ramp steps.' }),
+          acc('cs_row', 4, w, [8, 10], 120, { buildup: RAMP_PULL }),
+          acc('seated_leg_curl', 3, w, [8, 12], 90),
+          acc('db_shrug', 3, w, [10, 12], 90),
+          acc('cable_lateral', 3, w, [12, 20], 90),
+          acc('incline_db_curl', 3, w, [10, 12], 90, { note: 'Shrug, curl and Copenhagen all run from one bench — grab a heavy pair and a light pair at the start.' }),
+          { id: 'nordic', sets: 2, reps: w < 2 ? '3' : '4–6', rest: 120, note: w < 2 ? 'Weeks 1–2: band-assisted, 2×3.' : 'Week 3+: 2×4–6, toward unassisted eccentrics.' },
+          { id: 'copenhagen', sets: 2, duration: '20–30s/side', rest: 60 },
+        ]},
       ],
     },
 
-    // ── WEDNESDAY ───────────────────────────────────────────────────────────
     wednesday: {
-      title: 'Wednesday — Technical (Recovery Day)',
-      totalMin: 50,
-      totalMinNoSport: 80, // VO₂max intervals reinstated
+      title: 'Wednesday — Full-Catch Technique · Upper Hypertrophy',
+      totalMin: 109,
       sections: [
-        {
-          title: 'Technical Block',
-          color: 'gold',
-          note: 'Skill work — do not let intensity drift upward. This is not a hard training session.',
-          exercises: [
-            { id: 'snatch_balance', sets: 5, reps: 3, pct: 58, baseLift: 'snatch', rest: 120 },
-            { id: 'power_snatch', sets: 4, reps: 3, pct: 70, baseLift: 'snatch', rest: 120 },
-            { id: 'jerk_rack', sets: 5, reps: 3, pct: jerkWedPct, baseLift: 'cj', rest: 120 },
-            { id: 'pause_front_squat', sets: 3, reps: 3, pct: 65, baseLift: 'fs', rest: 120 },
-          ],
-        },
-        {
-          title: 'VO₂max Intervals — optional',
-          color: 'red',
-          note: 'Covered by your ~2 weekly running-sport sessions, so omitted by default. Do this ONLY in a week with no pickup sport.',
-          exercises: [
-            { id: 'vo2max_intervals', duration: '5 × 3 min on / 3 min off', rest: 0, optional: true,
-              interval: { rounds: 5, workSec: 180, restSec: 180, lastRest: false } },
-          ],
-        },
+        { title: 'Receiving Block', color: 'gold',
+          note: 'Below parallel is MANDATORY on the high-hang work, 1s pause. A high catch is a failed rep — drop 10 lb and repeat. Stand every rep completely.', exercises: [
+          { id: 'ohs', sets: 2, reps: 5, pct: 52, baseLift: 'snatch', rest: 120 },
+          { id: 'hh_snatch', sets: 4, reps: 2, pct: P(B.hh_snatch), baseLift: 'snatch', rest: 120 },
+          { id: 'hh_clean', sets: 4, reps: 2, rest: 150, recvKey: 'hh_clean' },
+          { id: 'split_jerk_rack', sets: 3, reps: '1–2', pct: P(B.jerk_wed), baseLift: 'jerk', rest: 120 },
+        ]},
+        { title: 'Hypertrophy Block', color: 'blue', note: 'Eight separate stations — no legitimate pairing. Run it straight with tight rest.', exercises: [
+          acc('incline_db_press', 4, w, [8, 10], 150, { buildup: RAMP_PRESS }),
+          acc('low_high_fly', 3, w, [12, 15], 90),
+          acc('cable_lateral', 5, w, [12, 20], 90),
+          acc('db_shrug', 2, w, [12, 15], 90),
+          acc('oa_cable_row', 3, w, [8, 12], 120, { buildup: RAMP_PULL }),
+          acc('reverse_pec_deck', 3, w, [15, 20], 75),
+          acc('seated_calf', 3, w, [10, 20], 90),
+          acc('cable_pressdown', 3, w, [10, 15], 75),
+        ]},
+        { title: 'Zone 2 — separated ≥6h', color: 'green', exercises: [
+          { id: 'zone2', duration: '30–40 min', rest: 0 },
+        ]},
       ],
     },
 
-    // ── THURSDAY ────────────────────────────────────────────────────────────
     thursday: {
-      title: 'Thursday — Snatch Heavy + Back Squat + Core + Side Delts',
-      totalMin: 130,
-      totalMinNoSport: 135, // broad jumps reinstated
+      title: 'Thursday — Heavy Snatch · Back Squat · Push',
+      totalMin: 92,
       sections: [
-        {
-          title: 'Olympic Block',
-          color: 'gold',
-          exercises: [
-            { id: 'zone2_warmup', duration: '15–20 min', rest: 0 },
-            { id: 'broad_jumps', sets: 3, reps: '3–5', rest: 90, optional: true,
-              optNote: 'Cut by default — pickup sport already supplies jumping/landing volume. Reinstate only after a week+ with no sport.' },
-            { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
-            { id: 'snatch_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'snatch', rest: 150 },
-            { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 240, isDailyMax: true,
-              buildup: rampOlyDaily(dmPct, '1'),
-              buildupNote: 'After the block snatches, rest 3 min, then ramp as below. Stop at the last technically clean lift — never chase weight after a degraded rep.' },
-            { id: 'snatch_pull', sets: 4, reps: 3, pct: Math.min(pullPct + 3, 100), baseLift: 'snatch', rest: 180 },
-            { id: 'back_squat', sets: 5, reps: 3, pct: bsThuPct, baseLift: 'bs', rest: 180 },
-            { id: 'rdl', sets: 3, reps: 6, pct: 60, baseLift: 'bs', rest: 120 },
-            { id: 'ohs', sets: 3, reps: 3, pct: 60, baseLift: 'snatch', rest: 90 },
-          ],
-        },
-        {
-          title: 'Core Block',
-          color: 'green',
-          exercises: [
-            { id: 'ab_wheel', sets: 3, repRange: [10, 15], rest: 90 },
-            { id: 'pallof_press', sets: 3, reps: '10/side', rest: 60 },
-            { id: 'weighted_plank', sets: 3, duration: '30–45s', rest: 60 },
-          ],
-        },
-        {
-          title: 'Side Delt Specialization',
-          color: 'blue',
-          exercises: [
-            { id: 'cable_lateral', sets: 5, repRange: [15, 20], rest: 60 },
-            { id: 'db_lateral_partial', sets: 3, repRange: [20, 25], rest: 60 },
-            { id: 'cable_upright_row', sets: 3, repRange: [12, 15], rest: 90 },
-          ],
-        },
+        { title: 'AM — Sprints + Sled (≥6h before lifting)', color: 'red',
+          note: '~30 min. Rest long enough that every rep stays fast.', exercises: [
+          { id: 'sprints_sled', duration: '30 min', rest: 0, note: w === 0
+            ? '3 × 15 m resisted sled (~30% BW start), 3 min rest · 3 × 20 m unresisted, 3 min rest'
+            : '3 × 20 m build-up · 3 × flying 20 m off a 20 m run-in, 4 min rest' },
+        ]},
+        { title: 'Olympic Block', color: 'gold', exercises: [
+          { id: 'snatch_floor', sets: S.snHvy, reps: 1, pct: P(B.snatch_hvy), baseLift: 'snatch', rest: 180,
+            buildup: rampOly(P(B.snatch_hvy), 1), buildupNote: 'Week 11 tops at 90–92.5% only if the lifts are pristine.' },
+          { id: 'snatch_balance', sets: 2, reps: 2, pct: 75, baseLift: 'snatch', rest: 120 },
+          { id: 'back_squat', sets: S.bsThu, reps: R.bsThu, pct: P(B.bs_thu), baseLift: 'bs', rest: 180, buildup: rampOly(P(B.bs_thu), R.bsThu) },
+        ]},
+        { title: 'Hypertrophy Block', color: 'blue', exercises: [
+          acc('incline_db_press', 3, w, [8, 12], 150, { buildup: RAMP_ONE, buildupNote: 'Third incline exposure this week — one ramp set is enough.' }),
+          acc('cable_lateral', 3, w, [12, 20], 90),
+          acc('standing_calf', 3, w, [8, 15], 90),
+          acc('hanging_pelvic_curl', 3, w, [10, 15], 60),
+        ]},
       ],
     },
 
-    // ── FRIDAY ──────────────────────────────────────────────────────────────
     friday: {
-      title: 'Friday — Clean & Jerk Heavy + Front Squat + Lower Accessory',
-      totalMin: 105,
+      title: 'Friday — Heavy C&J · Heavy Jerk · Front Squat · Bench',
+      totalMin: 87,
       sections: [
-        {
-          title: 'Olympic Block',
-          color: 'gold',
-          exercises: [
-            { id: 'cj_warmup', sets: 3, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
-            { id: 'clean_blocks_low', sets: 5, reps: 2, pct: blocksPct ?? olyPct + 2, baseLift: 'clean', rest: 150 },
-            { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 240, isDailyMax: true,
-              buildup: rampOlyDaily(dmPct, '1+1'),
-              buildupNote: 'After the block cleans, rest 3 min, then ramp as below. Each attempt = 1 clean + 1 jerk. Stop at the last technically clean lift.' },
-            { id: 'jerk_rack', sets: 4, reps: 2, pct: jerkFriPct, baseLift: 'cj', rest: 180 },
-            { id: 'clean_pull', sets: 4, reps: 3, pct: Math.min(pullPct + 3, 100), baseLift: 'clean', rest: 180 },
-            { id: 'front_squat', sets: 5, reps: 3, pct: fsFriPct, baseLift: 'fs', rest: 180 },
-          ],
-        },
-        {
-          title: 'Lower Accessory',
-          color: 'green',
-          exercises: [
-            { id: 'nordic_curl', sets: 3, repRange: [5, 8], rest: 180 },
-            { id: 'bss', sets: 3, reps: '8/leg', rest: 120 },
-            { id: 'calf_raise', sets: 4, repRange: [15, 20], rest: 60 },
-          ],
-        },
+        { title: 'Olympic Block', color: 'gold',
+          note: 'No clean pulls this block — you clean 255 and power clean 255, so pulling high is the one thing you are already excellent at. That slot goes to cleans you actually receive.', exercises: [
+          { id: 'cj_floor', sets: S.cjHvy, reps: '1+1', pct: P(B.cj_hvy), baseLift: 'cj', rest: 210, buildup: rampOly(P(B.cj_hvy), '1+1') },
+          { id: 'jerk_rack_heavy', sets: S.jerkFri, reps: 1, pct: P(B.jerk_fri), baseLift: 'jerk', rest: 180 },
+          { id: 'recv_clean', sets: 3, reps: 1, rest: 150, recvKey: 'recv_clean' },
+          { id: 'front_squat', sets: S.fsFri, reps: R.fsFri, pct: P(B.fs_fri), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_fri), R.fsFri) },
+        ]},
+        { title: 'Hypertrophy Block', color: 'blue', exercises: [
+          acc('rdl', 3, w, [6, 8], 150, { buildup: RAMP_ONE, buildupNote: 'One light ramp set — this is one people skip and should not.' }),
+          acc('bench', 4, w, [3, 6], 180, { buildup: RAMP_PRESS }),
+          acc('cs_high_row', 3, w, [8, 12], 120, { buildup: RAMP_PULL }),
+          acc('weighted_pullup', 3, w, [6, 10], 150),
+          acc('leg_ext', 3, w, [10, 15], 90),
+        ]},
       ],
     },
 
-    // ── SATURDAY ────────────────────────────────────────────────────────────
     saturday: {
-      title: 'Saturday — Max Effort + Weak Point Hypertrophy',
-      totalMin: 130,
+      title: 'Saturday — Upper Accessories · Bike Intervals',
+      totalMin: 15,          // played pickup → intervals skipped
+      totalMinNoSport: 40,   // no pickup → intervals included
       sections: [
-        {
-          title: 'Max Effort Block',
-          color: 'gold',
-          exercises: [
-            { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 270, isDailyMax: true,
-              buildup: rampOlySaturday(dmPct, '1'),
-              buildupNote: 'Then 2–3% jumps with 4–5 min rest to your daily max. Stop before a miss.' },
-            { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 270, isDailyMax: true,
-              buildup: rampOlySaturday(dmPct, '1+1'),
-              buildupNote: 'Same ramp as snatch. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
-            { id: 'back_squat', sets: null, reps: 3, pct: 85, baseLift: 'bs', rest: 270, isMaxEffort: true,
-              buildup: RAMP_SAT_BS, buildupNote: '85% is the RPE 9 target. Only attempt 88%×3 if 85% moved fast and clean.' },
-            { id: 'push_press', sets: null, reps: 3, pct: 85, baseLift: 'pp', rest: 210, isMaxEffort: true,
-              buildup: RAMP_SAT_PP, buildupNote: '85% is the RPE 9 target.' },
-            { id: 'flat_bench', sets: null, repRange: [3, 5], pct: 84, baseLift: 'bench', rest: 210, isMaxEffort: true,
-              buildup: RAMP_SAT_BENCH, buildupNote: 'Continue in 2–3% jumps if moving well. RPE 8–9, no grinding.' },
-          ],
-        },
-        {
-          title: 'Weak Point Hypertrophy',
-          color: 'blue',
-          exercises: [
-            { id: 'incline_bar_press', sets: 4, repRange: [6, 10], rest: 165,
-              note: 'Feeder set first: 1×8 @ ~half working weight, ~60s rest. Heaviest hypertrophy press of the week — earn the working weight. Don\'t log it.' },
-            { id: 'low_high_cable_fly', sets: 3, repRange: [12, 15], rest: 90 },
-            { id: 'cable_lateral', sets: 4, repRange: [15, 25], rest: 60 },
-            { id: 'face_pull', sets: 3, reps: 20, rest: 60 },
-            { id: 'cable_overhead_tricep', sets: 2, repRange: [10, 12], rest: 90 },
-          ],
-        },
+        { title: 'Accessories (moved off Friday)', color: 'blue',
+          note: 'Isolation only. The last three all run off one dual-pulley tower — reverse fly high, raise and curl low.', exercises: [
+          acc('db_shrug', 3, w, [10, 12], 90),
+          acc('cable_lateral', 4, w, [12, 20], 90),
+          acc('reverse_cable_fly', 3, w, [15, 20], 75),
+          acc('cable_curl', 3, w, [10, 15], 90),
+        ]},
+        { title: 'Bike Intervals', color: 'red', exercises: [
+          { id: 'bike_intervals', duration: `4 × ${B.intervalSec / 60} min on / 3 min off`, rest: 0,
+            interval: { rounds: 4, workSec: B.intervalSec, restSec: 180, lastRest: false },
+            optional: true,
+            optNote: 'Skipped because you played pickup this week — a hard hour already supplied the stimulus. Flip to "No Pickup" in Settings to reinstate.',
+            note: 'On a cut, hold at 4 × 3 min rather than progressing to 4 × 4.' },
+        ]},
       ],
     },
 
-    // ── SUNDAY ──────────────────────────────────────────────────────────────
-    sunday: {
-      title: 'Sunday — Passive Rest',
-      isRest: true,
-      note: 'Full passive rest. No session today — prioritize sleep and food. Optional easy mobility from the Guide if you feel stiff, but nothing structured.',
-    },
+    sunday: { title: 'Sunday — Complete Rest', isRest: true, totalMin: 0,
+      note: 'Walking, food, fluids. Nothing structured.' },
   };
 }
 
-// ─── Testing week ─────────────────────────────────────────────────────────────
-// Keyed by weekday so it works with the same navigation as every other week.
-// isTesting days expose `lifts` whose achieved max writes directly to STATE.maxes.
-const TESTING_WEEK = {
-  monday: {
-    title: 'Day 1 — Snatch 1RM + Overhead Squat 3RM',
-    isTesting: true,
-    totalMin: 90,
-    note: 'Build from ~60% estimated max. 5–10 lb jumps. Take singles above 85%. No more than 2 total misses across the session.',
-    lifts: [
-      { lift: 'snatch', label: 'Snatch — 1RM', cues: ['Warm up thoroughly', 'Stop the moment two misses accumulate', 'Record your last made single'] },
-      { lift: null, label: 'Overhead Squat — 3RM (reference only)', cues: ['Not stored as a training max — the program runs OHS at 60% of your snatch', 'Note it in your own log if useful'] },
-    ],
-  },
-  tuesday: {
-    title: 'Day 2 — Clean & Jerk 1RM',
-    isTesting: true,
-    totalMin: 90,
-    note: 'Same protocol as Day 1. Test the full C&J first. If the jerk is your limiter, keep taking clean-only singles after your last made C&J and record that as your Clean max — clean pulls, hang cleans, and block cleans run off it.',
-    lifts: [
-      { lift: 'cj', label: 'Clean & Jerk — 1RM', cues: ['The recorded max is the heaviest completed C&J', 'If you clean it but miss the jerk, it does not count'] },
-      { lift: 'clean', label: 'Clean — 1RM (optional)', cues: ['After your last made C&J, keep going with clean-only singles', 'Skip if your clean and C&J are within ~5% — the program will use your C&J instead'] },
-    ],
-  },
-  wednesday: { title: 'Day 3 — Rest', isRest: true, note: 'Rest. Light Zone 2 and mobility optional.' },
-  thursday: {
-    title: 'Day 4 — Back Squat 1RM',
-    isTesting: true,
-    totalMin: 75,
-    note: 'Standard back squat 1RM protocol. Build in 10–20 lb jumps early, smaller near the top.',
-    lifts: [
-      { lift: 'bs', label: 'Back Squat — 1RM' },
-    ],
-  },
-  friday: {
-    title: 'Day 5 — Front Squat + Push Press + Bench 1RM',
-    isTesting: true,
-    totalMin: 120,
-    note: 'Do Front Squat first, then Push Press, then Bench. Same protocol for each.',
-    lifts: [
-      { lift: 'fs', label: 'Front Squat — 1RM' },
-      { lift: 'pp', label: 'Push Press — 1RM' },
-      { lift: 'bench', label: 'Bench Press — 1RM' },
-    ],
-  },
-  saturday: { title: 'Days 6–7 — Rest', isRest: true, note: 'Rest. Recover before starting Block 1.' },
-  sunday: { title: 'Days 6–7 — Rest', isRest: true, note: 'Rest. When you are ready, switch to Block 1 in Settings.' },
-};
+// ─── Deload weeks (4 and 8) ───────────────────────────────────────────────────
+function makeDeload() {
+  const holdNote = 'Receiving load HOLDS on a deload — no progression this week.';
+  return {
+    monday: { title: 'Monday — Deload', totalMin: 50, sections: [
+      { title: 'Olympic Block', color: 'gold', note: 'Half the work sets, capped 60–70%.', exercises: [
+        { id: 'drop_snatch', sets: 2, reps: 2, pct: 45, baseLift: 'snatch', rest: 90 },
+        { id: 'snatch_floor', sets: 3, reps: 2, pct: 65, baseLift: 'snatch', rest: 150 },
+        { id: 'back_squat', sets: 2, reps: 4, pct: 67, baseLift: 'bs', rest: 180 },
+      ]},
+      { title: 'Hypertrophy — half sets, ~4 RIR', color: 'blue', exercises: [
+        { id: 'incline_db_press', sets: 2, repRange: [8, 10], rest: 150 },
+        { id: 'cable_lateral_behind', sets: 2, repRange: [12, 15], rest: 90 },
+        { id: 'cable_crunch', sets: 2, repRange: [10, 15], rest: 60 },
+      ]},
+    ]},
+    tuesday: { title: 'Tuesday — Deload', totalMin: 55, sections: [
+      { title: 'AM — half volume', color: 'red', exercises: [
+        { id: 'jumps_cod', duration: '18 min', rest: 0, note: 'Half the reps at FULL intent.' },
+      ]},
+      { title: 'Olympic Block', color: 'gold', exercises: [
+        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 65, baseLift: 'cj', rest: 180 },
+        { id: 'jerk_rack', sets: 2, reps: 2, pct: 62, baseLift: 'jerk', rest: 150 },
+        { id: 'front_squat', sets: 2, reps: 3, pct: 67, baseLift: 'fs', rest: 180 },
+      ]},
+      { title: 'Hypertrophy — half sets, ~4 RIR', color: 'blue', exercises: [
+        { id: 'bench', sets: 2, repRange: [3, 6], rest: 180 },
+        { id: 'cs_row', sets: 2, repRange: [8, 10], rest: 120 },
+        { id: 'cable_lateral', sets: 2, repRange: [12, 20], rest: 90 },
+        { id: 'copenhagen', sets: 2, duration: '20–30s/side', rest: 60 },
+      ]},
+    ]},
+    wednesday: { title: 'Wednesday — Deload', totalMin: 45, sections: [
+      { title: 'Receiving Block', color: 'gold', note: holdNote, exercises: [
+        { id: 'hh_snatch', sets: 2, reps: 2, pct: 55, baseLift: 'snatch', rest: 120 },
+        { id: 'hh_clean', sets: 2, reps: 2, rest: 150, recvKey: 'hh_clean', note: holdNote },
+        { id: 'split_jerk_rack', sets: 2, reps: 1, pct: 65, baseLift: 'jerk', rest: 120 },
+      ]},
+      { title: 'Hypertrophy — half sets', color: 'blue', exercises: [
+        { id: 'incline_db_press', sets: 2, repRange: [8, 10], rest: 150 },
+        { id: 'cable_lateral', sets: 2, repRange: [12, 20], rest: 90 },
+        { id: 'seated_calf', sets: 2, repRange: [10, 20], rest: 90 },
+      ]},
+      { title: 'Easy aerobic — intervals replaced', color: 'green', exercises: [
+        { id: 'zone2', duration: '25–35 min', rest: 0, note: 'Deload week: easy spin replaces the intervals.' },
+      ]},
+    ]},
+    thursday: { title: 'Thursday — Deload', totalMin: 45, sections: [
+      { title: 'AM — half volume', color: 'red', exercises: [
+        { id: 'sprints_sled', duration: '15 min', rest: 0, note: 'Half the reps at FULL intent after a complete warm-up, or skip if readiness or warm-up quality is poor.' },
+      ]},
+      { title: 'Olympic Block', color: 'gold', exercises: [
+        { id: 'snatch_floor', sets: 3, reps: 1, pct: 70, baseLift: 'snatch', rest: 180 },
+        { id: 'back_squat', sets: 2, reps: 3, pct: 67, baseLift: 'bs', rest: 180 },
+      ]},
+      { title: 'Hypertrophy — half sets', color: 'blue', exercises: [
+        { id: 'incline_db_press', sets: 2, repRange: [8, 12], rest: 150 },
+        { id: 'standing_calf', sets: 2, repRange: [8, 15], rest: 90 },
+      ]},
+    ]},
+    friday: { title: 'Friday — Deload', totalMin: 55, sections: [
+      { title: 'Olympic Block', color: 'gold', exercises: [
+        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 70, baseLift: 'cj', rest: 210 },
+        { id: 'jerk_rack_heavy', sets: 2, reps: 1, pct: 67, baseLift: 'jerk', rest: 180 },
+        { id: 'recv_clean', sets: 2, reps: 1, rest: 150, recvKey: 'recv_clean', note: holdNote },
+      ]},
+      { title: 'Hypertrophy — half sets', color: 'blue', exercises: [
+        { id: 'rdl', sets: 2, repRange: [6, 8], rest: 150 },
+        { id: 'bench', sets: 2, repRange: [3, 6], rest: 180 },
+        { id: 'weighted_pullup', sets: 2, repRange: [6, 10], rest: 150 },
+        { id: 'leg_ext', sets: 2, repRange: [10, 15], rest: 90 },
+      ]},
+    ]},
+    saturday: { title: 'Saturday — Deload', totalMin: 40, sections: [
+      { title: 'Accessories — half sets', color: 'blue', exercises: [
+        { id: 'db_shrug', sets: 2, repRange: [10, 12], rest: 90 },
+        { id: 'cable_lateral', sets: 2, repRange: [12, 20], rest: 90 },
+        { id: 'reverse_cable_fly', sets: 2, repRange: [15, 20], rest: 75 },
+        { id: 'cable_curl', sets: 2, repRange: [10, 15], rest: 90 },
+      ]},
+      { title: 'Easy aerobic', color: 'green', exercises: [
+        { id: 'zone2', duration: '25–35 min', rest: 0 },
+      ]},
+    ]},
+    sunday: { title: 'Sunday — Complete Rest', isRest: true, totalMin: 0 },
+  };
+}
 
-// ─── Week 12 Deload ───────────────────────────────────────────────────────────
-// ~50% of normal volume at 60–70% intensity — fast, clean, no daily-max attempts
-// and no plyometrics. One short Zone 2. Saturday re-tests every lift so the new
-// 1RMs become the training maxes for the next macrocycle. Keyed by weekday so it
-// uses the same navigation as every other week.
-function makeDeloadDays() {
+// ─── Week 12 — taper ──────────────────────────────────────────────────────────
+function makeTaper() {
+  const noAcc = 'No accessories anywhere in week 12 — one week costs nothing measurable and it makes the taper unambiguous.';
+  return {
+    monday: { title: 'Monday — Taper', totalMin: 35, note: noAcc, sections: [
+      { title: 'Taper', color: 'gold', exercises: [
+        { id: 'snatch_floor', sets: 3, reps: 1, pct: 72, baseLift: 'snatch', rest: 180, buildup: rampOly(72, 1) },
+        { id: 'back_squat', sets: 2, reps: 2, pct: 70, baseLift: 'bs', rest: 180 },
+      ]},
+    ]},
+    tuesday: { title: 'Tuesday — Taper', totalMin: 35, note: noAcc, sections: [
+      { title: 'Taper', color: 'gold', exercises: [
+        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 72, baseLift: 'cj', rest: 210, buildup: rampOly(72, '1+1') },
+        { id: 'front_squat', sets: 2, reps: 2, pct: 70, baseLift: 'fs', rest: 180 },
+      ]},
+    ]},
+    wednesday: { title: 'Wednesday — Optional Technique', totalMin: 30, sections: [
+      { title: 'Optional — ≤60%', color: 'gold', note: 'Optional 30 min. Skip it if you feel flat.', exercises: [
+        { id: 'hh_snatch', sets: 2, reps: 2, pct: 58, baseLift: 'snatch', rest: 120, optional: true },
+        { id: 'hh_clean', sets: 2, reps: 2, rest: 150, recvKey: 'hh_clean', optional: true, note: 'Optional. Hold the weight — do not progress.' },
+      ]},
+    ]},
+    thursday: { title: 'Thursday — Rest', isRest: true, totalMin: 0, note: 'Full rest.' },
+    friday: { title: 'Friday — Light Primers', totalMin: 30, sections: [
+      { title: 'Primers', color: 'gold', exercises: [
+        { id: 'snatch_floor', sets: 2, reps: 1, pct: 70, baseLift: 'snatch', rest: 180 },
+        { id: 'cj_floor', sets: 2, reps: '1+1', pct: 70, baseLift: 'cj', rest: 180 },
+      ]},
+    ]},
+    saturday: { title: 'Saturday — Rest or easy spin', totalMin: 20, sections: [
+      { title: 'Optional', color: 'green', exercises: [{ id: 'zone2', duration: '20 min easy', rest: 0, optional: true }] },
+    ]},
+    sunday: { title: 'Sunday — Complete Rest', isRest: true, totalMin: 0 },
+  };
+}
+
+// ─── Week 13 — test week ──────────────────────────────────────────────────────
+// Uses the app's testing flow: `lifts[]` write achieved maxes straight to STATE.maxes.
+const TEST_NOTE = 'Rest 5+ min between attempts. Stop at two misses. Nothing else this week — no accessories, no field work, no intervals.';
+function makeTest() {
   return {
     monday: {
-      title: 'Monday — Snatch Technique + Light Squat (Deload)',
-      totalMin: 55,
-      sections: [
-        {
-          title: 'Olympic Block', color: 'gold',
-          note: 'Deload — 60–70%, fast and clean. No grinding, no max attempts. Half the usual volume.',
-          exercises: [
-            { id: 'zone2_warmup', duration: '15 min', rest: 0 },
-            { id: 'snatch_warmup', sets: 2, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
-            { id: 'snatch_floor', sets: 3, reps: 2, pct: 67, baseLift: 'snatch', rest: 120 },
-            { id: 'back_squat', sets: 2, reps: 4, pct: 65, baseLift: 'bs', rest: 120 },
-            { id: 'ohs', sets: 2, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
-          ],
-        },
-      ],
+      title: 'Day 1 — Snatch 1RM', isTesting: true, totalMin: 60,
+      note: 'Fresh, priority 1. Ramp, then take singles. ' + TEST_NOTE,
+      lifts: [{ lift: 'snatch', label: 'Snatch — 1RM', cues: ['Catch depth is not a criterion — a controlled high catch you stand up counts', 'Stop at two misses'] }],
     },
     tuesday: {
-      title: 'Tuesday — C&J Technique + Light Front Squat (Deload)',
-      totalMin: 55,
-      sections: [
-        {
-          title: 'Olympic Block', color: 'gold',
-          note: 'Deload — 60–70%, crisp positions only. No daily max.',
-          exercises: [
-            { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 55, baseLift: 'cj', rest: 90 },
-            { id: 'cj_floor', sets: 3, reps: '1+1', pct: 67, baseLift: 'cj', rest: 150 },
-            { id: 'front_squat', sets: 2, reps: 4, pct: 65, baseLift: 'fs', rest: 120 },
-          ],
-        },
-      ],
+      title: 'Day 2 — Clean & Jerk 1RM', isTesting: true, totalMin: 60,
+      note: 'Fresh, priority 1. ' + TEST_NOTE,
+      lifts: [{ lift: 'cj', label: 'Clean & Jerk — 1RM', cues: ['Heaviest COMPLETED C&J', 'Clean it but miss the jerk and it does not count'] }],
     },
-    wednesday: {
-      title: 'Wednesday — Technical / Recovery (Deload)',
-      totalMin: 40,
-      sections: [
-        {
-          title: 'Technical Block', color: 'gold',
-          note: 'Pure feel work at 60%. Keep it light — this is recovery, not training.',
-          exercises: [
-            { id: 'snatch_balance', sets: 3, reps: 3, pct: 55, baseLift: 'snatch', rest: 90 },
-            { id: 'power_snatch', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
-            { id: 'jerk_rack', sets: 3, reps: 2, pct: 60, baseLift: 'cj', rest: 90 },
-          ],
-        },
-      ],
-    },
+    wednesday: { title: 'Day 3 — Rest', isRest: true, note: 'Rest, or 20 min easy spin.' },
     thursday: {
-      title: 'Thursday — Snatch + Back Squat (Deload)',
-      totalMin: 55,
-      sections: [
-        {
-          title: 'Olympic Block', color: 'gold',
-          note: 'Deload — 60–70%. Stop well short of any strain.',
-          exercises: [
-            { id: 'zone2_warmup', duration: '15 min', rest: 0 },
-            { id: 'snatch_warmup', sets: 2, reps: 2, pct: 55, baseLift: 'snatch', rest: 90 },
-            { id: 'snatch_floor', sets: 3, reps: 2, pct: 70, baseLift: 'snatch', rest: 120 },
-            { id: 'back_squat', sets: 2, reps: 3, pct: 68, baseLift: 'bs', rest: 120 },
-          ],
-        },
+      title: 'Day 4 — Rack Jerk 1RM + Below-Parallel Clean', isTesting: true, totalMin: 70,
+      note: 'Jerk FIRST — it is the binding constraint. ' + TEST_NOTE,
+      lifts: [
+        { lift: 'jerk', label: 'Jerk from Rack — 1RM', cues: ['No press-outs', 'Deliberate recovery from the split, not a scramble'] },
+        { lift: 'clean', label: 'Clean received BELOW PARALLEL — 1RM', cues: ['Heaviest clean you catch below parallel and stand up', 'A high catch does not count', 'The gap to 255 is the deficit this program exists to close'] },
       ],
     },
     friday: {
-      title: 'Friday — C&J + Front Squat (Deload)',
-      totalMin: 55,
-      sections: [
-        {
-          title: 'Olympic Block', color: 'gold',
-          note: 'Deload — 60–70%. Last session before the re-test.',
-          exercises: [
-            { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 55, baseLift: 'cj', rest: 90 },
-            { id: 'cj_floor', sets: 3, reps: '1+1', pct: 70, baseLift: 'cj', rest: 150 },
-            { id: 'pause_front_squat', sets: 2, reps: 3, pct: 60, baseLift: 'fs', rest: 120 },
-          ],
-        },
-      ],
-    },
-    saturday: {
-      title: 'Re-Test — All Maxes',
-      isTesting: true,
-      totalMin: 120,
-      note: 'End-of-deload re-test. Fully rested — build to a fresh 1RM on each lift. These become your training maxes for the next macrocycle. Same protocol as Week 0: 5–10 lb jumps, singles above 85%, no more than 2 total misses per lift.',
+      title: 'Day 5 — Squats + Bench', isTesting: true, totalMin: 75,
+      note: 'Squats as DOUBLES, not singles — less fatigue, and it protects the bench that follows. Convert: a double at RPE 8 = 89% of 1RM, at RPE 9 = 92%. ' + TEST_NOTE,
       lifts: [
-        { lift: 'snatch', label: 'Snatch — 1RM' },
-        { lift: 'cj', label: 'Clean & Jerk — 1RM' },
-        { lift: 'clean', label: 'Clean — 1RM (optional, clean-only singles after your last made C&J)' },
-        { lift: 'bs', label: 'Back Squat — 1RM' },
-        { lift: 'fs', label: 'Front Squat — 1RM' },
-        { lift: 'pp', label: 'Push Press — 1RM' },
+        { lift: 'bs', label: 'Back Squat — 2RM (convert to 1RM)' },
+        { lift: 'fs', label: 'Front Squat — 2RM (convert to 1RM)' },
         { lift: 'bench', label: 'Bench Press — 1RM' },
       ],
     },
-    sunday: {
-      title: 'Sunday — Passive Rest',
-      isRest: true,
-      note: 'Full passive rest. Deload complete — when you are ready, switch to Block 1 in Settings to start the next macrocycle with your re-tested maxes.',
-    },
+    saturday: { title: 'Days 6–7 — Rest', isRest: true, note: 'Rest. Rebuild the next cycle from these seven numbers.' },
+    sunday: { title: 'Days 6–7 — Rest', isRest: true, note: 'When you are ready, switch back to Block 1 in Settings with the new maxes.' },
   };
-}
-
-// ─── Block 2: Intensification transform ───────────────────────────────────────
-// The doc's "what changes from Block 1" beyond percentages (which B2's tables
-// already handle): oly movements lose one set and shift to doubles (5×3 → 4×2,
-// 2+1 → 1+1), squat reps compress (5s → 3s, 3s → 2s), Olympic-block rest grows
-// 30–60s, and hypertrophy drops one set per movement. Daily-max ladders are left
-// alone — their intensity already climbs via B2's daily-max targets.
-function applyBlock2(day) {
-  if (!day || !day.sections) return day;
-  day.sections.forEach(sec => sec.exercises.forEach(ex => {
-    const def = EX[ex.id];
-    if (!def) return;
-    if (ex.isDailyMax || ex.isMaxEffort || ex.buildup) return;
-    const t = def.type;
-    if (t === 'oly' || t === 'technical') {
-      if (typeof ex.sets === 'number' && ex.sets > 2) ex.sets -= 1;
-      if (ex.reps === 3) ex.reps = 2;
-      if (ex.reps === '2+1') ex.reps = '1+1';
-      if (ex.rest) ex.rest += 45;
-    } else if (ex.id === 'back_squat' || ex.id === 'front_squat') {
-      // Sets hold, reps compress: 4×5 → 4×3, 5×3 → 5×2 (per the doc's sample table)
-      if (ex.reps === 5 || ex.reps === 4) ex.reps = 3;
-      else if (ex.reps === 3) ex.reps = 2;
-      if (ex.rest) ex.rest += 45;
-    } else if (ex.id === 'snatch_pull' || ex.id === 'clean_pull' || ex.id === 'push_press') {
-      if (ex.rest) ex.rest += 45; // load already climbs via B2 percentage tables
-    } else if (t === 'hypertrophy') {
-      if (typeof ex.sets === 'number' && ex.sets > 2) ex.sets -= 1; // −20–25% volume
-    }
-  }));
-  return day;
 }
 
 // ─── Main program export ──────────────────────────────────────────────────────
 const PROGRAM = {
   exercises: EX,
-  testingWeek: TESTING_WEEK,
+  testingWeek: makeTest(),
+
+  // Absolute-load receiving work — progresses on catch quality, not a percentage.
+  receiving: {
+    hh_clean:   { name: 'High-Hang Clean', start: 165, cap: 210, step: 5, gate: 'all 8 catches below parallel with a 1s pause' },
+    recv_clean: { name: 'Received Clean',  start: 190, cap: 220, step: 5, gate: 'all 3 below parallel and stood up cleanly' },
+  },
 
   blocks: [
-    {
-      id: 0,
-      name: 'Week 0: Testing',
-      weeks: 1,
-      startWeek: 0,
-      description: 'Establish your training maxes before using percentages. Build to a 1RM on each lift and record it — every program percentage references these numbers.',
-      getDay: (dayKey) => TESTING_WEEK[dayKey],
-    },
-    {
-      id: 1,
-      name: 'Block 1: Volume Accumulation',
-      weeks: 4,
-      startWeek: 1,
-      description: 'Foundation volume at moderate intensity. Technique first. Every rep should feel clean.',
-      getDay: (dayKey, weekInBlock) => makeDays(B1, weekInBlock)[dayKey],
-    },
-    {
-      id: 2,
-      name: 'Block 2: Intensification',
-      weeks: 4,
-      startWeek: 5,
-      description: 'Intensity climbs, volume drops ~20–25%. Daily max attempts are true max attempts. Rest periods increase 30–60s across the board.',
-      getDay: (dayKey, weekInBlock) => applyBlock2(makeDays(B2, weekInBlock)[dayKey]),
-    },
-    {
-      id: 3,
-      name: 'Block 3: Peaking / Realization',
-      weeks: 3,
-      startWeek: 9,
-      description: 'Volume drops ~35% from Block 1. Primarily competition lifts from the floor. Daily max attempts are true PR attempts. Hypertrophy drops to maintenance.',
-      getDay: (dayKey, weekInBlock) => {
-        // Block 3: simplified — mainly competition lifts + maintenance
-        const w = weekInBlock;
-        const olyPct = B3.oly_sets_pct[w];
-        const dmPct = B3.daily_max_pct[w];
-        const pullPct = B3.pull_pct[w];
-        return {
-          monday: {
-            title: 'Monday — Snatch + Back Squat (Peaking)',
-            totalMin: 90,
-            sections: [
-              { title: 'Olympic Block', color: 'gold', exercises: [
-                { id: 'zone2_warmup', duration: '15–20 min', rest: 0 },
-                { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
-                { id: 'snatch_floor', sets: 3, reps: 2, pct: olyPct, baseLift: 'snatch', rest: 180 },
-                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1'), buildupNote: 'Peaking — true PR attempt. Stop before a miss.' },
-                { id: 'snatch_pull', sets: 3, reps: 2, pct: pullPct, baseLift: 'snatch', rest: 180 },
-                { id: 'back_squat', sets: 3, reps: 2, pct: B3.bs_mon_pct[w], baseLift: 'bs', rest: 240 },
-              ]},
-              { title: 'Maintenance Hypertrophy', color: 'blue', note: 'RPE 6–7 only. Nothing that causes soreness.', exercises: [
-                { id: 'cable_lateral', sets: 2, repRange: [15, 20], rest: 60 },
-                { id: 'face_pull', sets: 2, repRange: [15, 20], rest: 60 },
-              ]},
-            ],
-          },
-          tuesday: {
-            title: 'Tuesday — Clean & Jerk + Front Squat (Peaking)',
-            totalMin: 90,
-            sections: [
-              { title: 'Olympic Block', color: 'gold', exercises: [
-                { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
-                { id: 'cj_floor', sets: 3, reps: '1+1', pct: olyPct, baseLift: 'cj', rest: 240 },
-                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Peaking — true PR attempt. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
-                { id: 'clean_pull', sets: 3, reps: 2, pct: pullPct, baseLift: 'clean', rest: 180 },
-                { id: 'front_squat', sets: 3, reps: 2, pct: B3.fs_tue_pct[w], baseLift: 'fs', rest: 240 },
-              ]},
-            ],
-          },
-          wednesday: {
-            title: 'Wednesday — Technical (Light)',
-            totalMin: 60,
-            sections: [
-              { title: 'Technical Block', color: 'gold', note: 'Light technical work only — 60–70%. Pure feel.', exercises: [
-                { id: 'power_snatch', sets: 3, reps: 2, pct: 70, baseLift: 'snatch', rest: 120 },
-                { id: 'jerk_rack', sets: 3, reps: 2, pct: 70, baseLift: 'cj', rest: 120 },
-                { id: 'pause_front_squat', sets: 2, reps: 2, pct: 65, baseLift: 'fs', rest: 120 },
-              ]},
-            ],
-          },
-          thursday: {
-            title: 'Thursday — Snatch Daily Max (Peaking)',
-            totalMin: 90,
-            sections: [
-              { title: 'Olympic Block', color: 'gold', exercises: [
-                { id: 'zone2_warmup', duration: '15 min', rest: 0 },
-                { id: 'snatch_warmup', sets: 3, reps: 2, pct: 60, baseLift: 'snatch', rest: 90 },
-                { id: 'snatch_floor', sets: 2, reps: 2, pct: olyPct, baseLift: 'snatch', rest: 240 },
-                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1'), buildupNote: 'Peaking — true PR attempt. Stop before a miss.' },
-                { id: 'snatch_pull', sets: 2, reps: 2, pct: pullPct, baseLift: 'snatch', rest: 180 },
-                { id: 'back_squat', sets: 3, reps: 2, pct: B3.bs_thu_pct[w], baseLift: 'bs', rest: 240 },
-              ]},
-            ],
-          },
-          friday: {
-            title: 'Friday — C&J Daily Max (Peaking)',
-            totalMin: 90,
-            sections: [
-              { title: 'Olympic Block', color: 'gold', exercises: [
-                { id: 'cj_warmup', sets: 2, reps: '2+1', pct: 60, baseLift: 'cj', rest: 90 },
-                { id: 'cj_floor', sets: 2, reps: '1+1', pct: olyPct, baseLift: 'cj', rest: 240 },
-                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 300, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Peaking — true PR attempt. Each attempt = 1 clean + 1 jerk. Stop before a miss.' },
-                { id: 'jerk_rack', sets: 3, reps: 2, pct: 88, baseLift: 'cj', rest: 240 },
-                { id: 'clean_pull', sets: 2, reps: 2, pct: pullPct, baseLift: 'clean', rest: 180 },
-                { id: 'front_squat', sets: 3, reps: 2, pct: B3.fs_fri_pct[w], baseLift: 'fs', rest: 240 },
-              ]},
-              { title: 'Maintenance Hypertrophy', color: 'blue', exercises: [
-                { id: 'flat_bench', sets: 2, repRange: [3, 5], pct: 80, baseLift: 'bench', rest: 180 },
-              ]},
-            ],
-          },
-          saturday: {
-            title: 'Saturday — Competition Simulation',
-            totalMin: 90,
-            sections: [
-              { title: 'Max Effort Block', color: 'gold', note: 'Weeks 10–11: select attempts based on daily max performances in Weeks 9–10.', exercises: [
-                { id: 'snatch_daily_max', sets: null, reps: '1', pct: dmPct, baseLift: 'snatch', rest: 360, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1'), buildupNote: 'Competition simulation — pick attempts per the Guide. Stop before a miss.' },
-                { id: 'cj_daily_max', sets: null, reps: '1+1', pct: dmPct, baseLift: 'cj', rest: 360, isDailyMax: true, buildup: rampOlySaturday(dmPct, '1+1'), buildupNote: 'Competition simulation. Each attempt = 1 clean + 1 jerk.' },
-              ]},
-            ],
-          },
-          sunday: makeDays(B1, 0).sunday,
-        }[dayKey];
-      },
-    },
-    {
-      id: 4,
-      name: 'Week 12: Deload',
-      weeks: 1,
-      startWeek: 12,
-      description: '50% of normal volume. 60–70% intensity. Re-test all maxes at end of week — these become training maxes for the next macrocycle.',
-      getDay: (dayKey) => makeDeloadDays()[dayKey],
-    },
+    { id: 1, name: 'Weeks 1–3: Accumulation', weeks: 3, startWeek: 1,
+      description: 'Technical volume at 65–82.5%. Accessories ramp 70% → 85% → 100% across the three weeks; RIR waves 3 → 2 → 1.',
+      getDay: (dayKey, w) => makeDays(LOAD1, w)[dayKey] },
+    { id: 2, name: 'Week 4: Deload', weeks: 1, startWeek: 4,
+      description: 'Half the work sets, capped 60–70%. Field work halved at full intent. Intervals replaced by easy spin. Receiving loads HOLD.',
+      getDay: (dayKey) => makeDeload()[dayKey] },
+    { id: 3, name: 'Weeks 5–7: Intensification', weeks: 3, startWeek: 5,
+      description: 'Volume work to 77.5%, heavy singles to 87.5%. Accessories restart at ~85% of full.',
+      getDay: (dayKey, w) => makeDays(LOAD2, w)[dayKey] },
+    { id: 4, name: 'Week 8: Deload', weeks: 1, startWeek: 8,
+      description: 'Same reduction as week 4.',
+      getDay: (dayKey) => makeDeload()[dayKey] },
+    { id: 5, name: 'Weeks 9–11: Realization', weeks: 3, startWeek: 9,
+      description: 'Sets drop, intensity peaks. Week 11 tops at 90–92.5% only if the lifts are pristine.',
+      getDay: (dayKey, w) => makeDays(LOAD3, w)[dayKey] },
+    { id: 6, name: 'Week 12: Taper', weeks: 1, startWeek: 12,
+      description: 'Intensity retained, volume stripped. No accessories, no field work, no intervals.',
+      getDay: (dayKey) => makeTaper()[dayKey] },
+    { id: 7, name: 'Week 13: Test', weeks: 1, startWeek: 13,
+      description: 'Seven numbers across four days — snatch, C&J, rack jerk, below-parallel clean, back squat, front squat, bench. All seven become the next block\'s training maxes.',
+      getDay: (dayKey) => makeTest()[dayKey] },
   ],
 
-  // ── Helper: get prescribed weight ─────────────────────────────────────────
   calcWeight(maxes, baseLift, pct) {
     let max = maxes[baseLift];
-    // Clean-only max is optional — jerk-limited lifters set it so clean
-    // variations aren't undertrained; everyone else falls back to C&J.
+    if (baseLift === 'jerk' && !max) max = maxes.cj;
     if (baseLift === 'clean' && !max) max = maxes.cj;
     if (!max || !pct) return null;
-    // Round to nearest 2.5 lbs
     return Math.round((max * pct / 100) / 2.5) * 2.5;
   },
 
-  // ── Helper: get a day's workout ───────────────────────────────────────────
+  // Absolute receiving load, from STATE.receiving (falls back to the start value).
+  recvWeight(recvState, key) {
+    const def = this.receiving[key];
+    if (!def) return null;
+    const cur = (recvState && recvState[key] != null) ? recvState[key] : def.start;
+    return Math.min(cur, def.cap);
+  },
+
   getDayWorkout(blockId, weekInBlock, dayKey) {
     const block = this.blocks.find(b => b.id === blockId);
     if (!block || !block.getDay) return null;
     return block.getDay(dayKey, weekInBlock);
   },
 
-  // The Guide's daily mobility + dynamic prep, as loggable slots at the top of
-  // every training day. Built fresh per call — some blocks' day objects are
-  // shared module constants, so the section must never be a shared reference.
   makePrepSection() {
     return {
-      title: 'Mobility & Prep',
-      color: 'green',
-      note: 'Before touching a bar: daily mobility first, then dynamic prep.',
+      title: 'Prep', color: 'green',
+      note: 'Needs-based only. Ramp the first loaded exposure of a joint or muscle in a session — not every exercise.',
       exercises: [
-        { id: 'daily_mobility', duration: '12 min', rest: 0 },
-        { id: 'presession_prep', duration: '5 min', rest: 0 },
+        { id: 'daily_mobility', duration: '5–8 min', rest: 0 },
+        { id: 'presession_prep', duration: '8 min', rest: 0 },
       ],
     };
   },
 
-  // Full resolver: block/week day, with cutting modifications applied if active.
-  // Deload (block 4) is exempt — Week 12 prescribes its own reduced volume, and
-  // stacking the cutting reduction on top would cut below the doc's prescription.
   getWorkout(blockId, weekInBlock, dayKey, cutting) {
     let day = this.getDayWorkout(blockId, weekInBlock, dayKey);
-    if (cutting && blockId !== 4) day = this.applyCutting(day);
-    // Prepend mobility/prep to every training day (17 min on top of the doc's
-    // total). Shallow copy — never mutate shared day constants in place.
+    // Taper (6) and test (7) prescribe their own reduced volume — never cut them.
+    if (cutting && blockId !== 6 && blockId !== 7) day = this.applyCutting(day);
     if (day && day.sections && !day.isRest) {
-      day = {
-        ...day,
-        totalMin: (day.totalMin || 0) + 17,
-        ...(day.totalMinNoSport ? { totalMinNoSport: day.totalMinNoSport + 17 } : {}),
-        sections: [this.makePrepSection(), ...day.sections],
-      };
+      day = { ...day, totalMin: (day.totalMin || 0) + 17, sections: [this.makePrepSection(), ...day.sections] };
     }
     return day;
   },
 
-  // ── Cutting Phase Modifications (from the program document) ────────────────
-  // In a deficit the goal is muscle RETENTION, which needs far less volume than
-  // building — provided intensity holds. Applied as a transform over any block:
-  //   • Hypertrophy: drop to 2 working sets, RPE 9–10. Exception: face pulls
-  //     (shoulder-health work) stay at full volume.
-  //   • Olympic lifting (lifts, derivatives, pulls, squats, technical, push press):
-  //     drop ONE working set per exercise; keep frequency and percentages identical
-  //     (intensity is what preserves strength and skill in a deficit).
-  //   • Cardio: the doc suggests extra Zone 2 to widen the deficit — Sunday is
-  //     passive rest in this app, so that's a walk on your own time, not a slot here.
-  //   • Plyometrics (jumps): no change — volume is already minimal.
+  // ── Cut phase ─────────────────────────────────────────────────────────────
+  // Competition-lift frequency and set/rep structure are IDENTICAL in both
+  // phases. On a cut: Thursday/Friday top intensity caps at 87.5%, and accessory
+  // + squat volume drops to the C-column counts. Field work and hamstring volume
+  // are unchanged. Saturday intervals hold at 4 × 3 min.
+  CUT_SETS: {
+    incline_db_press: { 4: 3, 3: 3 }, low_high_fly: { 3: 2 },
+    cable_lateral_behind: { 3: 2 }, cable_lateral: { 3: 2, 4: 3, 5: 4 },
+    db_shrug: { 3: 2, 2: 2 }, oh_cable_tri: { 3: 2 }, cable_pressdown: { 3: 2 },
+    standing_calf: { 3: 2 }, seated_calf: { 3: 2 },
+    cable_crunch: { 3: 2 }, hanging_pelvic_curl: { 3: 2 },
+    bench: { 4: 3 }, cs_row: { 4: 3 }, cs_high_row: { 3: 2 }, oa_cable_row: { 3: 2 },
+    reverse_pec_deck: { 3: 2 }, reverse_cable_fly: { 3: 2 },
+    incline_db_curl: { 3: 2 }, cable_curl: { 3: 2 }, leg_ext: { 3: 2 },
+    back_squat: { 3: 2 }, front_squat: { 3: 2 },
+    // Unchanged on a cut — hamstrings, pull-ups, adductors:
+    rdl: { 3: 3 }, nordic: { 2: 2 }, seated_leg_curl: { 3: 3 },
+    copenhagen: { 2: 2 }, weighted_pullup: { 3: 3 },
+  },
+  CUT_INTENSITY_CAP: 87.5,
+
   applyCutting(day) {
-    if (!day || !day.sections) return day; // rest / testing days unaffected
+    if (!day || !day.sections) return day;
     const clone = JSON.parse(JSON.stringify(day));
     clone.cutting = true;
     clone.sections.forEach(sec => {
       sec.exercises.forEach(ex => {
         const def = EX[ex.id];
         if (!def) return;
-        const t = def.type;
-        if (t === 'hypertrophy') {
-          if (ex.id === 'face_pull') return; // mandatory shoulder health — keep full
-          if (typeof ex.sets === 'number' && ex.sets > 2) ex.sets = 2;
-          ex.cutNote = 'Cut: 2 sets · RPE 9–10';
-        } else if (t === 'oly' || t === 'strength' || t === 'technical') {
-          if (typeof ex.sets === 'number' && ex.sets > 1) {
-            ex.sets = ex.sets - 1;
-            ex.cutNote = '−1 set (cut)';
-          }
+        if (def.type === 'oly' && typeof ex.pct === 'number' && ex.pct > this.CUT_INTENSITY_CAP) {
+          ex.pct = this.CUT_INTENSITY_CAP;
+          ex.cutNote = `Cut: capped at ${this.CUT_INTENSITY_CAP}%`;
+          if (ex.buildup) ex.buildup = rampOly(this.CUT_INTENSITY_CAP, ex.reps);
+        }
+        const map = this.CUT_SETS[ex.id];
+        if (map && typeof ex.sets === 'number' && map[ex.sets] != null && map[ex.sets] < ex.sets) {
+          ex.sets = map[ex.sets];
+          ex.cutNote = (ex.cutNote ? ex.cutNote + ' · ' : '') + 'Cut volume';
+        }
+        if (ex.id === 'bike_intervals' && ex.interval) {
+          ex.interval.workSec = 180;
+          ex.duration = '4 × 3 min on / 3 min off';
+          ex.cutNote = 'Cut: hold at 4 × 3 min';
         }
       });
     });
     return clone;
   },
 
-  // Day order for the week
   dayKeys: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
   dayNames: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
 
-  // Lift display names
   liftNames: {
     snatch: 'Snatch',
     cj: 'Clean & Jerk',
-    clean: 'Clean (only)',
+    jerk: 'Jerk (from rack)',
+    clean: 'Clean (below parallel)',
     bs: 'Back Squat',
     fs: 'Front Squat',
-    pp: 'Push Press',
     bench: 'Bench Press',
   },
 };

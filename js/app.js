@@ -6,10 +6,11 @@ const EX_CACHE = {};
 // ─── State ────────────────────────────────────────────────────────────────────
 const STATE = {
   view: 'home',
-  maxes: { snatch: null, cj: null, clean: null, bs: null, fs: null, pp: null, bench: null },
-  program: { blockId: 0, weekInBlock: 0 }, // start on Week 0 Testing; weekInBlock is 0-indexed
+  maxes: { snatch: 155, cj: 205, jerk: 205, clean: 255, bs: 365, fs: 275, bench: 265 },
+  program: { blockId: 1, weekInBlock: 0 }, // 13-week block; weekInBlock is 0-indexed
+  receiving: { hh_clean: 165, recv_clean: 190 }, // absolute loads, progress on catch quality
   cutting: false, // training phase: false = lean bulk, true = cutting (deficit)
-  noSport: false, // false = assume ~2 sport sessions this week; true = reinstate plyos + VO₂max intervals
+  noSport: false, // false = played pickup this week (Saturday intervals skipped); true = no pickup, intervals reinstated
   log: {},           // { 'YYYY-MM-DD': { dayKey, sections: [...], sessionMin } }
   hypertrophyWeights: {}, // { exerciseId: { weight, sets } } last logged weights
   restTimer: { active: false, end: 0, prescribed: 0, interval: null },
@@ -28,6 +29,7 @@ function save() {
   localStorage.setItem('oly_state', JSON.stringify({
     ts: Date.now(), // stamps every save so cloud sync can pick the newest copy
     maxes: STATE.maxes,
+    receiving: STATE.receiving,
     program: STATE.program,
     cutting: STATE.cutting,
     noSport: STATE.noSport,
@@ -81,6 +83,7 @@ function load() {
     const data = JSON.parse(raw);
     Object.assign(STATE.maxes, data.maxes || {});
     Object.assign(STATE.program, data.program || {});
+    Object.assign(STATE.receiving, data.receiving || {});
     STATE.cutting = !!data.cutting;
     STATE.noSport = !!data.noSport;
     STATE.log = data.log || {};
@@ -478,8 +481,21 @@ function hasMaxes() {
 
 // Get prescribed weight for an exercise slot
 function prescribedWeight(ex) {
+  // Receiving drills carry an absolute load that progresses on catch quality,
+  // not a percentage of any max.
+  if (ex.recvKey) return PROGRAM.recvWeight(STATE.receiving, ex.recvKey);
   if (!ex.baseLift || ex.pct == null) return null;
   return PROGRAM.calcWeight(STATE.maxes, ex.baseLift, ex.pct);
+}
+
+// Advance a receiving load one step — only when every rep met the depth standard.
+function bumpReceiving(key, met) {
+  const def = PROGRAM.receiving[key];
+  if (!def) return;
+  if (!STATE.receiving) STATE.receiving = {};
+  const cur = STATE.receiving[key] != null ? STATE.receiving[key] : def.start;
+  STATE.receiving[key] = met ? Math.min(cur + def.step, def.cap) : Math.max(cur - 10, def.start);
+  save(); render();
 }
 
 // Get last weight used for a hypertrophy exercise
@@ -796,7 +812,7 @@ function renderHome() {
   const blockName = block ? block.name : 'Testing Week';
   const weekNum = block ? block.startWeek + weekInBlock : 0;
   const noMaxes = !hasMaxes();
-  const isTestingBlock = blockId === 0;
+  const isTestingBlock = blockId === 7;
   // Maxes are only required once you're running percentage-based blocks.
   const blockStartDisabled = noMaxes && !isTestingBlock;
 
@@ -1090,7 +1106,7 @@ function renderExerciseCard(ex, si, ei, setsLogged) {
           ${ex._startSec != null && STATE.activeWorkout ? `<span class="ex-start">⏱ Start @ ${fmtTime(Math.max(0, STATE.activeWorkout.totalSec - ex._startSec))}</span>` : ''}
           ${setsDisplay ? `<span>${setsDisplay}</span>` : ''}
           ${repDisplay ? `<span>${repDisplay}</span>` : ''}
-          ${pwDisplay ? `<span class="ex-pct">${pwDisplay} (${ex.pct}%)</span>` : ''}
+          ${pwDisplay ? `<span class="ex-pct">${pwDisplay}${ex.pct != null ? ` (${ex.pct}%)` : (ex.recvKey ? ' · catch-quality load' : '')}</span>` : ''}
           ${restDisplay ? `<span class="ex-rest">Rest: ${restDisplay}</span>` : ''}
         </div>
         ${progress ? `<div class="progress-banner">⬆ INCREASE WEIGHT this session</div>` : ''}
@@ -1585,18 +1601,18 @@ function renderSettings() {
         <div class="settings-label">This Week's Sport</div>
         <div class="phase-toggle">
           <button class="phase-btn ${!STATE.noSport ? 'phase-btn-active' : ''}" onclick="setNoSport(false)">
-            <div class="phase-btn-title">Played Sport</div>
-            <div class="phase-btn-sub">~2 sessions (default)</div>
+            <div class="phase-btn-title">Played Pickup</div>
+            <div class="phase-btn-sub">Skip Sat intervals</div>
           </button>
           <button class="phase-btn ${STATE.noSport ? 'phase-btn-active' : ''}" onclick="setNoSport(true)">
-            <div class="phase-btn-title">No Sport</div>
-            <div class="phase-btn-sub">Add intervals + jumps</div>
+            <div class="phase-btn-title">No Pickup</div>
+            <div class="phase-btn-sub">Do Sat intervals</div>
           </button>
         </div>
         <div class="settings-note">
           ${STATE.noSport
             ? 'No-sport week: box jumps (Mon), broad jumps (Thu), and the Wednesday VO₂max intervals are reinstated into your sessions and counted in the time estimates.'
-            : 'Assumes your usual ~2 running-sport sessions, which supply the VO₂max stimulus — so the plyo primers and Wednesday intervals are skipped. Switch to "No Sport" in any week you don\'t play.'}
+            : 'A hard hour of pickup already supplies the interval stimulus, so Saturday\'s bike intervals are skipped. Switch to "No Pickup" in any week you don\'t play. Everything else in the week is unchanged — see the doc\'s pickup matrix for which field session a game replaces on each day.'}
         </div>
       </div>
 
@@ -1727,8 +1743,8 @@ function clearAllData() {
   if (!confirm('Delete ALL workout data? This cannot be undone.')) return;
   localStorage.removeItem('oly_state');
   Object.assign(STATE, {
-    maxes: {snatch:null,cj:null,clean:null,bs:null,fs:null,pp:null,bench:null},
-    program: {blockId:0,weekInBlock:0},
+    maxes: {snatch:155,cj:205,jerk:205,clean:255,bs:365,fs:275,bench:265},
+    program: {blockId:1,weekInBlock:0}, receiving:{hh_clean:165,recv_clean:190},
     cutting: false, noSport: false,
     log: {}, hypertrophyWeights: {}, activeWorkout: null,
   });
