@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PROGRAM DATA — 13-week block
 // Priority order: Olympic weightlifting → Hypertrophy → Athleticism → Longevity
-// Mirrors ~/Desktop/OL-Program-FINAL.md. Edit that doc first, then mirror here.
+// Mirrors the approved Training System document supplied with this repository update.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EX = {
@@ -73,8 +73,8 @@ const EX = {
   },
 
   // ── Strength ──────────────────────────────────────────────────────────────
-  back_squat: { name: 'Back Squat', type: 'strength', baseLift: 'bs', notes: 'No grinding. Stop if the next rep would exceed ~RPE 8.5.', cues: ['Brace before you unrack', 'Knees track toes', 'Drive the floor away'] },
-  front_squat: { name: 'Front Squat', type: 'strength', baseLift: 'fs', notes: 'Specific to the clean receive. Elbows high throughout.', cues: ['Elbows up', 'Upright torso', 'No collapse out of the hole'] },
+  back_squat: { name: 'Back Squat', type: 'strength', baseLift: 'bs', notes: 'No grinding. Stop if the next rep would exceed ~RPE 8.5. If you undershoot the target RPE, add 5–10 lb at the next scheduled exposure; if you overshoot it, reduce 5% immediately.', cues: ['Brace before you unrack', 'Knees track toes', 'Drive the floor away'] },
+  front_squat: { name: 'Front Squat', type: 'strength', baseLift: 'fs', notes: 'Specific to the clean receive. No grinding; stop if the next rep would exceed ~RPE 8.5. If you undershoot the target RPE, add 5–10 lb at the next scheduled exposure; if you overshoot it, reduce 5% immediately.', cues: ['Elbows up', 'Upright torso', 'No collapse out of the hole'] },
   rdl: { name: 'Romanian Deadlift', type: 'hypertrophy', notes: 'Long-length hip extension — squats and cleans do not supply it. ~2 RIR. On Friday so the soreness lands in the weekend, not on heavy cleans.', cues: ['Push the hips back', 'Bar drags the thigh', 'Stop where the hamstring ends, not the back'] },
   bench: { name: 'Bench Press', type: 'hypertrophy', baseLift: 'bench', notes: '3–6 reps — strength-biased on purpose. The three incline slots carry upper-chest hypertrophy.', cues: ['Shoulder blades down and back', 'Touch, no bounce', 'Full lockout'] },
   weighted_pullup: { name: 'Weighted Pull-Up (neutral grip)', type: 'hypertrophy', notes: 'Dip belt. An effective loadable vertical pull.', cues: ['Full hang at the bottom', 'Chest toward the bar', 'Control the descent'] },
@@ -106,26 +106,28 @@ const EX = {
   // ── Legs, calves, trunk ───────────────────────────────────────────────────
   leg_ext: { name: 'Leg Extension', type: 'hypertrophy', notes: 'Rectus femoris — squats under-stimulate it because it crosses the hip. Friday so it cannot degrade Thursday.', cues: ['Full extension', 'Pause at the top', 'Control down'] },
   seated_leg_curl: { name: 'Seated Leg Curl', type: 'hypertrophy', notes: 'Knee-flexion hamstring hypertrophy. Loads better than a Nordic.', cues: ['Full range', 'Slow eccentric'] },
-  nordic: { name: 'Nordic Curl (band-assisted)', type: 'hypertrophy', notes: 'Injury-prevention exposure, not physique volume. Weeks 1–2: 2×3 assisted. Week 3+: 2×4–6 toward unassisted. Stop before uncontrolled collapse.', cues: ['Hips locked out', 'Lower as slowly as you can control', 'Catch with the hands'] },
+  nordic: { name: 'Nordic Curl (band-assisted)', type: 'hypertrophy', bodyweight: true, notes: 'Injury-prevention exposure, not physique volume. Weeks 1–2: 2×3 assisted. Week 3+: 2×4–6 toward unassisted. Stop before uncontrolled collapse.', cues: ['Hips locked out', 'Lower as slowly as you can control', 'Catch with the hands'] },
   standing_calf: { name: 'Standing Calf Raise', type: 'hypertrophy', notes: 'Gastrocnemius. 2s pause in the stretch.', cues: ['Full stretch at the bottom', 'Pause 2s', 'All the way up'] },
   seated_calf: { name: 'Seated Calf Raise', type: 'hypertrophy', notes: 'Soleus bias — the gastroc goes slack at 90° knee flexion. Whether that yields better chronic soleus growth than standing work is unconfirmed and trials disagree; one seated exposure of three is a hedge.', cues: ['Full range', 'Pause at the bottom'] },
   copenhagen: { name: 'Copenhagen Plank', type: 'core', notes: 'Adductors — the common injury in cutting sports. Progresses: 1) bottom knee on bench 2×20s · 2) 2×40s · 3) foot on bench 2×20s · 4) 2×30–40s · 5) + dumbbell on the top hip. Advance when you clear the top of the range on both sides.', cues: ['Hips stacked', 'Do not let the hip sag'] },
   cable_crunch: { name: 'Cable Crunch', type: 'hypertrophy', notes: 'Loaded spinal flexion — small increments, safe near failure. Strong inference, not a head-to-head winner.', cues: ['Curl the ribs to the pelvis', 'Hips stay put', 'Do not hinge'] },
-  hanging_pelvic_curl: { name: 'Hanging Pelvic Curl', type: 'hypertrophy', notes: 'Curl the PELVIS toward the ribs. A straight hanging leg raise is mostly hip flexor.', cues: ['Posterior tilt is the rep', 'Hips curl up, not just legs', 'No swing'] },
+  hanging_pelvic_curl: { name: 'Hanging Pelvic Curl', type: 'hypertrophy', bodyweight: true, notes: 'Curl the PELVIS toward the ribs. A straight hanging leg raise is mostly hip flexor.', cues: ['Posterior tilt is the rep', 'Hips curl up, not just legs', 'No swing'] },
 
   // ── Field / aerobic ───────────────────────────────────────────────────────
-  jumps_cod: { name: 'Jumps + Reactive Agility', type: 'jump', notes: 'AM session, ≥6h before lifting. Maximal intent, low volume. STOP when jump height drops, contacts slow, or landings deteriorate.' },
+  jumps_cod: { name: 'Jumps + Reactive Agility', type: 'jump', notes: 'AM session, ≥6h before lifting. Maximal intent, low volume. Rest 2–4 min between maximal sets. STOP when jump height drops, contacts slow, or landings deteriorate.' },
   sprints_sled: { name: 'Sprints + Resisted Sled', type: 'jump', notes: 'AM session, ≥6h before lifting. Sled ~30% BW is a STARTING load — friction varies by sled and surface, so keep both constant and adjust by feel.' },
   bike_intervals: { name: 'Bike Intervals', type: 'cardio', notes: 'Build INTO each interval, climbing toward ~90–95% max HR in the latter portion. Do not sprint the first minute to force HR up. Skip if pickup already gave ~12+ min above 90% HRmax this week.' },
   zone2: { name: 'Zone 2 Cycling', type: 'cardio', notes: 'Separated ≥6h from lifting. Conversational, ~117–137 bpm. Cycling not running — less impact and eccentric cost.' },
 
   // ── Prep ──────────────────────────────────────────────────────────────────
-  daily_mobility: { name: 'Needs-Based Positional Work', type: 'mobility', notes: 'Only what you need that day: ankle knee-to-wall, adductor rock-backs, thoracic rotations, scapular push-ups, band pull-aparts, PVC pass-throughs, deep-squat pry. If everything moves fine, skip to the bar.' },
-  presession_prep: { name: 'Raise + Empty-Bar Round', type: 'warmup', notes: '3–5 min easy bike/rower/rope, then ONE empty-bar round for the day. Snatch: muscle snatch ×3 · OHS ×3 · snatch press ×3 · hang snatch ×2. C&J: muscle clean ×3 · front squat ×3 · press in split ×3 · tall clean ×2 · jerk footwork ×3. A second round only if the first did not prepare you.' },
+  daily_mobility: { name: 'Needs-Based Positional Work', type: 'mobility', notes: 'Only what you need that day: ankle knee-to-wall, adductor rock-backs, thoracic rotations, scapular push-ups, band pull-aparts, PVC pass-throughs, deep-squat pry. If everything moves fine, skip straight to the bar.' },
+  presession_prep: { name: 'Raise + Two Empty-Bar Rounds', type: 'warmup', notes: 'Raise for 3–5 min on a bike, rower or rope. Then complete TWO day-specific empty-bar rounds. Snatch: muscle snatch ×3 · OHS ×3 · snatch press ×3 · hang snatch ×2. C&J: muscle clean ×3 · front squat ×3 · press in split ×3 · tall clean ×2 · jerk footwork ×3.' },
+  field_warmup: { name: 'Field Warm-Up', type: 'warmup', notes: '5 min easy movement · A-skip, lateral shuffle and backward run 2×15–20 m each · leg swings 10 each direction · 2 accelerations at ~70% · 2 at ~85–90%. Begin maximal work only when movement feels crisp.' },
 };
 
 // ─── Progression tables ───────────────────────────────────────────────────────
 const LOAD1 = { // Weeks 1–3
+  startWeek: 1, fieldPhase: 'foundation', accessoryRamp: [0, 1, 2],
   snatch_vol: [65, 70, 72.5], snatch_hvy: [75, 80, 82.5],
   cj_vol: [65, 70, 72.5], cj_hvy: [75, 80, 82.5],
   jerk_tue: [70, 72.5, 75], jerk_wed: [72.5, 75, 77.5], jerk_fri: [80, 82.5, 85],
@@ -138,57 +140,79 @@ const LOAD1 = { // Weeks 1–3
 };
 
 const LOAD2 = { // Weeks 5–7
+  startWeek: 5, fieldPhase: 'reactive', accessoryRamp: [1, 2, 2],
   snatch_vol: [72.5, 75, 77.5], snatch_hvy: [82.5, 85, 87.5],
   cj_vol: [72.5, 75, 77.5], cj_hvy: [82.5, 85, 87.5],
   jerk_tue: [75, 77.5, 78], jerk_wed: [75, 77.5, 80], jerk_fri: [85, 87.5, 90],
   hh_snatch: [60, 65, 70],
   bs_mon: [75, 77.5, 80], bs_thu: [82.5, 85, 87.5],
   fs_tue: [77.5, 80, 82.5], fs_fri: [80, 82.5, 85],
-  sets: { snVol: 5, cjVol: 5, snHvy: 5, cjHvy: 5, bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: 4 },
+  sets: { snVol: 5, cjVol: 5, snHvy: [5, 5, 4], cjHvy: [5, 5, 4], bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: 4 },
   reps: { bsMon: 4, bsThu: 2, fsTue: 3, fsFri: 2 },
   intervalSec: 240,
 };
 
 const LOAD3 = { // Weeks 9–11
-  snatch_vol: [75, 77.5, 80], snatch_hvy: [85, 87.5, 91],
-  cj_vol: [75, 77.5, 80], cj_hvy: [85, 87.5, 91],
-  jerk_tue: [75, 77.5, 80], jerk_wed: [77.5, 79, 80], jerk_fri: [85, 88.5, 92],
+  startWeek: 9, fieldPhase: 'mixed', accessoryRamp: [1, 2, 2],
+  snatch_vol: [75, 77.5, 80], snatch_hvy: [85, 87.5, 90],
+  cj_vol: [75, 77.5, 80], cj_hvy: [85, 87.5, 90],
+  jerk_tue: [75, 77.5, 80], jerk_wed: [77.5, 79, 80], jerk_fri: [85, 87.5, 90],
   hh_snatch: [65, 67.5, 70],
   bs_mon: [80, 82.5, 85], bs_thu: [85, 87.5, 90],
   fs_tue: [80, 82.5, 85], fs_fri: [82.5, 85, 87.5],
-  sets: { snVol: 4, cjVol: 4, snHvy: 4, cjHvy: 4, bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: 4 },
+  sets: { snVol: 4, cjVol: 4, snHvy: [4, 4, 3], cjHvy: [4, 4, 3], bsMon: 3, bsThu: 3, fsTue: 3, fsFri: 2, jerkFri: [4, 4, 3] },
   reps: { bsMon: 3, bsThu: 2, fsTue: 3, fsFri: 2 },
   intervalSec: 240,
 };
 
-// Accessory ramp across weeks 1–3 of a loading block, and the RIR wave.
+// Accessory ramp. Weeks 1–3 use 70% → 85% → 100%; weeks 5 and 9 restart
+// at ~85%, then weeks 6–7 and 10–11 use the full prescription.
 const RAMP = { 2: [1, 2, 2], 3: [2, 3, 3], 4: [3, 3, 4], 5: [4, 4, 5] };
 const RIR = ['~3 RIR', '~2 RIR', '~1 RIR'];
-function rampSets(full, w) { const r = RAMP[full]; return r ? r[Math.min(w, 2)] : full; }
-function acc(id, full, w, repRange, rest, extra) {
-  return Object.assign({ id, sets: rampSets(full, w), repRange, rest, fullSets: full, rirNote: RIR[Math.min(w, 2)] }, extra || {});
+function rampSets(full, stage) { const r = RAMP[full]; return r ? r[Math.min(stage, 2)] : full; }
+function acc(id, full, phase, repRange, rest, extra) {
+  return Object.assign({
+    id, sets: rampSets(full, phase.ramp), repRange, rest,
+    fullSets: full, cutSets: full, rampStage: phase.ramp,
+    rirNote: RIR[Math.min(phase.rir, 2)],
+  }, extra || {});
 }
 
 // ─── Warm-up ramps ────────────────────────────────────────────────────────────
 function rampOly(targetPct, reps) {
-  const t = Math.round(targetPct), steps = [];
+  const t = Number(targetPct), steps = [];
   [[40, '3', 60], [50, '3', 75], [60, '2', 90], [70, '1', 120]].forEach(([p, r, rest]) => { if (p < t) steps.push({ pct: p, reps: r, rest }); });
-  if (t >= 80) steps.push({ pct: Math.round(t - 8), reps: String(reps), rest: 150 });
-  steps.push({ pct: t, reps: String(reps), rest: 180, top: true });
+  // A heavy-day feeder is a single between 75% and the work weight. The working
+  // percentage itself is NOT a ramp set; adding it here silently adds volume.
+  if (t >= 80) {
+    const feeder = Math.round(Math.max(75, t - 7.5) / 2.5) * 2.5;
+    if (!steps.some(s => s.pct === feeder)) steps.push({ pct: feeder, reps: '1', rest: 150, top: true });
+  }
   return steps;
 }
-const RAMP_PRESS = [{ pct: 50, reps: '5', rest: 60 }, { pct: 75, reps: '3', rest: 90, top: true }];
-const RAMP_PULL = [{ pct: 60, reps: '6', rest: 60, top: true }];
-const RAMP_ONE = [{ pct: 60, reps: '5', rest: 60, top: true }];
+const RAMP_PRESS = [{ relativeToWork: 50, reps: '5', rest: 60 }, { relativeToWork: 75, reps: '3', rest: 90, top: true }];
+const RAMP_PULL = [{ relativeToWork: 60, reps: '6', rest: 60, top: true }];
+const RAMP_ONE = [{ relativeToWork: 60, reps: '5', rest: 60, top: true }];
+
+const COPENHAGEN_STEPS = {
+  1: { label: 'Short lever — bottom knee on bench', duration: '20s/side', targetSec: 20 },
+  2: { label: 'Short lever — bottom knee on bench', duration: '40s/side', targetSec: 40 },
+  3: { label: 'Long lever — foot on bench', duration: '20s/side', targetSec: 20 },
+  4: { label: 'Long lever — foot on bench', duration: '30–40s/side', targetSec: 40 },
+  5: { label: 'Long lever + dumbbell on top hip', duration: '20–30s/side', targetSec: 30 },
+};
 
 // ─── Loading-week day builder ─────────────────────────────────────────────────
 function makeDays(B, w) {
   const P = (a) => a[Math.min(w, a.length - 1)];
+  const N = (v) => Array.isArray(v) ? P(v) : v;
   const S = B.sets, R = B.reps;
-
+  const A = { ramp: B.accessoryRamp[w], rir: w, globalWeek: B.startWeek + w };
+  const peakWeek = B.startWeek === 9 && w === 2;
   return {
     monday: {
       title: 'Monday — Snatch Volume · Back Squat · Push',
+      sessionMinutes: { main: 105 },
       totalMin: 71,
       sections: [
         { title: 'Olympic Block', color: 'gold', exercises: [
@@ -197,69 +221,73 @@ function makeDays(B, w) {
           { id: 'snatch_floor', sets: S.snVol, reps: 2, pct: P(B.snatch_vol), baseLift: 'snatch', rest: 150,
             buildup: rampOly(P(B.snatch_vol), 2), buildupNote: 'Ramp to the work weight. Ramp sets never count toward a set total.' },
           { id: 'snatch_balance', sets: 3, reps: 2, pct: 75, baseLift: 'snatch', rest: 150 },
-          { id: 'back_squat', sets: S.bsMon, reps: R.bsMon, pct: P(B.bs_mon), baseLift: 'bs', rest: 180, buildup: rampOly(P(B.bs_mon), R.bsMon) },
+          { id: 'back_squat', sets: S.bsMon, cutSets: 2, reps: R.bsMon, pct: P(B.bs_mon), baseLift: 'bs', rest: 180, buildup: rampOly(P(B.bs_mon), R.bsMon) },
         ]},
         { title: 'Hypertrophy Block', color: 'blue', exercises: [
-          acc('incline_db_press', 4, w, [6, 8], 150, { buildup: RAMP_PRESS, buildupNote: 'First press of the session — ramp both steps.' }),
-          acc('cable_lateral_behind', 3, w, [12, 15], 90, { note: 'First isolation for this muscle — one set of 12–15 at ~half load first.' }),
-          acc('oh_cable_tri', 3, w, [10, 12], 90),
-          acc('standing_calf', 3, w, [8, 12], 90),
-          acc('cable_crunch', 3, w, [10, 15], 60, { note: 'Pairs with the lateral raise — same tower, different height.' }),
+          acc('incline_db_press', 4, A, [6, 8], 150, { cutSets: 3, slotKey: 'mon_incline', buildup: RAMP_PRESS, buildupNote: 'First press of the session — ramp both steps.' }),
+          acc('cable_lateral_behind', 3, A, [12, 15], 90, { cutSets: 2, slotKey: 'mon_lateral', note: 'First isolation for this muscle — one set of 12–15 at ~half load first.' }),
+          acc('oh_cable_tri', 3, A, [10, 12], 90, { cutSets: 2, slotKey: 'mon_triceps' }),
+          acc('standing_calf', 3, A, [8, 12], 90, { cutSets: 2, slotKey: 'mon_calf' }),
+          acc('cable_crunch', 3, A, [10, 15], 60, { cutSets: 2, slotKey: 'mon_crunch', note: 'Pairs with the lateral raise — same tower, different height.' }),
         ]},
       ],
     },
 
     tuesday: {
       title: 'Tuesday — C&J · Technical Jerk · Front Squat · Bench',
+      sessionMinutes: { field: 35, main: 130 },
       totalMin: 129,
       sections: [
-        { title: 'AM — Jumps + Reactive Agility (≥6h before lifting)', color: 'red',
-          note: '~35 min. Maximal intent, low volume. Stop when quality drops.', exercises: [
-          { id: 'jumps_cod', duration: '35 min', rest: 0, note: w === 0
-            ? 'Pogo 2×10 · CMJ 3×3 · Broad jump + stick 3×3 · Lateral bound + stick 3×3/side · 2 accel-to-stops + 2 submax cuts per side, then 5-10-5 ×3'
-            : 'Pogo 2×10 · Low drop jump 8–12" 3×3 (only if landings are sound) · Broad jump 3×3 · Lateral bound 3×3/side · 5-10-5 ×2 + reactive drill ×2' },
+        { title: 'AM — Jumps + Reactive Agility (≥6h before lifting)', color: 'red', session: 'field',
+          note: '~35 min including the complete field warm-up. Maximal intent, low volume. Stop when quality drops.', exercises: [
+          { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
+          { id: 'jumps_cod', variant: B.fieldPhase, duration: '25 min', rest: 0, note: B.fieldPhase === 'foundation'
+            ? 'Pogo 2×10 · CMJ 3×3 · broad jump + stick 3×3 · lateral bound + stick 3×3/side · 2 controlled accel-to-stops + 2 submax cuts/side, then 5-10-5 ×3.'
+            : B.fieldPhase === 'reactive'
+              ? 'Pogo 2×10 · low drop jump 8–12" 3×3 (only with sound landings) · broad jump 3×3 · lateral bound 3×3/side · 5-10-5 ×2 + reactive drill ×2.'
+              : 'Low hurdle hop 3×3 · CMJ 3×2 · broad jump 3×2 · reactive agility ×4.' },
         ]},
         { title: 'Olympic Block', color: 'gold', exercises: [
           { id: 'jerk_balance', sets: 3, reps: 3, pct: 38, baseLift: 'jerk', rest: 60 },
           { id: 'cj_floor', sets: S.cjVol, reps: '1+1', pct: P(B.cj_vol), baseLift: 'cj', rest: 180, buildup: rampOly(P(B.cj_vol), '1+1') },
           { id: 'jerk_rack', sets: 3, reps: 2, pct: P(B.jerk_tue), baseLift: 'jerk', rest: 150 },
-          { id: 'front_squat', sets: S.fsTue, reps: R.fsTue, pct: P(B.fs_tue), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_tue), R.fsTue) },
+          { id: 'front_squat', sets: S.fsTue, cutSets: 2, reps: R.fsTue, pct: P(B.fs_tue), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_tue), R.fsTue) },
         ]},
         { title: 'Hypertrophy Block', color: 'blue', exercises: [
-          acc('bench', 4, w, [3, 6], 180, { buildup: RAMP_PRESS, buildupNote: 'At 3–6 reps near failure you need both ramp steps.' }),
-          acc('cs_row', 4, w, [8, 10], 120, { buildup: RAMP_PULL }),
-          acc('seated_leg_curl', 3, w, [8, 12], 90),
-          acc('db_shrug', 3, w, [10, 12], 90),
-          acc('cable_lateral', 3, w, [12, 20], 90),
-          acc('incline_db_curl', 3, w, [10, 12], 90, { note: 'Shrug, curl and Copenhagen all run from one bench — grab a heavy pair and a light pair at the start.' }),
-          { id: 'nordic', sets: 2, reps: w < 2 ? '3' : '4–6', rest: 120, note: w < 2 ? 'Weeks 1–2: band-assisted, 2×3.' : 'Week 3+: 2×4–6, toward unassisted eccentrics.' },
-          { id: 'copenhagen', sets: 2, duration: '20–30s/side', rest: 60 },
+          acc('bench', 4, A, [3, 6], 180, { cutSets: 3, slotKey: 'tue_bench', buildup: RAMP_PRESS, buildupNote: 'At 3–6 reps near failure you need both ramp steps.' }),
+          acc('cs_row', 4, A, [8, 10], 120, { cutSets: 3, slotKey: 'tue_row', buildup: RAMP_PULL }),
+          acc('seated_leg_curl', 3, A, [8, 12], 90, { cutSets: 3, slotKey: 'tue_leg_curl' }),
+          acc('db_shrug', 3, A, [10, 12], 90, { cutSets: 2, slotKey: 'tue_shrug' }),
+          acc('cable_lateral', 3, A, [12, 20], 90, { cutSets: 2, slotKey: 'tue_lateral' }),
+          acc('incline_db_curl', 3, A, [10, 12], 90, { cutSets: 2, slotKey: 'tue_curl', note: 'Shrug, curl and Copenhagen all run from one bench — grab a heavy pair and a light pair at the start.' }),
+          { id: 'copenhagen', sets: rampSets(2, A.ramp), fullSets: 2, cutSets: 2, rampStage: A.ramp, duration: '20–30s/side', rest: 60, warmupNote: 'Do one easier short-lever hold before the work sets.' },
         ]},
       ],
     },
 
     wednesday: {
       title: 'Wednesday — Full-Catch Technique · Upper Hypertrophy',
+      sessionMinutes: { main: 110, cardio: 35 },
       totalMin: 109,
       sections: [
         { title: 'Receiving Block', color: 'gold',
           note: 'Below parallel is MANDATORY on the high-hang work, 1s pause. A high catch is a failed rep — drop 10 lb and repeat. Stand every rep completely.', exercises: [
           { id: 'ohs', sets: 2, reps: 5, pct: 52, baseLift: 'snatch', rest: 120 },
-          { id: 'hh_snatch', sets: 4, reps: 2, pct: P(B.hh_snatch), baseLift: 'snatch', rest: 120 },
+          { id: 'hh_snatch', sets: 4, reps: 2, pct: P(B.hh_snatch), baseLift: 'snatch', rest: 120, receivingDepth: true, qualityCeiling: B.startWeek === 9 },
           { id: 'hh_clean', sets: 4, reps: 2, rest: 150, recvKey: 'hh_clean' },
           { id: 'split_jerk_rack', sets: 3, reps: '1–2', pct: P(B.jerk_wed), baseLift: 'jerk', rest: 120 },
         ]},
         { title: 'Hypertrophy Block', color: 'blue', note: 'Eight separate stations — no legitimate pairing. Run it straight with tight rest.', exercises: [
-          acc('incline_db_press', 4, w, [8, 10], 150, { buildup: RAMP_PRESS }),
-          acc('low_high_fly', 3, w, [12, 15], 90),
-          acc('cable_lateral', 5, w, [12, 20], 90),
-          acc('db_shrug', 2, w, [12, 15], 90),
-          acc('oa_cable_row', 3, w, [8, 12], 120, { buildup: RAMP_PULL }),
-          acc('reverse_pec_deck', 3, w, [15, 20], 75),
-          acc('seated_calf', 3, w, [10, 20], 90),
-          acc('cable_pressdown', 3, w, [10, 15], 75),
+          acc('incline_db_press', 4, A, [8, 10], 150, { cutSets: 3, slotKey: 'wed_incline', buildup: RAMP_ONE }),
+          acc('low_high_fly', 3, A, [12, 15], 90, { cutSets: 2, slotKey: 'wed_fly' }),
+          acc('cable_lateral', 5, A, [12, 20], 90, { cutSets: 4, slotKey: 'wed_lateral' }),
+          acc('db_shrug', 2, A, [12, 15], 90, { cutSets: 2, slotKey: 'wed_shrug' }),
+          acc('oa_cable_row', 3, A, [8, 12], 120, { cutSets: 2, slotKey: 'wed_row', buildup: RAMP_PULL }),
+          acc('reverse_pec_deck', 3, A, [15, 20], 75, { cutSets: 2, slotKey: 'wed_rear_delt' }),
+          acc('seated_calf', 3, A, [10, 20], 90, { cutSets: 2, slotKey: 'wed_calf' }),
+          acc('cable_pressdown', 3, A, [10, 15], 75, { cutSets: 2, slotKey: 'wed_pressdown' }),
         ]},
-        { title: 'Zone 2 — separated ≥6h', color: 'green', exercises: [
+        { title: 'Zone 2 — separated ≥6h', color: 'green', session: 'cardio', exercises: [
           { id: 'zone2', duration: '30–40 min', rest: 0 },
         ]},
       ],
@@ -267,67 +295,75 @@ function makeDays(B, w) {
 
     thursday: {
       title: 'Thursday — Heavy Snatch · Back Squat · Push',
+      sessionMinutes: { field: 30, main: 95 },
       totalMin: 92,
       sections: [
-        { title: 'AM — Sprints + Sled (≥6h before lifting)', color: 'red',
+        { title: 'AM — Sprints + Sled (≥6h before lifting)', color: 'red', session: 'field',
           note: '~30 min. Rest long enough that every rep stays fast.', exercises: [
-          { id: 'sprints_sled', duration: '30 min', rest: 0, note: w === 0
-            ? '3 × 15 m resisted sled (~30% BW start), 3 min rest · 3 × 20 m unresisted, 3 min rest'
-            : '3 × 20 m build-up · 3 × flying 20 m off a 20 m run-in, 4 min rest' },
+          { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
+          { id: 'sprints_sled', variant: B.fieldPhase, duration: '20 min', rest: 0, note: B.fieldPhase === 'foundation'
+            ? '3×15 m resisted sled (~30% BW start), 3 min rest · 3×20 m unresisted, 3 min rest.'
+            : B.fieldPhase === 'reactive'
+              ? '3×15 m resisted sled, 3 min rest · 3×flying 20 m off a 20 m run-in, 4 min rest.'
+              : '3×10 m, 3 min rest · 3×30 m, 5 min rest.' },
         ]},
         { title: 'Olympic Block', color: 'gold', exercises: [
-          { id: 'snatch_floor', sets: S.snHvy, reps: 1, pct: P(B.snatch_hvy), baseLift: 'snatch', rest: 180,
+          { id: 'snatch_floor', sets: N(S.snHvy), reps: 1, pct: P(B.snatch_hvy), baseLift: 'snatch', rest: 180,
             buildup: rampOly(P(B.snatch_hvy), 1), buildupNote: 'Week 11 tops at 90–92.5% only if the lifts are pristine.' },
+          ...(peakWeek ? [{ id: 'snatch_floor', slotKey: 'thu_snatch_optional_top', sets: 1, reps: 1, pct: 92.5, baseLift: 'snatch', rest: 240, optional: true, optionalTopSingle: true, note: 'Optional fourth single at up to 92.5% only if every 90% single was pristine.' }] : []),
           { id: 'snatch_balance', sets: 2, reps: 2, pct: 75, baseLift: 'snatch', rest: 120 },
-          { id: 'back_squat', sets: S.bsThu, reps: R.bsThu, pct: P(B.bs_thu), baseLift: 'bs', rest: 180, buildup: rampOly(P(B.bs_thu), R.bsThu) },
+          { id: 'back_squat', sets: S.bsThu, cutSets: 3, reps: R.bsThu, pct: P(B.bs_thu), baseLift: 'bs', rest: 180, buildup: rampOly(P(B.bs_thu), R.bsThu) },
         ]},
         { title: 'Hypertrophy Block', color: 'blue', exercises: [
-          acc('incline_db_press', 3, w, [8, 12], 150, { buildup: RAMP_ONE, buildupNote: 'Third incline exposure this week — one ramp set is enough.' }),
-          acc('cable_lateral', 3, w, [12, 20], 90),
-          acc('standing_calf', 3, w, [8, 15], 90),
-          acc('hanging_pelvic_curl', 3, w, [10, 15], 60),
+          acc('incline_db_press', 3, A, [8, 12], 150, { cutSets: 3, slotKey: 'thu_incline', buildup: RAMP_ONE, buildupNote: 'Third incline exposure this week — one ramp set is enough.' }),
+          acc('cable_lateral', 3, A, [12, 20], 90, { cutSets: 3, slotKey: 'thu_lateral' }),
+          acc('standing_calf', 3, A, [8, 15], 90, { cutSets: 2, slotKey: 'thu_calf' }),
+          acc('hanging_pelvic_curl', 3, A, [10, 15], 60, { cutSets: 2, slotKey: 'thu_core' }),
         ]},
       ],
     },
 
     friday: {
       title: 'Friday — Heavy C&J · Heavy Jerk · Front Squat · Bench',
+      sessionMinutes: { main: 120 },
       totalMin: 87,
       sections: [
         { title: 'Olympic Block', color: 'gold',
           note: 'No clean pulls this block — you clean 255 and power clean 255, so pulling high is the one thing you are already excellent at. That slot goes to cleans you actually receive.', exercises: [
-          { id: 'cj_floor', sets: S.cjHvy, reps: '1+1', pct: P(B.cj_hvy), baseLift: 'cj', rest: 210, buildup: rampOly(P(B.cj_hvy), '1+1') },
-          { id: 'jerk_rack_heavy', sets: S.jerkFri, reps: 1, pct: P(B.jerk_fri), baseLift: 'jerk', rest: 180 },
+          { id: 'cj_floor', sets: N(S.cjHvy), reps: '1+1', pct: P(B.cj_hvy), baseLift: 'cj', rest: 210, buildup: rampOly(P(B.cj_hvy), '1+1') },
+          ...(peakWeek ? [{ id: 'cj_floor', slotKey: 'fri_cj_optional_top', sets: 1, reps: '1+1', pct: 92.5, baseLift: 'cj', rest: 240, optional: true, optionalTopSingle: true, note: 'Optional fourth C&J at up to 92.5% only if every 90% single was pristine.' }] : []),
+          { id: 'jerk_rack_heavy', sets: N(S.jerkFri), reps: 1, pct: P(B.jerk_fri), baseLift: 'jerk', rest: 180 },
+          ...(peakWeek ? [{ id: 'jerk_rack_heavy', slotKey: 'fri_jerk_optional_top', sets: 1, reps: 1, pct: 92.5, baseLift: 'jerk', rest: 240, optional: true, optionalTopSingle: true, note: 'Optional fourth jerk at up to 92.5% only after three technical successes.' }] : []),
           { id: 'recv_clean', sets: 3, reps: 1, rest: 150, recvKey: 'recv_clean' },
-          { id: 'front_squat', sets: S.fsFri, reps: R.fsFri, pct: P(B.fs_fri), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_fri), R.fsFri) },
+          { id: 'front_squat', sets: S.fsFri, cutSets: 2, reps: R.fsFri, pct: P(B.fs_fri), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_fri), R.fsFri) },
         ]},
         { title: 'Hypertrophy Block', color: 'blue', exercises: [
-          acc('rdl', 3, w, [6, 8], 150, { buildup: RAMP_ONE, buildupNote: 'One light ramp set — this is one people skip and should not.' }),
-          acc('bench', 4, w, [3, 6], 180, { buildup: RAMP_PRESS }),
-          acc('cs_high_row', 3, w, [8, 12], 120, { buildup: RAMP_PULL }),
-          acc('weighted_pullup', 3, w, [6, 10], 150),
-          acc('leg_ext', 3, w, [10, 15], 90),
+          acc('rdl', 3, A, [6, 8], 150, { cutSets: 3, slotKey: 'fri_rdl', rirNote: '~2 RIR', buildup: RAMP_ONE, buildupNote: 'One light ramp set — this is one people skip and should not.' }),
+          acc('bench', 4, A, [3, 6], 180, { cutSets: 3, slotKey: 'fri_bench', buildup: RAMP_PRESS }),
+          acc('cs_high_row', 3, A, [8, 12], 120, { cutSets: 2, slotKey: 'fri_high_row', buildup: RAMP_PULL }),
+          acc('weighted_pullup', 3, A, [6, 10], 150, { cutSets: 3, slotKey: 'fri_pullup' }),
+          acc('leg_ext', 3, A, [10, 15], 90, { cutSets: 2, slotKey: 'fri_leg_ext' }),
+          { id: 'nordic', sets: 2, cutSets: 2, reps: A.globalWeek <= 2 ? '3' : '4–6', rest: 120, slotKey: 'fri_nordic', warmupNote: 'Do one easier, more-assisted controlled set first.', note: A.globalWeek <= 2 ? 'Weeks 1–2: band-assisted, 2×3.' : 'Week 3+: 2×4–6, toward unassisted eccentrics. Stop before uncontrolled collapse.' },
         ]},
       ],
     },
 
     saturday: {
       title: 'Saturday — Upper Accessories · Bike Intervals',
+      sessionMinutes: { main: 70 },
       totalMin: 15,          // played pickup → intervals skipped
       totalMinNoSport: 40,   // no pickup → intervals included
       sections: [
         { title: 'Accessories (moved off Friday)', color: 'blue',
           note: 'Isolation only. The last three all run off one dual-pulley tower — reverse fly high, raise and curl low.', exercises: [
-          acc('db_shrug', 3, w, [10, 12], 90),
-          acc('cable_lateral', 4, w, [12, 20], 90),
-          acc('reverse_cable_fly', 3, w, [15, 20], 75),
-          acc('cable_curl', 3, w, [10, 15], 90),
+          acc('db_shrug', 3, A, [10, 12], 90, { cutSets: 2, slotKey: 'sat_shrug' }),
+          acc('cable_lateral', 4, A, [12, 20], 90, { cutSets: 3, slotKey: 'sat_lateral' }),
+          acc('reverse_cable_fly', 3, A, [15, 20], 75, { cutSets: 2, slotKey: 'sat_rear_delt' }),
+          acc('cable_curl', 3, A, [10, 15], 90, { cutSets: 2, slotKey: 'sat_curl' }),
         ]},
         { title: 'Bike Intervals', color: 'red', exercises: [
           { id: 'bike_intervals', duration: `4 × ${B.intervalSec / 60} min on / 3 min off`, rest: 0,
-            interval: { rounds: 4, workSec: B.intervalSec, restSec: 180, lastRest: false },
-            optional: true,
-            optNote: 'Skipped because you played pickup this week — a hard hour already supplied the stimulus. Flip to "No Pickup" in Settings to reinstate.',
+            interval: { warmupSec: 720, rounds: 4, workSec: B.intervalSec, restSec: 180, lastRest: false, cooldownSec: 480 },
             note: 'On a cut, hold at 4 × 3 min rather than progressing to 4 × 4.' },
         ]},
       ],
@@ -339,84 +375,106 @@ function makeDays(B, w) {
 }
 
 // ─── Deload weeks (4 and 8) ───────────────────────────────────────────────────
-function makeDeload() {
+function makeDeload(fieldPhase) {
   const holdNote = 'Receiving load HOLDS on a deload — no progression this week.';
+  const rir = '~4 RIR';
   return {
-    monday: { title: 'Monday — Deload', totalMin: 50, sections: [
+    monday: { title: 'Monday — Deload', totalMin: 70, sessionMinutes: { main: 70 }, sections: [
       { title: 'Olympic Block', color: 'gold', note: 'Half the work sets, capped 60–70%.', exercises: [
+        { id: 'tall_snatch', sets: 1, reps: 3, pct: 30, baseLift: 'snatch', rest: 60 },
         { id: 'drop_snatch', sets: 2, reps: 2, pct: 45, baseLift: 'snatch', rest: 90 },
-        { id: 'snatch_floor', sets: 3, reps: 2, pct: 65, baseLift: 'snatch', rest: 150 },
-        { id: 'back_squat', sets: 2, reps: 4, pct: 67, baseLift: 'bs', rest: 180 },
+        { id: 'snatch_floor', sets: 3, reps: 2, pct: 65, baseLift: 'snatch', rest: 150, buildup: rampOly(65, 2) },
+        { id: 'snatch_balance', sets: 2, reps: 2, pct: 70, baseLift: 'snatch', rest: 120 },
+        { id: 'back_squat', sets: 2, cutSets: 2, reps: 4, pct: 67, baseLift: 'bs', rest: 180, buildup: rampOly(67, 4) },
       ]},
       { title: 'Hypertrophy — half sets, ~4 RIR', color: 'blue', exercises: [
-        { id: 'incline_db_press', sets: 2, repRange: [8, 10], rest: 150 },
-        { id: 'cable_lateral_behind', sets: 2, repRange: [12, 15], rest: 90 },
-        { id: 'cable_crunch', sets: 2, repRange: [10, 15], rest: 60 },
+        { id: 'incline_db_press', sets: 2, cutSets: 2, repRange: [6, 8], rest: 150, rirNote: rir, slotKey: 'mon_incline' },
+        { id: 'cable_lateral_behind', sets: 2, cutSets: 1, repRange: [12, 15], rest: 90, rirNote: rir, slotKey: 'mon_lateral' },
+        { id: 'oh_cable_tri', sets: 2, cutSets: 1, repRange: [10, 12], rest: 90, rirNote: rir, slotKey: 'mon_triceps' },
+        { id: 'standing_calf', sets: 2, cutSets: 1, repRange: [8, 12], rest: 90, rirNote: rir, slotKey: 'mon_calf' },
+        { id: 'cable_crunch', sets: 2, cutSets: 1, repRange: [10, 15], rest: 60, rirNote: rir, slotKey: 'mon_crunch' },
       ]},
     ]},
-    tuesday: { title: 'Tuesday — Deload', totalMin: 55, sections: [
-      { title: 'AM — half volume', color: 'red', exercises: [
-        { id: 'jumps_cod', duration: '18 min', rest: 0, note: 'Half the reps at FULL intent.' },
+    tuesday: { title: 'Tuesday — Deload', totalMin: 95, sessionMinutes: { field: 25, main: 70 }, sections: [
+      { title: 'AM — half volume', color: 'red', session: 'field', exercises: [
+        { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
+        { id: 'jumps_cod', variant: `${fieldPhase}-half`, duration: '15 min', rest: 0, note: `Perform half the ${fieldPhase} block's prescribed reps at FULL intent.` },
       ]},
       { title: 'Olympic Block', color: 'gold', exercises: [
-        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 65, baseLift: 'cj', rest: 180 },
+        { id: 'jerk_balance', sets: 2, reps: 3, pct: 35, baseLift: 'jerk', rest: 60 },
+        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 65, baseLift: 'cj', rest: 180, buildup: rampOly(65, '1+1') },
         { id: 'jerk_rack', sets: 2, reps: 2, pct: 62, baseLift: 'jerk', rest: 150 },
-        { id: 'front_squat', sets: 2, reps: 3, pct: 67, baseLift: 'fs', rest: 180 },
+        { id: 'front_squat', sets: 2, cutSets: 2, reps: 3, pct: 67, baseLift: 'fs', rest: 180, buildup: rampOly(67, 3) },
       ]},
       { title: 'Hypertrophy — half sets, ~4 RIR', color: 'blue', exercises: [
-        { id: 'bench', sets: 2, repRange: [3, 6], rest: 180 },
-        { id: 'cs_row', sets: 2, repRange: [8, 10], rest: 120 },
-        { id: 'cable_lateral', sets: 2, repRange: [12, 20], rest: 90 },
-        { id: 'copenhagen', sets: 2, duration: '20–30s/side', rest: 60 },
+        { id: 'bench', sets: 2, cutSets: 2, repRange: [3, 6], rest: 180, rirNote: rir, slotKey: 'tue_bench' },
+        { id: 'cs_row', sets: 2, cutSets: 2, repRange: [8, 10], rest: 120, rirNote: rir, slotKey: 'tue_row' },
+        { id: 'seated_leg_curl', sets: 2, cutSets: 2, repRange: [8, 12], rest: 90, rirNote: rir, slotKey: 'tue_leg_curl' },
+        { id: 'db_shrug', sets: 2, cutSets: 1, repRange: [10, 12], rest: 90, rirNote: rir, slotKey: 'tue_shrug' },
+        { id: 'cable_lateral', sets: 2, cutSets: 1, repRange: [12, 20], rest: 90, rirNote: rir, slotKey: 'tue_lateral' },
+        { id: 'incline_db_curl', sets: 2, cutSets: 1, repRange: [10, 12], rest: 90, rirNote: rir, slotKey: 'tue_curl' },
+        { id: 'copenhagen', sets: 1, cutSets: 1, duration: '20–30s/side', rest: 60 },
       ]},
     ]},
-    wednesday: { title: 'Wednesday — Deload', totalMin: 45, sections: [
+    wednesday: { title: 'Wednesday — Deload', totalMin: 105, sessionMinutes: { main: 70, cardio: 35 }, sections: [
       { title: 'Receiving Block', color: 'gold', note: holdNote, exercises: [
-        { id: 'hh_snatch', sets: 2, reps: 2, pct: 55, baseLift: 'snatch', rest: 120 },
+        { id: 'ohs', sets: 1, reps: 5, pct: 50, baseLift: 'snatch', rest: 120 },
+        { id: 'hh_snatch', sets: 2, reps: 2, pct: 55, baseLift: 'snatch', rest: 120, receivingDepth: true },
         { id: 'hh_clean', sets: 2, reps: 2, rest: 150, recvKey: 'hh_clean', note: holdNote },
         { id: 'split_jerk_rack', sets: 2, reps: 1, pct: 65, baseLift: 'jerk', rest: 120 },
       ]},
       { title: 'Hypertrophy — half sets', color: 'blue', exercises: [
-        { id: 'incline_db_press', sets: 2, repRange: [8, 10], rest: 150 },
-        { id: 'cable_lateral', sets: 2, repRange: [12, 20], rest: 90 },
-        { id: 'seated_calf', sets: 2, repRange: [10, 20], rest: 90 },
+        { id: 'incline_db_press', sets: 2, cutSets: 2, repRange: [8, 10], rest: 150, rirNote: rir, slotKey: 'wed_incline' },
+        { id: 'low_high_fly', sets: 2, cutSets: 1, repRange: [12, 15], rest: 90, rirNote: rir, slotKey: 'wed_fly' },
+        { id: 'cable_lateral', sets: 3, cutSets: 2, repRange: [12, 20], rest: 90, rirNote: rir, slotKey: 'wed_lateral' },
+        { id: 'db_shrug', sets: 1, cutSets: 1, repRange: [12, 15], rest: 90, rirNote: rir, slotKey: 'wed_shrug' },
+        { id: 'oa_cable_row', sets: 2, cutSets: 1, repRange: [8, 12], rest: 120, rirNote: rir, slotKey: 'wed_row' },
+        { id: 'reverse_pec_deck', sets: 2, cutSets: 1, repRange: [15, 20], rest: 75, rirNote: rir, slotKey: 'wed_rear_delt' },
+        { id: 'seated_calf', sets: 2, cutSets: 1, repRange: [10, 20], rest: 90, rirNote: rir, slotKey: 'wed_calf' },
+        { id: 'cable_pressdown', sets: 2, cutSets: 1, repRange: [10, 15], rest: 75, rirNote: rir, slotKey: 'wed_pressdown' },
       ]},
-      { title: 'Easy aerobic — intervals replaced', color: 'green', exercises: [
-        { id: 'zone2', duration: '25–35 min', rest: 0, note: 'Deload week: easy spin replaces the intervals.' },
+      { title: 'Zone 2 — separated ≥6h', color: 'green', session: 'cardio', exercises: [
+        { id: 'zone2', duration: '30–40 min', rest: 0 },
       ]},
     ]},
-    thursday: { title: 'Thursday — Deload', totalMin: 45, sections: [
-      { title: 'AM — half volume', color: 'red', exercises: [
-        { id: 'sprints_sled', duration: '15 min', rest: 0, note: 'Half the reps at FULL intent after a complete warm-up, or skip if readiness or warm-up quality is poor.' },
+    thursday: { title: 'Thursday — Deload', totalMin: 85, sessionMinutes: { field: 20, main: 65 }, sections: [
+      { title: 'AM — half volume', color: 'red', session: 'field', exercises: [
+        { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
+        { id: 'sprints_sled', variant: `${fieldPhase}-half`, duration: '10 min', rest: 0, note: `Perform half the ${fieldPhase} block's reps at FULL intent; skip if readiness or warm-up quality is poor.` },
       ]},
       { title: 'Olympic Block', color: 'gold', exercises: [
-        { id: 'snatch_floor', sets: 3, reps: 1, pct: 70, baseLift: 'snatch', rest: 180 },
-        { id: 'back_squat', sets: 2, reps: 3, pct: 67, baseLift: 'bs', rest: 180 },
+        { id: 'snatch_floor', sets: 3, reps: 1, pct: 70, baseLift: 'snatch', rest: 180, buildup: rampOly(70, 1) },
+        { id: 'snatch_balance', sets: 1, reps: 2, pct: 70, baseLift: 'snatch', rest: 120 },
+        { id: 'back_squat', sets: 2, cutSets: 2, reps: 3, pct: 67, baseLift: 'bs', rest: 180, buildup: rampOly(67, 3) },
       ]},
       { title: 'Hypertrophy — half sets', color: 'blue', exercises: [
-        { id: 'incline_db_press', sets: 2, repRange: [8, 12], rest: 150 },
-        { id: 'standing_calf', sets: 2, repRange: [8, 15], rest: 90 },
+        { id: 'incline_db_press', sets: 2, cutSets: 2, repRange: [8, 12], rest: 150, rirNote: rir, slotKey: 'thu_incline' },
+        { id: 'cable_lateral', sets: 2, cutSets: 2, repRange: [12, 20], rest: 90, rirNote: rir, slotKey: 'thu_lateral' },
+        { id: 'standing_calf', sets: 2, cutSets: 1, repRange: [8, 15], rest: 90, rirNote: rir, slotKey: 'thu_calf' },
+        { id: 'hanging_pelvic_curl', sets: 2, cutSets: 1, repRange: [10, 15], rest: 60, rirNote: rir, slotKey: 'thu_core' },
       ]},
     ]},
-    friday: { title: 'Friday — Deload', totalMin: 55, sections: [
+    friday: { title: 'Friday — Deload', totalMin: 75, sessionMinutes: { main: 75 }, sections: [
       { title: 'Olympic Block', color: 'gold', exercises: [
-        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 70, baseLift: 'cj', rest: 210 },
+        { id: 'cj_floor', sets: 3, reps: '1+1', pct: 70, baseLift: 'cj', rest: 210, buildup: rampOly(70, '1+1') },
         { id: 'jerk_rack_heavy', sets: 2, reps: 1, pct: 67, baseLift: 'jerk', rest: 180 },
         { id: 'recv_clean', sets: 2, reps: 1, rest: 150, recvKey: 'recv_clean', note: holdNote },
       ]},
       { title: 'Hypertrophy — half sets', color: 'blue', exercises: [
-        { id: 'rdl', sets: 2, repRange: [6, 8], rest: 150 },
-        { id: 'bench', sets: 2, repRange: [3, 6], rest: 180 },
-        { id: 'weighted_pullup', sets: 2, repRange: [6, 10], rest: 150 },
-        { id: 'leg_ext', sets: 2, repRange: [10, 15], rest: 90 },
+        { id: 'rdl', sets: 2, cutSets: 2, repRange: [6, 8], rest: 150, rirNote: '~2 RIR', slotKey: 'fri_rdl' },
+        { id: 'bench', sets: 2, cutSets: 2, repRange: [3, 6], rest: 180, rirNote: rir, slotKey: 'fri_bench' },
+        { id: 'cs_high_row', sets: 2, cutSets: 1, repRange: [8, 12], rest: 120, rirNote: rir, slotKey: 'fri_high_row' },
+        { id: 'weighted_pullup', sets: 2, cutSets: 2, repRange: [6, 10], rest: 150, rirNote: rir, slotKey: 'fri_pullup' },
+        { id: 'leg_ext', sets: 2, cutSets: 1, repRange: [10, 15], rest: 90, rirNote: rir, slotKey: 'fri_leg_ext' },
+        { id: 'nordic', sets: 1, cutSets: 1, reps: '4–6', rest: 120, slotKey: 'fri_nordic', note: 'One controlled deload exposure; stop before collapse.' },
       ]},
     ]},
-    saturday: { title: 'Saturday — Deload', totalMin: 40, sections: [
+    saturday: { title: 'Saturday — Deload', totalMin: 55, sessionMinutes: { main: 55 }, sections: [
       { title: 'Accessories — half sets', color: 'blue', exercises: [
-        { id: 'db_shrug', sets: 2, repRange: [10, 12], rest: 90 },
-        { id: 'cable_lateral', sets: 2, repRange: [12, 20], rest: 90 },
-        { id: 'reverse_cable_fly', sets: 2, repRange: [15, 20], rest: 75 },
-        { id: 'cable_curl', sets: 2, repRange: [10, 15], rest: 90 },
+        { id: 'db_shrug', sets: 2, cutSets: 1, repRange: [10, 12], rest: 90, rirNote: rir, slotKey: 'sat_shrug' },
+        { id: 'cable_lateral', sets: 2, cutSets: 2, repRange: [12, 20], rest: 90, rirNote: rir, slotKey: 'sat_lateral' },
+        { id: 'reverse_cable_fly', sets: 2, cutSets: 1, repRange: [15, 20], rest: 75, rirNote: rir, slotKey: 'sat_rear_delt' },
+        { id: 'cable_curl', sets: 2, cutSets: 1, repRange: [10, 15], rest: 90, rirNote: rir, slotKey: 'sat_curl' },
       ]},
       { title: 'Easy aerobic', color: 'green', exercises: [
         { id: 'zone2', duration: '25–35 min', rest: 0 },
@@ -430,85 +488,135 @@ function makeDeload() {
 function makeTaper() {
   const noAcc = 'No accessories anywhere in week 12 — one week costs nothing measurable and it makes the taper unambiguous.';
   return {
-    monday: { title: 'Monday — Taper', totalMin: 35, note: noAcc, sections: [
+    monday: { title: 'Monday — Taper', totalMin: 35, sessionMinutes: { main: 35 }, note: noAcc, sections: [
       { title: 'Taper', color: 'gold', exercises: [
         { id: 'snatch_floor', sets: 3, reps: 1, pct: 72, baseLift: 'snatch', rest: 180, buildup: rampOly(72, 1) },
-        { id: 'back_squat', sets: 2, reps: 2, pct: 70, baseLift: 'bs', rest: 180 },
+        { id: 'back_squat', sets: 2, reps: 2, pct: 70, baseLift: 'bs', rest: 180, buildup: rampOly(70, 2) },
       ]},
     ]},
-    tuesday: { title: 'Tuesday — Taper', totalMin: 35, note: noAcc, sections: [
+    tuesday: { title: 'Tuesday — Taper', totalMin: 35, sessionMinutes: { main: 35 }, note: noAcc, sections: [
       { title: 'Taper', color: 'gold', exercises: [
         { id: 'cj_floor', sets: 3, reps: '1+1', pct: 72, baseLift: 'cj', rest: 210, buildup: rampOly(72, '1+1') },
-        { id: 'front_squat', sets: 2, reps: 2, pct: 70, baseLift: 'fs', rest: 180 },
+        { id: 'jerk_rack', sets: 2, reps: 1, pct: 67.5, baseLift: 'jerk', rest: 150, buildup: rampOly(67.5, 1) },
+        { id: 'front_squat', sets: 2, reps: 2, pct: 70, baseLift: 'fs', rest: 180, buildup: rampOly(70, 2) },
       ]},
     ]},
-    wednesday: { title: 'Wednesday — Optional Technique', totalMin: 30, sections: [
+    wednesday: { title: 'Wednesday — Optional Technique', totalMin: 30, sessionMinutes: { main: 30 }, sections: [
       { title: 'Optional — ≤60%', color: 'gold', note: 'Optional 30 min. Skip it if you feel flat.', exercises: [
-        { id: 'hh_snatch', sets: 2, reps: 2, pct: 58, baseLift: 'snatch', rest: 120, optional: true },
-        { id: 'hh_clean', sets: 2, reps: 2, rest: 150, recvKey: 'hh_clean', optional: true, note: 'Optional. Hold the weight — do not progress.' },
+        { id: 'hh_snatch', sets: 2, reps: 2, pct: 58, baseLift: 'snatch', rest: 120, optional: true, receivingDepth: true },
+        { id: 'hh_clean', sets: 2, reps: 2, pct: 60, baseLift: 'clean', rest: 150, optional: true, holdReceiving: true, receivingDepth: true, note: 'Optional and capped at 60% of the clean TM. No receiving-load progression.' },
       ]},
     ]},
     thursday: { title: 'Thursday — Rest', isRest: true, totalMin: 0, note: 'Full rest.' },
-    friday: { title: 'Friday — Light Primers', totalMin: 30, sections: [
+    friday: { title: 'Friday — Light Primers', totalMin: 30, sessionMinutes: { main: 30 }, sections: [
       { title: 'Primers', color: 'gold', exercises: [
-        { id: 'snatch_floor', sets: 2, reps: 1, pct: 70, baseLift: 'snatch', rest: 180 },
-        { id: 'cj_floor', sets: 2, reps: '1+1', pct: 70, baseLift: 'cj', rest: 180 },
+        { id: 'snatch_floor', sets: 2, reps: 1, pct: 70, baseLift: 'snatch', rest: 180, buildup: rampOly(70, 1) },
+        { id: 'cj_floor', sets: 2, reps: '1+1', pct: 70, baseLift: 'cj', rest: 180, buildup: rampOly(70, '1+1') },
       ]},
     ]},
-    saturday: { title: 'Saturday — Rest or easy spin', totalMin: 20, sections: [
-      { title: 'Optional', color: 'green', exercises: [{ id: 'zone2', duration: '20 min easy', rest: 0, optional: true }] },
+    saturday: { title: 'Saturday — Rest or easy spin', totalMin: 20, sessionMinutes: { cardio: 20 }, sections: [
+      { title: 'Optional', color: 'green', session: 'cardio', exercises: [{ id: 'zone2', duration: '20 min easy', rest: 0, optional: true }] },
     ]},
     sunday: { title: 'Sunday — Complete Rest', isRest: true, totalMin: 0 },
   };
 }
 
 // ─── Week 13 — test week ──────────────────────────────────────────────────────
-// Uses the app's testing flow: `lifts[]` write achieved maxes straight to STATE.maxes.
+// Uses the app's testing flow: `lifts[]` stage all seven results, then update the
+// next cycle's maxes atomically.
 const TEST_NOTE = 'Rest 5+ min between attempts. Stop at two misses. Nothing else this week — no accessories, no field work, no intervals.';
 function makeTest() {
   return {
     monday: {
       title: 'Day 1 — Snatch 1RM', isTesting: true, totalMin: 60,
       note: 'Fresh, priority 1. Ramp, then take singles. ' + TEST_NOTE,
-      lifts: [{ lift: 'snatch', label: 'Snatch — 1RM', cues: ['Catch depth is not a criterion — a controlled high catch you stand up counts', 'Stop at two misses'] }],
+      lifts: [{ lift: 'snatch', label: 'Snatch — 1RM', testReps: 1, cues: ['Catch depth is not a criterion — a controlled high catch you stand up counts', 'Stop at two misses'] }],
     },
     tuesday: {
       title: 'Day 2 — Clean & Jerk 1RM', isTesting: true, totalMin: 60,
       note: 'Fresh, priority 1. ' + TEST_NOTE,
-      lifts: [{ lift: 'cj', label: 'Clean & Jerk — 1RM', cues: ['Heaviest COMPLETED C&J', 'Clean it but miss the jerk and it does not count'] }],
+      lifts: [{ lift: 'cj', label: 'Clean & Jerk — 1RM', testReps: 1, cues: ['Heaviest COMPLETED C&J', 'Clean it but miss the jerk and it does not count'] }],
     },
-    wednesday: { title: 'Day 3 — Rest', isRest: true, note: 'Rest, or 20 min easy spin.' },
+    wednesday: { title: 'Day 3 — Rest or Optional Easy Spin', totalMin: 20, sessionMinutes: { cardio: 20 }, sections: [
+      { title: 'Optional 20-Minute Easy Spin', color: 'green', session: 'cardio', note: 'Complete rest is equally acceptable.', exercises: [
+        { id: 'zone2', duration: '20 min easy', rest: 0, optional: true },
+      ]},
+    ]},
     thursday: {
       title: 'Day 4 — Rack Jerk 1RM + Below-Parallel Clean', isTesting: true, totalMin: 70,
       note: 'Jerk FIRST — it is the binding constraint. ' + TEST_NOTE,
       lifts: [
-        { lift: 'jerk', label: 'Jerk from Rack — 1RM', cues: ['No press-outs', 'Deliberate recovery from the split, not a scramble'] },
-        { lift: 'clean', label: 'Clean received BELOW PARALLEL — 1RM', cues: ['Heaviest clean you catch below parallel and stand up', 'A high catch does not count', 'The gap to 255 is the deficit this program exists to close'] },
+        { lift: 'jerk', label: 'Jerk from Rack — 1RM', testReps: 1, cues: ['No press-outs', 'Deliberate recovery from the split, not a scramble'] },
+        { lift: 'clean', label: 'Clean received BELOW PARALLEL — 1RM', testReps: 1, cues: ['Heaviest clean you catch below parallel and stand up', 'A high catch does not count', 'The gap to 255 is the deficit this program exists to close'] },
       ],
     },
     friday: {
       title: 'Day 5 — Squats + Bench', isTesting: true, totalMin: 75,
       note: 'Squats as DOUBLES, not singles — less fatigue, and it protects the bench that follows. Convert: a double at RPE 8 = 89% of 1RM, at RPE 9 = 92%. ' + TEST_NOTE,
       lifts: [
-        { lift: 'bs', label: 'Back Squat — 2RM (convert to 1RM)' },
-        { lift: 'fs', label: 'Front Squat — 2RM (convert to 1RM)' },
-        { lift: 'bench', label: 'Bench Press — 1RM' },
+        { lift: 'bs', label: 'Back Squat — heavy double at known RPE', testReps: 2, requiresRpe: true },
+        { lift: 'fs', label: 'Front Squat — heavy double at known RPE', testReps: 2, requiresRpe: true },
+        { lift: 'bench', label: 'Bench Press — 1RM', testReps: 1 },
       ],
     },
     saturday: { title: 'Days 6–7 — Rest', isRest: true, note: 'Rest. Rebuild the next cycle from these seven numbers.' },
-    sunday: { title: 'Days 6–7 — Rest', isRest: true, note: 'When you are ready, switch back to Block 1 in Settings with the new maxes.' },
+    sunday: { title: 'Days 6–7 — Rest', isRest: true, note: 'Apply all seven staged results together; the app then starts the next cycle at week 1.' },
   };
+}
+
+function durationSeconds(value) {
+  const match = String(value || '').match(/(\d+(?:\.\d+)?)/);
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  return /\bmin\b/i.test(String(value)) ? amount * 60 : amount;
+}
+
+// A consistent time-cost model used only to scale a documented session length
+// after readiness/pickup rules remove sets or whole exercises. Unmodified plans
+// retain their authored durations exactly.
+function slotTimeUnits(ex) {
+  if (ex.interval) {
+    const cfg = ex.interval;
+    return (cfg.warmupSec || 0) + (cfg.cooldownSec || 0)
+      + cfg.rounds * cfg.workSec
+      + (cfg.lastRest ? cfg.rounds : Math.max(0, cfg.rounds - 1)) * cfg.restSec;
+  }
+  if (ex.timerSec) return ex.timerSec;
+  if (ex.duration && !ex.sets) return durationSeconds(ex.duration) || 60;
+  const sets = Math.max(1, Number(ex.sets) || 1);
+  const ramp = (ex.buildup || []).reduce((sum, step) => sum + 30 + (Number(step.rest) || 0), 0);
+  return ramp + sets * (30 + (Number(ex.rest) || 60));
+}
+
+function sessionTimeUnits(session) {
+  return (session.sections || []).reduce((total, sec) => total
+    + sec.exercises.reduce((sum, ex) => sum + slotTimeUnits(ex), 0), 0);
+}
+
+function scaleTransformedSessionTime(session, baseline) {
+  if (!baseline || session.skipped || !session.totalMin) return;
+  const after = sessionTimeUnits(session);
+  if (baseline.units && after < baseline.units - 1) {
+    const scaled = baseline.minutes * after / baseline.units;
+    const floor = session.kind === 'lifting' ? 15 : 5;
+    session.totalMin = Math.max(floor, Math.ceil(scaled / 5) * 5);
+  }
+  if (session.contextMaxMinutes != null) {
+    session.totalMin = Math.min(session.totalMin, session.contextMaxMinutes);
+    delete session.contextMaxMinutes;
+  }
 }
 
 // ─── Main program export ──────────────────────────────────────────────────────
 const PROGRAM = {
   exercises: EX,
   testingWeek: makeTest(),
+  copenhagenSteps: COPENHAGEN_STEPS,
 
   // Absolute-load receiving work — progresses on catch quality, not a percentage.
   receiving: {
-    hh_clean:   { name: 'High-Hang Clean', start: 165, cap: 210, step: 5, gate: 'all 8 catches below parallel with a 1s pause' },
-    recv_clean: { name: 'Received Clean',  start: 190, cap: 220, step: 5, gate: 'all 3 below parallel and stood up cleanly' },
+    hh_clean:   { name: 'High-Hang Clean', start: 165, cap: 210, step: 5, requiredReps: 8, gate: 'all 8 catches below parallel with a 1s pause' },
+    recv_clean: { name: 'Received Clean',  start: 190, cap: 220, step: 5, requiredReps: 3, gate: 'all 3 below parallel and stood up cleanly' },
   },
 
   blocks: [
@@ -517,13 +625,13 @@ const PROGRAM = {
       getDay: (dayKey, w) => makeDays(LOAD1, w)[dayKey] },
     { id: 2, name: 'Week 4: Deload', weeks: 1, startWeek: 4,
       description: 'Half the work sets, capped 60–70%. Field work halved at full intent. Intervals replaced by easy spin. Receiving loads HOLD.',
-      getDay: (dayKey) => makeDeload()[dayKey] },
+      getDay: (dayKey) => makeDeload('foundation')[dayKey] },
     { id: 3, name: 'Weeks 5–7: Intensification', weeks: 3, startWeek: 5,
       description: 'Volume work to 77.5%, heavy singles to 87.5%. Accessories restart at ~85% of full.',
       getDay: (dayKey, w) => makeDays(LOAD2, w)[dayKey] },
     { id: 4, name: 'Week 8: Deload', weeks: 1, startWeek: 8,
       description: 'Same reduction as week 4.',
-      getDay: (dayKey) => makeDeload()[dayKey] },
+      getDay: (dayKey) => makeDeload('reactive')[dayKey] },
     { id: 5, name: 'Weeks 9–11: Realization', weeks: 3, startWeek: 9,
       description: 'Sets drop, intensity peaks. Week 11 tops at 90–92.5% only if the lifts are pristine.',
       getDay: (dayKey, w) => makeDays(LOAD3, w)[dayKey] },
@@ -541,6 +649,13 @@ const PROGRAM = {
     if (baseLift === 'clean' && !max) max = maxes.cj;
     if (!max || !pct) return null;
     return Math.round((max * pct / 100) / 2.5) * 2.5;
+  },
+
+  estimate1RM(weight, reps, rpe) {
+    const factors = { 2: { 7: 0.86, 8: 0.89, 9: 0.92 } };
+    const factor = factors[reps] && factors[reps][rpe];
+    if (!weight || !factor) return null;
+    return Math.round((weight / factor) / 2.5) * 2.5;
   },
 
   // Absolute receiving load, from STATE.receiving (falls back to the start value).
@@ -562,20 +677,78 @@ const PROGRAM = {
       title: 'Prep', color: 'green',
       note: 'Needs-based only. Ramp the first loaded exposure of a joint or muscle in a session — not every exercise.',
       exercises: [
-        { id: 'daily_mobility', duration: '5–8 min', rest: 0 },
-        { id: 'presession_prep', duration: '8 min', rest: 0 },
+        { id: 'daily_mobility', duration: 'As needed', timerSec: 180, rest: 0, optional: true },
+        { id: 'presession_prep', duration: '7–10 min', timerSec: 600, rest: 0 },
       ],
     };
   },
 
-  getWorkout(blockId, weekInBlock, dayKey, cutting) {
+  getDayPlan(blockId, weekInBlock, dayKey, cutting, context) {
     let day = this.getDayWorkout(blockId, weekInBlock, dayKey);
-    // Taper (6) and test (7) prescribe their own reduced volume — never cut them.
+    if (!day) return null;
     if (cutting && blockId !== 6 && blockId !== 7) day = this.applyCutting(day);
-    if (day && day.sections && !day.isRest) {
-      day = { ...day, totalMin: (day.totalMin || 0) + 17, sections: [this.makePrepSection(), ...day.sections] };
+    const plan = JSON.parse(JSON.stringify(day));
+    plan.dayKey = dayKey;
+    plan.blockId = blockId;
+    plan.weekInBlock = weekInBlock;
+    const block = this.blocks.find(b => b.id === blockId);
+    plan.programWeek = block ? block.startWeek + weekInBlock : null;
+
+    if (plan.isRest) {
+      plan.sessions = [];
+      return plan;
     }
-    return day;
+    if (plan.isTesting) {
+      plan.sessions = [{
+        id: 'test', kind: 'test', title: plan.title, totalMin: plan.totalMin,
+        isTesting: true, lifts: plan.lifts || [], note: plan.note,
+      }];
+      return this.applyContext(plan, context || {});
+    }
+
+    const groups = [];
+    (plan.sections || []).forEach(sec => {
+      const id = sec.session || 'main';
+      let group = groups.find(g => g.id === id);
+      if (!group) {
+        const kind = id === 'field' ? 'field' : id === 'cardio' ? 'cardio' : 'lifting';
+        group = {
+          id, kind,
+          title: kind === 'field' ? sec.title
+            : kind === 'cardio' ? sec.title
+              : plan.title.replace(/^\w+\s+—\s+/, ''),
+          totalMin: (plan.sessionMinutes && plan.sessionMinutes[id]) || plan.totalMin || 0,
+          sections: [],
+        };
+        groups.push(group);
+      }
+      const copy = { ...sec };
+      delete copy.session;
+      group.sections.push(copy);
+    });
+    groups.forEach(session => {
+      if (session.kind === 'lifting') session.sections.unshift(this.makePrepSection());
+    });
+    plan.sessions = groups;
+    delete plan.sections;
+    return this.applyContext(plan, context || {});
+  },
+
+  getWorkout(blockId, weekInBlock, dayKey, cutting, sessionId, context) {
+    const plan = this.getDayPlan(blockId, weekInBlock, dayKey, cutting, context);
+    if (!plan || plan.isRest) return plan;
+    const session = plan.sessions.find(s => s.id === sessionId)
+      || plan.sessions.find(s => !s.skipped)
+      || plan.sessions[0];
+    return session ? {
+      ...session,
+      dayKey,
+      dayTitle: plan.title,
+      blockId,
+      weekInBlock,
+      programWeek: plan.programWeek,
+      contextNotes: plan.contextNotes || [],
+    } : null;
   },
 
   // ── Cut phase ─────────────────────────────────────────────────────────────
@@ -583,26 +756,17 @@ const PROGRAM = {
   // phases. On a cut: Thursday/Friday top intensity caps at 87.5%, and accessory
   // + squat volume drops to the C-column counts. Field work and hamstring volume
   // are unchanged. Saturday intervals hold at 4 × 3 min.
-  CUT_SETS: {
-    incline_db_press: { 4: 3, 3: 3 }, low_high_fly: { 3: 2 },
-    cable_lateral_behind: { 3: 2 }, cable_lateral: { 3: 2, 4: 3, 5: 4 },
-    db_shrug: { 3: 2, 2: 2 }, oh_cable_tri: { 3: 2 }, cable_pressdown: { 3: 2 },
-    standing_calf: { 3: 2 }, seated_calf: { 3: 2 },
-    cable_crunch: { 3: 2 }, hanging_pelvic_curl: { 3: 2 },
-    bench: { 4: 3 }, cs_row: { 4: 3 }, cs_high_row: { 3: 2 }, oa_cable_row: { 3: 2 },
-    reverse_pec_deck: { 3: 2 }, reverse_cable_fly: { 3: 2 },
-    incline_db_curl: { 3: 2 }, cable_curl: { 3: 2 }, leg_ext: { 3: 2 },
-    back_squat: { 3: 2 }, front_squat: { 3: 2 },
-    // Unchanged on a cut — hamstrings, pull-ups, adductors:
-    rdl: { 3: 3 }, nordic: { 2: 2 }, seated_leg_curl: { 3: 3 },
-    copenhagen: { 2: 2 }, weighted_pullup: { 3: 3 },
-  },
   CUT_INTENSITY_CAP: 87.5,
 
   applyCutting(day) {
     if (!day || !day.sections) return day;
     const clone = JSON.parse(JSON.stringify(day));
     clone.cutting = true;
+    if (clone.sessionMinutes && clone.sessionMinutes.main) {
+      clone.sessionMinutes.main = Math.max(20, clone.sessionMinutes.main - 15);
+    } else if (clone.totalMin) {
+      clone.totalMin = Math.max(20, clone.totalMin - 15);
+    }
     clone.sections.forEach(sec => {
       sec.exercises.forEach(ex => {
         const def = EX[ex.id];
@@ -611,11 +775,16 @@ const PROGRAM = {
           ex.pct = this.CUT_INTENSITY_CAP;
           ex.cutNote = `Cut: capped at ${this.CUT_INTENSITY_CAP}%`;
           if (ex.buildup) ex.buildup = rampOly(this.CUT_INTENSITY_CAP, ex.reps);
+          if (ex.optionalTopSingle && ex.note) {
+            ex.note = ex.note.replace(/every 90% single was pristine/i, 'every required 87.5% single was pristine');
+          }
         }
-        const map = this.CUT_SETS[ex.id];
-        if (map && typeof ex.sets === 'number' && map[ex.sets] != null && map[ex.sets] < ex.sets) {
-          ex.sets = map[ex.sets];
-          ex.cutNote = (ex.cutNote ? ex.cutNote + ' · ' : '') + 'Cut volume';
+        if (typeof ex.cutSets === 'number' && typeof ex.sets === 'number') {
+          const next = typeof ex.rampStage === 'number'
+            ? rampSets(ex.cutSets, ex.rampStage)
+            : ex.cutSets;
+          if (next < ex.sets) ex.cutNote = (ex.cutNote ? ex.cutNote + ' · ' : '') + 'Cut volume';
+          ex.sets = next;
         }
         if (ex.id === 'bike_intervals' && ex.interval) {
           ex.interval.workSec = 180;
@@ -624,6 +793,167 @@ const PROGRAM = {
         }
       });
     });
+    return clone;
+  },
+
+  applyContext(plan, context) {
+    const clone = JSON.parse(JSON.stringify(plan));
+    const baselineTiming = Object.fromEntries(clone.sessions.map(session => [session.id, {
+      minutes: session.totalMin,
+      units: sessionTimeUnits(session),
+    }]));
+    const pickupDays = Array.isArray(context.pickupDays) ? context.pickupDays : [];
+    const timing = context.pickupTiming || {};
+    const copenhagen = context.copenhagen || { step: 1, load: 0 };
+    const technicalProgress = context.technicalProgress || { hhSnatchPct: 65 };
+    const pickupCount = pickupDays.length;
+    const notes = [];
+    const dayCancelsTuesdayField = pickupDays.includes('monday') || pickupDays.includes('tuesday');
+    const cancelThursdayField = pickupDays.includes('wednesday') || pickupDays.includes('thursday');
+    const countFallbackField = pickupCount >= 2 && !dayCancelsTuesdayField && !cancelThursdayField;
+    const cancelTuesdayField = dayCancelsTuesdayField || countFallbackField;
+    const cancelIntervals = pickupDays.some(d => ['wednesday', 'friday', 'saturday'].includes(d)) || pickupCount >= 2;
+
+    clone.sessions.forEach(session => {
+      if (session.kind === 'field'
+          && ((clone.dayKey === 'tuesday' && cancelTuesdayField)
+            || (clone.dayKey === 'thursday' && cancelThursdayField))) {
+        session.skipped = true;
+        session.skipReason = 'Replaced by pickup under the weekly contingency matrix.';
+      }
+      if (cancelIntervals) {
+        session.sections = (session.sections || []).map(sec => ({
+          ...sec,
+          exercises: sec.exercises.filter(ex => ex.id !== 'bike_intervals'),
+        })).filter(sec => sec.exercises.length);
+        if (clone.dayKey === 'saturday' && session.id === 'main') {
+          session.contextMaxMinutes = 25;
+          notes.push('Saturday intervals removed because pickup supplied the hard conditioning stimulus. Upper accessories remain.');
+        }
+      }
+    });
+
+    const lowerIsolation = new Set(['seated_leg_curl', 'standing_calf', 'seated_calf', 'leg_ext', 'nordic', 'copenhagen']);
+    const lowerHeavy = new Set(['back_squat', 'front_squat', 'rdl']);
+    const todayTiming = pickupDays.includes(clone.dayKey) ? timing[clone.dayKey] : null;
+    clone.sessions.forEach(session => {
+      if (session.kind === 'test' && todayTiming === 'before') {
+        session.skipped = true;
+        session.skipReason = 'Pickup before testing: defer the maximal test to a fresh day.';
+        notes.push('Pickup occurred before a test session: maximal testing deferred.');
+        return;
+      }
+      if (session.kind !== 'lifting') return;
+      if (todayTiming === 'after') {
+        session.sections.forEach(sec => { sec.exercises = sec.exercises.filter(ex => !lowerIsolation.has(ex.id)); });
+        notes.push('Same-day pickup after lifting: lower-body isolation removed.');
+      }
+      if (todayTiming === 'before') {
+        session.sections.forEach(sec => {
+          sec.exercises = sec.exercises.filter(ex => {
+            if (lowerHeavy.has(ex.id) || lowerIsolation.has(ex.id) || ex.optionalTopSingle) return false;
+            const def = EX[ex.id];
+            if (def && (def.type === 'oly' || def.type === 'technical')) {
+              if (typeof ex.pct === 'number') ex.pct = Math.min(ex.pct, 70);
+              if (ex.recvKey) { ex.loadCapPct = 70; ex.loadCapBaseLift = 'clean'; }
+              ex.sets = typeof ex.sets === 'number' ? Math.min(ex.sets, 3) : ex.sets;
+              if (ex.buildup && ex.buildup.some(s => s.pct != null)) ex.buildup = rampOly(ex.pct, ex.reps);
+              ex.contextNote = 'Pickup before lifting: technique only, capped at 70%.';
+            }
+            return true;
+          });
+        });
+        notes.push('Same-day pickup before lifting: heavy lower work removed; Olympic work capped at 70%; upper work retained only with normal coordination.');
+      }
+    });
+
+    const readiness = context.readiness || 'green';
+    clone.readiness = readiness;
+    if (readiness === 'yellow') {
+      clone.sessions.forEach(session => {
+        if (session.kind === 'test') {
+          session.skipped = true;
+          session.skipReason = 'Yellow readiness: defer maximal testing.';
+          return;
+        }
+        (session.sections || []).forEach(sec => {
+          sec.exercises = sec.exercises.filter(ex => !ex.optionalTopSingle);
+          sec.exercises.forEach(ex => {
+            const def = EX[ex.id];
+            if (['jumps_cod', 'sprints_sled'].includes(ex.id)) {
+              const workSeconds = durationSeconds(ex.duration);
+              if (workSeconds) ex.duration = `${Math.max(1, Math.round(workSeconds * 0.75 / 60))} min`;
+              ex.contextNote = 'Yellow: perform about 75% of the listed maximal reps at full intent; stop earlier if output drops.';
+            }
+            if (ex.interval) {
+              ex.interval.rounds = Math.max(1, Math.round(ex.interval.rounds * 0.75));
+              ex.duration = `${ex.interval.rounds} × ${ex.interval.workSec / 60} min on / ${ex.interval.restSec / 60} min off`;
+              ex.contextNote = 'Yellow: interval rounds reduced 25%; do not add them back later.';
+            }
+            if (typeof ex.sets === 'number' && def && !['warmup', 'mobility'].includes(def.type)) {
+              ex.sets = Math.max(1, Math.round(ex.sets * 0.75));
+            }
+            if (typeof ex.pct === 'number' && def && ['oly', 'technical', 'strength'].includes(def.type)) {
+              ex.pct = Math.round(ex.pct * 0.95 * 2) / 2;
+              if (ex.buildup && ex.buildup.some(s => s.pct != null)) ex.buildup = rampOly(ex.pct, ex.reps);
+              ex.readinessNote = 'Yellow: load ×0.95';
+            }
+            if (ex.recvKey) ex.loadMultiplier = 0.95;
+          });
+        });
+      });
+      notes.push('Yellow readiness: main-lift loads reduced 5%, work sets reduced 20–30%, optional top singles omitted.');
+    } else if (readiness === 'red') {
+      clone.sessions.forEach(session => {
+        if (session.kind === 'field' || session.kind === 'cardio' || session.kind === 'test') {
+          session.skipped = true;
+          session.skipReason = 'Red readiness: rest; no maximal testing, sprinting, jumping or conditioning.';
+          return;
+        }
+        session.title = 'Optional technique only — red readiness';
+        (session.sections || []).forEach(sec => {
+          sec.exercises = sec.exercises.filter(ex => {
+            const def = EX[ex.id];
+            if (ex.optionalTopSingle) return false;
+            if (!def || !['oly', 'technical', 'warmup', 'mobility'].includes(def.type)) return false;
+            if (typeof ex.pct === 'number') ex.pct = Math.min(ex.pct, 60);
+            if (ex.recvKey) { ex.loadCapPct = 60; ex.loadCapBaseLift = 'clean'; }
+            if (typeof ex.sets === 'number') ex.sets = Math.min(ex.sets, 2);
+            if (ex.buildup && ex.buildup.some(s => s.pct != null)) ex.buildup = rampOly(ex.pct, ex.reps);
+            ex.readinessNote = 'Red: optional technique ≤60% only if coordination is normal.';
+            return true;
+          });
+        });
+        const hasTechnique = (session.sections || []).some(sec => sec.exercises.some(ex => {
+          const def = EX[ex.id];
+          return def && ['oly', 'technical'].includes(def.type);
+        }));
+        if (!hasTechnique) {
+          session.skipped = true;
+          session.skipReason = 'Red readiness: no useful technique work is scheduled in this session.';
+        }
+      });
+      notes.push('Red readiness: rest, or optional technique at ≤60% only with normal coordination. No heavy lifting, squats, field work or max testing.');
+    }
+
+    const copenhagenStep = Math.min(5, Math.max(1, Number(copenhagen.step) || 1));
+    const copenhagenDef = this.copenhagenSteps[copenhagenStep];
+    clone.sessions.forEach(session => (session.sections || []).forEach(sec => sec.exercises.forEach(ex => {
+      if (ex.id === 'hh_snatch' && ex.qualityCeiling) {
+        ex.pct = Math.min(ex.pct, Number(technicalProgress.hhSnatchPct) || 65);
+      }
+      if (ex.id !== 'copenhagen') return;
+      ex.copenhagenStep = copenhagenStep;
+      ex.duration = copenhagenDef.duration;
+      ex.targetSec = copenhagenDef.targetSec;
+      ex.timedSets = true;
+      ex.externalLoad = copenhagenStep === 5 ? Math.max(0, Number(copenhagen.load) || 0) : 0;
+      ex.note = `Step ${copenhagenStep}: ${copenhagenDef.label}. Advance only after both sides clear the target.`;
+    })));
+
+    clone.sessions.forEach(session => scaleTransformedSessionTime(session, baselineTiming[session.id]));
+
+    clone.contextNotes = notes;
     return clone;
   },
 
@@ -640,3 +970,7 @@ const PROGRAM = {
     bench: 'Bench Press',
   },
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { PROGRAM, EX };
+}

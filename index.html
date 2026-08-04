@@ -81,6 +81,7 @@
       padding: 10px 18px; font-size: 14px; transition: border-color .15s;
     }
     .btn-outline:active { border-color: var(--gold); color: var(--gold); }
+    .btn-outline:disabled, .btn-log:disabled { opacity: .42; cursor: not-allowed; }
     .btn-full { width: 100%; text-align: center; display: block; }
     .btn-ghost { color: var(--gold); font-size: 14px; padding: 4px; }
     .btn-ghost-sm { color: var(--text2); font-size: 14px; padding: 6px 10px; border-radius: 8px; }
@@ -118,6 +119,10 @@
     .rules-list li { font-size: 12px; color: var(--text2); line-height: 1.4; }
     .recent-card { background: var(--bg2); border-radius: var(--radius); padding: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); }
     .recent-label { font-size: 13px; color: var(--green); }
+    .session-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .session-start { flex: 1 1 130px; display: flex; flex-direction: column; gap: 3px; align-items: center; justify-content: center; min-height: 44px; }
+    .session-start small { color: inherit; opacity: .72; font-size: 10px; line-height: 1.25; }
+    .today-card .session-start { background: var(--gold); color: #0f0f0f; border-color: var(--gold); font-weight: 700; }
 
     /* ── Workout ──────────────────────────────────────────── */
     .workout-header {
@@ -163,6 +168,8 @@
     .badge { font-size: 10px; font-weight: 800; letter-spacing: .5px; padding: 2px 7px; border-radius: 20px; }
     .badge-gold { background: rgba(232,197,71,.2); color: var(--gold); }
     .badge-green { background: rgba(74,222,128,.2); color: var(--green); }
+    .badge-rir { background: rgba(91,141,238,.18); color: var(--blue); }
+    .badge-stop { background: rgba(248,113,113,.2); color: var(--red); }
     .badge-optional { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
     .ex-optional .ex-name { color: var(--text2); }
     .ex-optional { opacity: .82; }
@@ -171,6 +178,7 @@
     .ex-body { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg); }
     .ex-notes { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 10px; padding: 10px; background: var(--bg2); border-radius: var(--radius-sm); }
     .ex-notes-warn { background: rgba(251,146,60,.08); color: var(--orange); }
+    .ex-notes-stop { background: rgba(248,113,113,.1); color: var(--red); border: 1px solid rgba(248,113,113,.25); }
     .cues { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
     .cue { font-size: 12px; color: var(--text3); padding-left: 4px; }
 
@@ -193,6 +201,13 @@
     .set-reps { color: var(--text); }
     .set-rir { color: var(--blue); font-size: 11px; }
     .set-note { color: var(--text2); font-style: italic; font-size: 11px; }
+    .set-depth { color: var(--green); font-size: 11px; }
+    .attempt-make { color: var(--green); font-size: 10px; font-weight: 800; }
+    .attempt-miss { color: var(--red); font-size: 10px; font-weight: 800; }
+    .grade { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 10px; font-weight: 900; }
+    .grade-a { background: rgba(74,222,128,.2); color: var(--green); }
+    .grade-b { background: rgba(232,197,71,.2); color: var(--gold); }
+    .grade-c { background: rgba(248,113,113,.2); color: var(--red); }
 
     /* ── Log Set Modal ────────────────────────────────────── */
     .modal-backdrop {
@@ -222,6 +237,9 @@
     .rir-btn { flex: 1; background: var(--bg3); color: var(--text); border-radius: 8px; padding: 10px 4px; font-size: 14px; font-weight: 600; text-align: center; }
     .rir-btn.active { background: var(--blue); color: #fff; }
     .rir-btn:active { opacity: .8; }
+    .depth-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .depth-counts label { color: var(--text2); font-size: 11px; }
+    .depth-counts input { margin-top: 5px; }
 
     /* ── Rest Timer Overlay ───────────────────────────────── */
     #timer-overlay {
@@ -296,6 +314,13 @@
     .mini-bar { background: var(--gold); border-radius: 3px 3px 0 0; width: 100%; min-height: 4px; }
     .mini-label { font-size: 8px; color: var(--text3); margin-top: 2px; text-align: center; }
     .ex-history-best { font-size: 12px; color: var(--text2); margin-top: 8px; }
+    .quality-grid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .quality-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+    .quality-title { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+    .quality-stats { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+    .quality-stats b:first-child { color: var(--green); }
+    .quality-stats b:nth-child(2) { color: var(--red); }
+    .quality-grades { color: var(--text3); font-size: 11px; margin-top: 5px; }
     .empty-state { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 14px; }
 
     /* ── Rest day ─────────────────────────────────────────── */
@@ -308,6 +333,9 @@
     .phase-chip { font-size: 9px; font-weight: 800; letter-spacing: .6px; padding: 2px 7px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
     .phase-bulk { background: rgba(74,222,128,.18); color: var(--green); }
     .phase-cut { background: rgba(251,146,60,.2); color: var(--orange); }
+    .readiness-green { background: rgba(74,222,128,.18); color: var(--green); }
+    .readiness-yellow { background: rgba(232,197,71,.2); color: var(--gold); }
+    .readiness-red { background: rgba(248,113,113,.2); color: var(--red); }
     .badge-cut { background: rgba(251,146,60,.2); color: var(--orange); }
 
     /* ── Home day list ────────────────────────────────────── */
@@ -335,6 +363,19 @@
     .phase-btn-cut.phase-btn-active { border-color: var(--orange); background: rgba(251,146,60,.12); }
     .phase-btn-title { font-size: 15px; font-weight: 800; color: var(--text); }
     .phase-btn-sub { font-size: 11px; color: var(--text2); margin-top: 3px; }
+    .readiness-toggle { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .readiness-btn { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 5px; color: var(--text2); font-size: 12px; font-weight: 800; }
+    .readiness-btn.active.readiness-green { border-color: var(--green); }
+    .readiness-btn.active.readiness-yellow { border-color: var(--gold); }
+    .readiness-btn.active.readiness-red { border-color: var(--red); }
+    .pickup-days { display: grid; grid-template-columns: repeat(7,1fr); gap: 5px; }
+    .pickup-day { border: 1px solid var(--border); border-radius: 8px; padding: 9px 2px; color: var(--text2); font-size: 11px; font-weight: 700; }
+    .pickup-day.active { border-color: var(--orange); color: var(--orange); background: rgba(251,146,60,.12); }
+    .pickup-timing { display: grid; grid-template-columns: 80px 1fr; gap: 8px; align-items: center; margin-top: 10px; }
+    .pickup-timing label { font-size: 12px; color: var(--text2); }
+    .copenhagen-status { font-size: 13px; color: var(--text2); line-height: 1.5; }
+    .step-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .step-actions button { flex: 1; }
 
     /* ── Guide ────────────────────────────────────────────── */
     .guide-intro { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 14px; }
