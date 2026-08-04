@@ -1217,6 +1217,25 @@ function openLogSet(cacheKey) {
       </div>
       <input type="hidden" id="inp-rir" value="">
 
+      ${(exDef.type === 'oly' || exDef.type === 'technical') ? `
+      <label class="form-label">Grade this attempt</label>
+      <div class="rir-picker">
+        <button class="rir-btn grade-btn" data-g="A" onclick="pickGrade('A')">A</button>
+        <button class="rir-btn grade-btn" data-g="B" onclick="pickGrade('B')">B</button>
+        <button class="rir-btn grade-btn" data-g="C" onclick="pickGrade('C')">C</button>
+      </div>
+      <div class="modal-hint">A = felt solid, nothing you'd change · B = made it but chased it or the bar drifted · C = miss, or a make you'd be embarrassed by</div>
+      <input type="hidden" id="inp-grade" value="">` : ''}
+
+      ${ex.recvKey ? `
+      <label class="form-label">Catch depth — this is the progression gate</label>
+      <div class="rir-picker">
+        <button class="rir-btn depth-btn" data-d="low" onclick="pickDepth('low')">Below parallel ✓</button>
+        <button class="rir-btn depth-btn" data-d="high" onclick="pickDepth('high')">Caught high ✗</button>
+      </div>
+      <div class="modal-hint">A high catch is a failed rep even if you stood it up. Drop 10 lb and repeat.</div>
+      <input type="hidden" id="inp-depth" value="">` : ''}
+
       <label class="form-label">Notes (optional)</label>
       <input type="text" id="inp-note" class="form-input" placeholder="e.g. felt heavy, good speed...">
 
@@ -1237,7 +1256,18 @@ function pickRep(n) {
 
 function pickRIR(n) {
   $('inp-rir').value = n;
-  document.querySelectorAll('.rir-btn').forEach(b => b.classList.toggle('active', parseInt(b.textContent) === n));
+  document.querySelectorAll('.rir-picker .rir-btn:not(.grade-btn):not(.depth-btn)')
+    .forEach(b => b.classList.toggle('active', parseInt(b.textContent) === n));
+}
+
+function pickGrade(g) {
+  $('inp-grade').value = g;
+  document.querySelectorAll('.grade-btn').forEach(b => b.classList.toggle('active', b.dataset.g === g));
+}
+
+function pickDepth(d) {
+  $('inp-depth').value = d;
+  document.querySelectorAll('.depth-btn').forEach(b => b.classList.toggle('active', b.dataset.d === d));
 }
 
 function closeModal() {
@@ -1260,11 +1290,17 @@ function submitSet(cacheKey) {
   const key = `${si}_${exId}`;
   if (!STATE.activeWorkout.setsLogged[key]) STATE.activeWorkout.setsLogged[key] = [];
 
+  const grade = $('inp-grade') ? $('inp-grade').value : '';
+  const depth = $('inp-depth') ? $('inp-depth').value : '';
   const setObj = { weight, reps, rir, note, ts: Date.now() };
+  if (grade) setObj.grade = grade;
+  if (depth) setObj.depth = depth;
   STATE.activeWorkout.setsLogged[key].push(setObj);
 
-  // Auto-bump the training max when a genuine top attempt beats it.
-  maybeUpdateMax(ex, weight, reps);
+  // Training maxes are LOCKED for the block — see the bounded exception in
+  // checkTmException(), which only fires on a sustained signal, never on a
+  // single good set.
+  noteTopSingle(ex, setObj);
 
   // Track hypertrophy progression
   const exDef = PROGRAM.exercises[exId];
@@ -1281,26 +1317,89 @@ function submitSet(cacheKey) {
   renderWorkout();
 }
 
-// Raise the stored 1RM when a top attempt exceeds it. Only fires on genuine
-// max-intent slots (daily-max Olympic singles, RPE-9 max-effort compounds) — so
-// submaximal/technique/hypertrophy work never touches your maxes. A single sets
-// the 1RM exactly; a multi-rep set uses an Epley estimate. Only ever raises the
-// number, and never overstates (a normal working set won't beat a current max).
-function maybeUpdateMax(ex, weight, reps) {
-  if (!weight || !reps) return;
-  if (!(ex.isDailyMax || ex.isMaxEffort)) return;
+// ─── Training-max policy ──────────────────────────────────────────────────────
+// TMs are LOCKED for the whole 13-week block. A well-programmed single at 85%
+// *should* feel below RPE 8 — that is the design, not evidence the max is wrong.
+// Raising the denominator on that basis inflates every percentage until the
+// ladder stops meaning anything.
+//
+// The one bounded exception: three CONSECUTIVE scheduled non-deload top singles
+// at >=85%, every one graded A at RPE <=7 (RIR >=3), earns +5 lb once. Anything
+// short of that streak resets the counter.
+const TM_EXC = { minPct: 85, minRir: 3, streak: 3, bump: 5 };
+
+function noteTopSingle(ex, setObj) {
   const lift = ex.baseLift;
   if (!lift || !(lift in STATE.maxes)) return;
-  const cur = STATE.maxes[lift] || 0;
-  const est = reps === 1
-    ? weight
-    : Math.round((weight * (1 + reps / 30)) / 2.5) * 2.5; // Epley, rounded to 2.5
-  if (est <= cur) return;
-  STATE.maxes[lift] = est;
+  if (ex.pct == null || ex.pct < TM_EXC.minPct) return;
+  if (STATE.program.blockId === 2 || STATE.program.blockId === 4) return; // deloads don't count
+  if (!STATE.tmWatch) STATE.tmWatch = {};
+
+  const qualifies = setObj.grade === 'A' && setObj.rir !== '' && parseInt(setObj.rir) >= TM_EXC.minRir;
+  const w = STATE.tmWatch[lift] || { streak: 0, lastKey: null };
+  const key = `${STATE.program.blockId}:${STATE.program.weekInBlock}:${ex.id}`;
+  if (w.lastKey === key) return;              // one qualifying exposure per session
+  w.lastKey = key;
+  w.streak = qualifies ? w.streak + 1 : 0;
+  STATE.tmWatch[lift] = w;
+
+  if (w.streak >= TM_EXC.streak) {
+    w.streak = 0;
+    STATE.maxes[lift] = (STATE.maxes[lift] || 0) + TM_EXC.bump;
+    toast(`${PROGRAM.liftNames[lift]} TM +${TM_EXC.bump} lb → ${fmtWeight(STATE.maxes[lift])} · 3 straight A-grade singles at RPE <=7`);
+  }
   save();
-  toast(`🎉 New ${PROGRAM.liftNames[lift]} max: ${fmtWeight(est)}`
-    + (cur ? ` (was ${fmtWeight(cur)})` : '')
-    + (reps > 1 ? ` — est. from ${reps} reps` : ''));
+}
+
+// ─── Receiving-load gate ──────────────────────────────────────────────────────
+// The high-hang clean and the received clean progress on CATCH QUALITY, not a
+// percentage. +5 lb only when every logged rep was below parallel; a session
+// with any high catch drops the load 10 lb, floored at the start weight.
+function settleReceiving(day) {
+  if (!day || !day.sections) return [];
+  const msgs = [];
+  day.sections.forEach((sec, si) => sec.exercises.forEach(ex => {
+    if (!ex.recvKey) return;
+    const sets = (STATE.activeWorkout.setsLogged[`${si}_${ex.id}`]) || [];
+    if (!sets.length) return;
+    // Deloads and the taper hold the load — no progression either way.
+    if ([2, 4, 6].includes(STATE.program.blockId)) {
+      msgs.push(`${PROGRAM.exercises[ex.id].name}: load held (deload/taper).`);
+      return;
+    }
+    const graded = sets.filter(s => s.depth);
+    if (!graded.length) { msgs.push(`${PROGRAM.exercises[ex.id].name}: no depth logged — load unchanged.`); return; }
+    const allLow = graded.every(s => s.depth === 'low');
+    const def = PROGRAM.receiving[ex.recvKey];
+    const before = PROGRAM.recvWeight(STATE.receiving, ex.recvKey);
+    if (!STATE.receiving) STATE.receiving = {};
+    if (allLow) {
+      STATE.receiving[ex.recvKey] = Math.min(before + def.step, def.cap);
+      const after = STATE.receiving[ex.recvKey];
+      msgs.push(after > before
+        ? `${def.name}: all ${graded.length} caught low → ${fmtWeight(after)} next week.`
+        : `${def.name}: at the ${fmtWeight(def.cap)} cap — hold.`);
+    } else {
+      STATE.receiving[ex.recvKey] = Math.max(before - 10, def.start);
+      msgs.push(`${def.name}: a rep was caught high → back to ${fmtWeight(STATE.receiving[ex.recvKey])}.`);
+    }
+  }));
+  if (msgs.length) save();
+  return msgs;
+}
+
+// A-rate at a given percentage band, read across a whole block rather than
+// week to week — it moves with fatigue and your own standard tightens over time.
+function aRate(sinceDays) {
+  const cutoff = Date.now() - (sinceDays || 28) * 864e5;
+  let a = 0, n = 0, miss = 0;
+  Object.values(STATE.log).forEach(d => {
+    Object.values(d.setsLogged || {}).forEach(sets => sets.forEach(s => {
+      if (!s.grade || s.ts < cutoff) return;
+      n++; if (s.grade === 'A') a++; if (s.grade === 'C') miss++;
+    }));
+  });
+  return { attempts: n, aRate: n ? Math.round(a / n * 100) : null, missRate: n ? Math.round(miss / n * 100) : null };
 }
 
 // Lightweight transient toast (self-contained styles so it needs no CSS).
@@ -1326,12 +1425,24 @@ function endWorkout() {
   const sessionSec = STATE.sessionTimer.active
     ? Math.floor((Date.now() - STATE.sessionTimer.start) / 1000) : 0;
 
-  STATE.log[date] = {
+  // Key by date, but never silently overwrite a different session logged the
+  // same calendar day (Wednesday's Zone 2 is separated by 6h; a pickup game can
+  // land anywhere). Suffix instead.
+  let logKey = date;
+  if (STATE.log[logKey] && STATE.log[logKey].dayKey !== dayKey) {
+    let n = 2;
+    while (STATE.log[`${date}#${n}`]) n++;
+    logKey = `${date}#${n}`;
+  }
+  STATE.log[logKey] = {
     dayKey,
     title: day.title,
     setsLogged,
     sessionMin: Math.round(sessionSec / 60),
   };
+
+  // Settle the catch-quality gate on any receiving work before clearing state.
+  const recvMsgs = settleReceiving(day);
 
   // Evaluate double-progression for next session, then clear the live set tracker.
   finalizeHypertrophyProgression();
@@ -1343,7 +1454,8 @@ function endWorkout() {
   STATE.activeWorkout = null;
   save();
 
-  alert(`Workout saved! Session: ${Math.round(sessionSec / 60)} min`);
+  alert(`Workout saved! Session: ${Math.round(sessionSec / 60)} min`
+    + (recvMsgs.length ? '\n\n' + recvMsgs.join('\n') : ''));
   nav('home');
 }
 
