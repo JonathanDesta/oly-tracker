@@ -252,7 +252,7 @@ function makeDays(B, w) {
               : 'Low hurdle hop 3×3 · CMJ 3×2 · broad jump 3×2 · reactive agility ×4.' },
         ]},
         { title: 'Olympic Block', color: 'gold', exercises: [
-          { id: 'jerk_balance', sets: 3, reps: 3, pct: 38, baseLift: 'jerk', rest: 60 },
+          { id: 'jerk_balance', sets: 3, reps: 3, pct: 40, baseLift: 'jerk', rest: 60 },
           { id: 'cj_floor', sets: S.cjVol, reps: '1+1', pct: P(B.cj_vol), baseLift: 'cj', rest: 180, buildup: rampOly(P(B.cj_vol), '1+1') },
           { id: 'jerk_rack', sets: 3, reps: 2, pct: P(B.jerk_tue), baseLift: 'jerk', rest: 150 },
           { id: 'front_squat', sets: S.fsTue, cutSets: 2, reps: R.fsTue, pct: P(B.fs_tue), baseLift: 'fs', rest: 180, buildup: rampOly(P(B.fs_tue), R.fsTue) },
