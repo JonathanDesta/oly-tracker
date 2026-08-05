@@ -35,6 +35,22 @@ function reset() {
 
 test.beforeEach(reset);
 
+test('updateMax rejects garbage, blanks, and negatives; rounds valid input', () => {
+  const { updateMax } = app;
+  updateMax('snatch', '160');
+  assert.equal(STATE.maxes.snatch, 160);
+  updateMax('snatch', 'abc');      // garbage
+  assert.equal(STATE.maxes.snatch, 160);
+  updateMax('snatch', '');         // blank (stray onchange while editing)
+  assert.equal(STATE.maxes.snatch, 160);
+  updateMax('snatch', '-135');     // negative
+  assert.equal(STATE.maxes.snatch, 160);
+  updateMax('snatch', '162');      // rounds to nearest 2.5
+  assert.equal(STATE.maxes.snatch, 162.5);
+  updateMax('snatch', '155');
+  assert.equal(STATE.maxes.snatch, 155);
+});
+
 test('slot-specific double progression requires the rep ceiling and target RIR', () => {
   STATE.activeWorkout = { dayKey:'monday' };
   const monday = { id:'incline_db_press', slotKey:'mon_incline', sets:3, repRange:[6,8], rirNote:'~3 RIR' };

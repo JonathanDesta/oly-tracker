@@ -2323,12 +2323,25 @@ function renderSettings() {
 }
 
 function updateMax(lift, val) {
-  STATE.maxes[lift] = parseFloat(val) || null;
+  // Guard the free-text input: the whole program prescribes off these numbers,
+  // so a blank, a typo ('16o' parses as 16), or a negative must never land.
+  const n = Number(String(val).trim());
+  if (!Number.isFinite(n) || n <= 0 || n > 1000) {
+    if (typeof document !== 'undefined') {
+      toast(`${PROGRAM.liftNames[lift] || lift} unchanged — enter a positive weight.`);
+      renderSettings(); // snap the field back to the stored value
+    }
+    return;
+  }
+  STATE.maxes[lift] = Math.round(n / 2.5) * 2.5;
   save();
+  if (typeof document !== 'undefined') renderSettings();
 }
 
 function updateBlock(val) {
-  STATE.program.blockId = parseInt(val);
+  const id = parseInt(val, 10);
+  if (!PROGRAM.blocks.some(b => b.id === id)) return;
+  STATE.program.blockId = id;
   STATE.program.weekInBlock = 0;
   resetPickupContext();
   save();
@@ -2388,7 +2401,9 @@ function updateCopenhagenLoad(value) {
 function updateWeek(val) {
   const block = PROGRAM.blocks.find(b => b.id === STATE.program.blockId);
   const max = block?.weeks || 4;
-  STATE.program.weekInBlock = Math.min(Math.max(parseInt(val) - 1, 0), max - 1);
+  const wk = parseInt(val, 10);
+  if (!Number.isFinite(wk)) return;
+  STATE.program.weekInBlock = Math.min(Math.max(wk - 1, 0), max - 1);
   resetPickupContext();
   save();
   renderSettings();
@@ -2555,6 +2570,7 @@ if (typeof module !== 'undefined' && module.exports) {
     settleReceiving,
     settleHighHangSnatch,
     settleCopenhagen,
+    updateMax,
     testResultsReady,
     hasMatchingTestAttempt,
     aRate,
