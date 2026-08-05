@@ -107,8 +107,14 @@ test('field variants, explicit warm-ups, and separated session durations are exa
     const p = plan(1, 2, dayKey);
     assert.deepEqual(p.sessions.map(s => [s.id,s.totalMin]), pairs);
     for (const s of p.sessions) {
-      const hasPrep = s.sections?.some(sec => sec.exercises.some(x => x.id === 'presession_prep'));
-      assert.equal(!!hasPrep, s.kind === 'lifting');
+      const prepIds = (s.sections || []).flatMap(sec => sec.exercises)
+        .filter(x => x.id.startsWith('prep_')).map(x => x.id);
+      if (s.kind !== 'lifting') { assert.equal(prepIds.length, 0); continue; }
+      const expected = {
+        monday: 'prep_bar_snatch', tuesday: 'prep_bar_cj', wednesday: 'prep_bar_mixed',
+        thursday: 'prep_bar_snatch', friday: 'prep_bar_cj', saturday: 'prep_accessories',
+      }[dayKey];
+      assert.deepEqual(prepIds, [expected], `${dayKey} prep`);
     }
   }
 });

@@ -1197,7 +1197,11 @@ function renderTestingDay(day) {
     snatch: 'snatch_floor', cj: 'cj_floor', jerk: 'jerk_rack_heavy', clean: 'recv_clean',
     bs: 'back_squat', fs: 'front_squat', bench: 'bench',
   };
-  const prep = ['daily_mobility', 'presession_prep'].map(id => {
+  const testedLifts = (day.lifts || []).map(l => l.lift);
+  const testPrepId = testedLifts.includes('bs') || testedLifts.includes('bench') ? 'prep_bar_squats'
+    : testedLifts.includes('snatch') ? 'prep_bar_snatch'
+      : 'prep_bar_cj'; // C&J day, and jerk+below-parallel-clean day
+  const prep = ['daily_mobility', testPrepId].map(id => {
     const def = PROGRAM.exercises[id];
     const sec = id === 'daily_mobility' ? 180 : 600;
     return `

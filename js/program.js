@@ -121,7 +121,11 @@ const EX = {
 
   // ── Prep ──────────────────────────────────────────────────────────────────
   daily_mobility: { name: 'Needs-Based Positional Work', type: 'mobility', notes: 'Only what you need that day: ankle knee-to-wall, adductor rock-backs, thoracic rotations, scapular push-ups, band pull-aparts, PVC pass-throughs, deep-squat pry. If everything moves fine, skip straight to the bar.' },
-  presession_prep: { name: 'Raise + Two Empty-Bar Rounds', type: 'warmup', notes: 'Raise for 3–5 min on a bike, rower or rope. Then complete TWO day-specific empty-bar rounds. Snatch: muscle snatch ×3 · OHS ×3 · snatch press ×3 · hang snatch ×2. C&J: muscle clean ×3 · front squat ×3 · press in split ×3 · tall clean ×2 · jerk footwork ×3.' },
+  prep_bar_snatch: { name: 'Raise + Snatch Bar Rounds', type: 'warmup', notes: 'Raise 3–5 min on a bike, rower or rope. Then TWO empty-bar snatch rounds: muscle snatch ×3 · overhead squat ×3 · snatch press ×3 · hang snatch ×2.' },
+  prep_bar_cj: { name: 'Raise + Clean & Jerk Bar Rounds', type: 'warmup', notes: 'Raise 3–5 min on a bike, rower or rope. Then TWO empty-bar clean & jerk rounds: muscle clean ×3 · front squat ×3 · press in split ×3 · tall clean ×2 · jerk footwork ×3.' },
+  prep_bar_mixed: { name: 'Raise + Snatch and Clean Bar Rounds', type: 'warmup', notes: 'Raise 3–5 min. This session receives BOTH lifts, so do one round of each. Snatch round: muscle snatch ×3 · overhead squat ×3 · snatch press ×3 · hang snatch ×2. Clean round: muscle clean ×3 · front squat ×3 · press in split ×3 · tall clean ×2 · jerk footwork ×3.' },
+  prep_bar_squats: { name: 'Raise + Squat/Bench Prep', type: 'warmup', notes: 'Raise 3–5 min. Empty-bar back squat ×5 · empty-bar front squat ×5 · scapular push-ups ×10 — then follow each lift\'s ramp to the opening attempt.' },
+  prep_accessories: { name: 'Quick Upper Prep — no barbell today', type: 'warmup', notes: 'Band pull-aparts ×15 · arm circles ×10 each way · scapular push-ups ×10. Then ramp the first isolation exercise with one set of 12–15 at ~half load.' },
   field_warmup: { name: 'Field Warm-Up', type: 'warmup', notes: '5 min easy movement · A-skip, lateral shuffle and backward run 2×15–20 m each · leg swings 10 each direction · 2 accelerations at ~70% · 2 at ~85–90%. Begin maximal work only when movement feels crisp.' },
 };
 
@@ -672,13 +676,33 @@ const PROGRAM = {
     return block.getDay(dayKey, weekInBlock);
   },
 
-  makePrepSection() {
+  // Choose the empty-bar prep from what the session actually contains, so
+  // deloads and the taper self-select (taper Friday primes BOTH lifts).
+  prepIdForSession(session) {
+    let snatchFam = false, cjFam = false, barbell = false;
+    (session.sections || []).forEach(sec => (sec.exercises || []).forEach(ex => {
+      const def = EX[ex.id] || {};
+      if (!['oly', 'technical', 'strength'].includes(def.type)) return;
+      barbell = true;
+      const lift = ex.baseLift || def.baseLift || (ex.recvKey ? 'clean' : null);
+      if (lift === 'snatch') snatchFam = true;
+      if (['cj', 'jerk', 'clean', 'fs'].includes(lift)) cjFam = true;
+    }));
+    if (snatchFam && cjFam) return 'prep_bar_mixed';
+    if (snatchFam) return 'prep_bar_snatch';
+    if (cjFam) return 'prep_bar_cj';
+    return barbell ? 'prep_bar_mixed' : 'prep_accessories';
+  },
+
+  makePrepSection(session) {
+    const prepId = this.prepIdForSession(session || {});
+    const barFree = prepId === 'prep_accessories';
     return {
       title: 'Prep', color: 'green',
       note: 'Needs-based only. Ramp the first loaded exposure of a joint or muscle in a session — not every exercise.',
       exercises: [
         { id: 'daily_mobility', duration: 'As needed', timerSec: 180, rest: 0, optional: true },
-        { id: 'presession_prep', duration: '7–10 min', timerSec: 600, rest: 0 },
+        { id: prepId, duration: barFree ? '2–3 min' : '7–10 min', timerSec: barFree ? 180 : 600, rest: 0 },
       ],
     };
   },
@@ -727,7 +751,7 @@ const PROGRAM = {
       group.sections.push(copy);
     });
     groups.forEach(session => {
-      if (session.kind === 'lifting') session.sections.unshift(this.makePrepSection());
+      if (session.kind === 'lifting') session.sections.unshift(this.makePrepSection(session));
     });
     plan.sessions = groups;
     delete plan.sections;
