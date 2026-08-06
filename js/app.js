@@ -1051,13 +1051,15 @@ function renderHome() {
       : noMaxes ? `<div class="alert alert-warn"><b>Set every training max first</b> — enter them in Settings or complete week 13.</div>` : ''}
 
       <div class="today-card">
-        <div class="today-label">TODAY · ${dayName}</div>
-        <div class="today-day">${todayPlan?.title || dayName}</div>
-        <div class="today-meta">Week ${weekNum} · ${todayPlan?.isRest ? 'Rest day' : `${todayPlan?.sessions.filter(s => !s.skipped).length || 0} available session(s)`}</div>
+        <div class="day-row-peek" onclick="openPreview('${dayKey}')">
+          <div class="today-label">TODAY · ${dayName}</div>
+          <div class="today-day">${todayPlan?.title || dayName}</div>
+          <div class="today-meta">Week ${weekNum} · ${todayPlan?.isRest ? 'Rest day' : `${todayPlan?.sessions.filter(s => !s.skipped).length || 0} available session(s)`} · tap to preview</div>
+        </div>
         ${sessionButtons(todayPlan, dayKey, true)}
       </div>
 
-      <div class="daylist-title">This Week — AM and PM sessions log separately</div>
+      <div class="daylist-title">This Week — tap a day to preview it; sessions log separately</div>
       <div class="day-list">
         ${PROGRAM.dayKeys.map((d, i) => {
           const name = PROGRAM.dayNames[i];
@@ -1071,7 +1073,7 @@ function renderHome() {
           const meta = wd?.isRest ? 'Rest' : `${availableSessions} available session(s) · ~${total} min`;
           return `<div class="day-row day-row-sessions ${isToday ? 'day-row-today' : ''} ${logged ? 'day-row-done' : ''} ${blockStartDisabled ? 'day-row-disabled' : ''}">
             <div class="day-row-left"><div class="day-row-abbr">${name.slice(0, 3)}</div>${logged ? '<div class="day-row-check">✓</div>' : isToday ? '<div class="day-row-now">●</div>' : ''}</div>
-            <div class="day-row-mid"><div class="day-row-focus">${wd?.title || name}</div><div class="day-row-meta">${meta}</div>${sessionButtons(wd, d, false)}</div>
+            <div class="day-row-mid"><div class="day-row-peek" onclick="openPreview('${d}')"><div class="day-row-focus">${wd?.title || name}</div><div class="day-row-meta">${meta} · tap to preview</div></div>${sessionButtons(wd, d, false)}</div>
           </div>`;
         }).join('')}
       </div>
@@ -2495,10 +2497,97 @@ function clearAllData() {
   nav('home');
 }
 
+// ─── Render: Preview (read-only look at any day, no session started) ─────────
+function openPreview(dayKey) {
+  STATE.previewDay = dayKey; // transient — never persisted
+  nav('preview');
+}
+
+function previewExerciseRow(ex) {
+  const def = PROGRAM.exercises[ex.id] || {};
+  const w = prescribedWeight(ex);
+  const reps = ex.reps != null ? ex.reps
+    : ex.repRange ? `${ex.repRange[0]}–${ex.repRange[1]}`
+      : ex.duration || '';
+  const dose = ex.sets ? `${ex.sets} × ${reps}` : (ex.duration || '—');
+  const load = w != null ? fmtWeight(w) + (ex.pct != null ? ` (${ex.pct}%)` : ex.recvKey ? ' · catch-quality' : '')
+    : ex.pct != null ? `${ex.pct}%` : '';
+  const ramp = (ex.buildup || []).map(st => st.pct != null
+    ? `${st.pct}%×${st.reps}`
+    : `${st.relativeToWork}%×${st.reps}`).join(' · ');
+  return `
+    <div class="pv-ex ${ex.optional ? 'ex-optional' : ''}">
+      <div class="pv-ex-main">
+        <span class="pv-ex-name">${escapeHtml(def.name || ex.id)}${ex.optional ? ' <span class="badge badge-optional">OPTIONAL</span>' : ''}</span>
+        <span class="pv-ex-dose">${dose}${load ? ` · ${load}` : ''}${ex.rest ? ` · rest ${fmtTime(ex.rest)}` : ''}${ex.rirNote ? ` · ${ex.rirNote}` : ''}</span>
+      </div>
+      ${ramp ? `<div class="pv-ex-ramp">Ramp: ${ramp}</div>` : ''}
+      ${ex.note || ex.contextNote || ex.readinessNote ? `<div class="pv-ex-note">${escapeHtml(ex.note || ex.contextNote || ex.readinessNote)}</div>` : ''}
+    </div>`;
+}
+
+function renderPreview() {
+  const app = $('app');
+  const dayKey = STATE.previewDay;
+  if (!dayKey) { nav('home'); return; }
+  const plan = dayPlanFor(dayKey);
+  const dayName = PROGRAM.dayNames[PROGRAM.dayKeys.indexOf(dayKey)];
+  const isToday = dayKey === todayDayKey();
+
+  let body;
+  if (!plan || plan.isRest) {
+    body = `<div class="rest-day"><div class="rest-emoji">😴</div>
+      <div class="ex-notes">${escapeHtml(plan?.note || 'Complete rest. Nothing structured.')}</div></div>`;
+  } else if (plan.isTesting) {
+    const t = plan.sessions[0];
+    body = `<div class="preview-session">
+      <div class="pv-session-head"><b>${escapeHtml(t.title)}</b><span>~${t.totalMin} min</span></div>
+      ${t.note ? `<div class="ex-notes">${escapeHtml(t.note)}</div>` : ''}
+      ${(t.lifts || []).map(l => `<div class="pv-ex"><div class="pv-ex-main">
+        <span class="pv-ex-name">${escapeHtml(l.label)}</span>
+        <span class="pv-ex-dose">${l.testReps === 2 ? 'heavy double' : '1RM'}${l.requiresRpe ? ' · RPE required' : ''}</span>
+      </div></div>`).join('')}
+      <button class="btn-primary btn-full" onclick="startWorkout('${dayKey}', 'test')">Start Test Session</button>
+    </div>`;
+  } else {
+    body = plan.sessions.map(sess => {
+      const done = sessionCompleted(dayKey, sess.id, plan.programWeek);
+      const label = sess.kind === 'field' ? 'AM Field' : sess.kind === 'cardio' ? 'Zone 2' : 'Lift';
+      return `<div class="preview-session ${sess.skipped ? 'ex-optional' : ''}">
+        <div class="pv-session-head">
+          <b>${done ? '✓ ' : ''}${label} — ${escapeHtml(sess.title || '')}</b>
+          <span>~${sess.totalMin || '?'} min</span>
+        </div>
+        ${sess.skipped ? `<div class="ex-notes ex-notes-warn">Omitted: ${escapeHtml(sess.skipReason || '')}</div>` : ''}
+        ${(sess.sections || []).map(sec => `
+          <div class="pv-section">
+            <div class="pv-section-title">${escapeHtml(sec.title)}</div>
+            ${sec.note ? `<div class="pv-section-note">${escapeHtml(sec.note)}</div>` : ''}
+            ${sec.exercises.map(previewExerciseRow).join('')}
+          </div>`).join('')}
+        ${!sess.skipped ? `<button class="btn-primary btn-full" onclick="startWorkout('${dayKey}', '${sess.id}')">${done ? 'Repeat' : 'Start'} ${label} Session</button>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  app.innerHTML = `
+    <div class="page preview-page">
+      <div class="workout-header" style="position:static">
+        <button class="btn-ghost" onclick="nav('home')">‹ Back</button>
+        <div class="page-title" style="margin:0">${dayName}${isToday ? ' · Today' : ''} — Preview</div>
+        <span></span>
+      </div>
+      ${plan?.contextNotes?.length ? `<div class="alert alert-warn">${plan.contextNotes.map(escapeHtml).join('<br>')}</div>` : ''}
+      <div class="today-meta" style="margin-bottom:12px">${escapeHtml(plan?.title || '')} · Week ${plan?.programWeek ?? '—'} · nothing starts until you tap Start</div>
+      ${body}
+    </div>`;
+}
+
 // ─── Main render ──────────────────────────────────────────────────────────────
 function render() {
   switch (STATE.view) {
     case 'home':    renderHome(); break;
+    case 'preview': renderPreview(); break;
     case 'workout': renderWorkout(); break;
     case 'history': renderHistory(); break;
     case 'guide':   renderGuide(); break;
