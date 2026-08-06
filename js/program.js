@@ -113,9 +113,22 @@ const EX = {
   cable_crunch: { name: 'Cable Crunch', type: 'hypertrophy', notes: 'Loaded spinal flexion — small increments, safe near failure. Strong inference, not a head-to-head winner.', cues: ['Curl the ribs to the pelvis', 'Hips stay put', 'Do not hinge'] },
   hanging_pelvic_curl: { name: 'Hanging Pelvic Curl', type: 'hypertrophy', bodyweight: true, notes: 'Curl the PELVIS toward the ribs. A straight hanging leg raise is mostly hip flexor.', cues: ['Posterior tilt is the rep', 'Hips curl up, not just legs', 'No swing'] },
 
-  // ── Field / aerobic ───────────────────────────────────────────────────────
-  jumps_cod: { name: 'Jumps + Reactive Agility', type: 'jump', notes: 'AM session, ≥6h before lifting. Maximal intent, low volume. Rest 2–4 min between maximal sets. STOP when jump height drops, contacts slow, or landings deteriorate.' },
-  sprints_sled: { name: 'Sprints + Resisted Sled', type: 'jump', notes: 'AM session, ≥6h before lifting. Sled ~30% BW is a STARTING load — friction varies by sled and surface, so keep both constant and adjust by feel.' },
+  // ── Field — individual drills, loggable like lifts ────────────────────────
+  pogo_hops: { name: 'Pogo Hops', type: 'jump', bodyweight: true, notes: 'Stiff-ankle elastic bounces — reactive, not maximal. Minimal knee bend.', cues: ['Ankles like springs', 'Short ground contact', 'Tall posture'] },
+  cmj: { name: 'Countermovement Jump', type: 'jump', bodyweight: true, notes: 'Maximal vertical intent every rep. STOP the exercise when height visibly drops.', cues: ['Dip fast, jump faster', 'Full arm swing', 'Stick the landing quietly'] },
+  broad_jump: { name: 'Broad Jump + Stick', type: 'jump', bodyweight: true, notes: 'Maximal horizontal jump, stuck landing — no stumble, no extra hop.', cues: ['Big arm drive', 'Land in a quarter squat', 'Hold the landing 2 s'] },
+  lateral_bound: { name: 'Lateral Bound + Stick', type: 'jump', bodyweight: true, notes: 'Per side. Push laterally off one leg, stick on the other.', cues: ['Push, don\'t step', 'Stick one-legged, knee steady', 'Hold 2 s before the next'] },
+  accel_stop: { name: 'Accel-to-Stop + Submax Cuts', type: 'jump', bodyweight: true, notes: 'Controlled prep for the shuttle: 2 accelerate-and-brake runs, then 2 sub-maximal direction cuts per side.', cues: ['Brake low and quiet', 'Chest over toes on the cut'] },
+  shuttle_5105: { name: '5-10-5 Shuttle', type: 'jump', bodyweight: true, notes: 'Pro-agility. Maximal intent; stop the exercise when times visibly slow.', cues: ['Stay low through the turns', 'Push off the outside leg', 'Eyes forward, not down'] },
+  drop_jump: { name: 'Low Drop Jump (8–12" box)', type: 'jump', bodyweight: true, gymOnly: true, notes: 'Step off the box, minimal ground contact, straight into a maximal jump. ONLY with sound landings — if landings deteriorate, switch to countermovement jumps.', cues: ['Step off, don\'t jump off', 'Ground is hot — leave it fast', 'Land like the broad jump'] },
+  hurdle_hop: { name: 'Low Hurdle Hop', type: 'jump', bodyweight: true, gymOnly: true, notes: 'Continuous double-leg hops over low hurdles. Elastic, short contacts.', cues: ['Bounce, don\'t squat-jump', 'Arms drive the rhythm'] },
+  reactive_drill: { name: 'Reactive Agility', type: 'jump', bodyweight: true, notes: 'React to a CUE, not a cone — ball drop, partner point, or a random phone timer deciding left/right. The perceptual half is the point.', cues: ['Move on the cue, not before', 'First step wins'] },
+  sled_sprint: { name: 'Resisted Sled Sprint — 15 m', type: 'jump', gymOnly: true, notes: '~30% BW is a STARTING load — friction varies by sled and surface, so keep both constant and adjust by feel. Log the added load as the weight.', cues: ['45° body lean', 'Punch the ground back', 'Full effort, full recovery'] },
+  sprint_20: { name: 'Sprint — 20 m', type: 'jump', bodyweight: true, notes: 'Maximal acceleration from a standing start.', cues: ['Push the first 10 m', 'Rise gradually, no pop-up'] },
+  sprint_build_20: { name: 'Build-Up — 20 m', type: 'jump', bodyweight: true, notes: 'Progressive build to ~90% across 20 m. Primer for the flying sprints.', cues: ['Smooth acceleration', 'Tall and relaxed at the top end'] },
+  flying_20: { name: 'Flying 20 m (20 m run-in)', type: 'jump', bodyweight: true, notes: 'Build through 20 m, then hold MAXIMAL velocity for 20 m. The upright top-speed exposure accelerations don\'t give.', cues: ['Relax the face and hands', 'Fast hips, tall posture', 'Don\'t reach — cycle'] },
+  sprint_10: { name: 'Sprint — 10 m', type: 'jump', bodyweight: true, notes: 'Pure acceleration.', cues: ['Violent first three steps', 'Stay low'] },
+  sprint_30: { name: 'Sprint — 30 m', type: 'jump', bodyweight: true, notes: 'Acceleration through to upright running.', cues: ['Build through the whole 30', 'Finish tall'] },
   bike_intervals: { name: 'Bike Intervals', type: 'cardio', notes: 'Build INTO each interval, climbing toward ~90–95% max HR in the latter portion. Do not sprint the first minute to force HR up. Skip if pickup already gave ~12+ min above 90% HRmax this week.' },
   zone2: { name: 'Zone 2 Cycling', type: 'cardio', notes: 'Separated ≥6h from lifting. Conversational, ~117–137 bpm. Cycling not running — less impact and eccentric cost.' },
 
@@ -206,6 +219,77 @@ const COPENHAGEN_STEPS = {
   5: { label: 'Long lever + dumbbell on top hip', duration: '20–30s/side', targetSec: 30 },
 };
 
+// ─── Field sessions, split like the lifts ─────────────────────────────────────
+// Each drill is an individually loggable slot. A session whose drills need gym
+// equipment (gymOnly: sled, box, hurdles) opens that day's LIFTING session
+// instead of running as a separate AM trip.
+function tuesdayField(phase) {
+  if (phase === 'foundation') return [
+    { id: 'pogo_hops', sets: 2, reps: 10, rest: 90 },
+    { id: 'cmj', sets: 3, reps: 3, rest: 150 },
+    { id: 'broad_jump', sets: 3, reps: 3, rest: 150 },
+    { id: 'lateral_bound', sets: 3, reps: 3, rest: 120, note: 'Per side.' },
+    { id: 'accel_stop', sets: 2, reps: 2, rest: 60 },
+    { id: 'shuttle_5105', sets: 3, reps: 1, rest: 180 },
+  ];
+  if (phase === 'reactive') return [
+    { id: 'pogo_hops', sets: 2, reps: 10, rest: 90 },
+    { id: 'drop_jump', sets: 3, reps: 3, rest: 150 },
+    { id: 'broad_jump', sets: 3, reps: 3, rest: 150 },
+    { id: 'lateral_bound', sets: 3, reps: 3, rest: 120, note: 'Per side.' },
+    { id: 'shuttle_5105', sets: 2, reps: 1, rest: 180 },
+    { id: 'reactive_drill', sets: 2, reps: 1, rest: 120 },
+  ];
+  return [ // mixed
+    { id: 'hurdle_hop', sets: 3, reps: 3, rest: 150 },
+    { id: 'cmj', sets: 3, reps: 2, rest: 150 },
+    { id: 'broad_jump', sets: 3, reps: 2, rest: 150 },
+    { id: 'reactive_drill', sets: 4, reps: 1, rest: 120 },
+  ];
+}
+
+function thursdayField(phase) {
+  if (phase === 'foundation') return [
+    { id: 'sled_sprint', sets: 3, reps: 1, rest: 180 },
+    { id: 'sprint_20', sets: 3, reps: 1, rest: 180 },
+  ];
+  if (phase === 'reactive') return [
+    { id: 'sled_sprint', sets: 3, reps: 1, rest: 180 },
+    { id: 'sprint_build_20', sets: 2, reps: 1, rest: 120 },
+    { id: 'flying_20', sets: 3, reps: 1, rest: 240 },
+  ];
+  return [ // mixed
+    { id: 'sprint_10', sets: 3, reps: 1, rest: 180 },
+    { id: 'sprint_30', sets: 3, reps: 1, rest: 300 },
+  ];
+}
+
+function fieldIsGymBound(exs) { return exs.some(e => (EX[e.id] || {}).gymOnly); }
+function halveField(exs) {
+  return exs.map(e => ({ ...e, sets: Math.max(1, Math.ceil(e.sets / 2)),
+    note: (e.note ? e.note + ' ' : '') + 'Deload: half volume at FULL intent.' }));
+}
+
+// Build the field section for a day. Separate-session form carries session:'field';
+// gym-bound form is flagged fieldSection and opens the lifting session.
+function fieldSectionFor(dayLabel, exs, deload) {
+  const gymBound = fieldIsGymBound(exs);
+  const work = deload ? halveField(exs) : exs;
+  const sec = {
+    title: gymBound
+      ? `Field Block — opens the session (${dayLabel} drills need gym equipment)`
+      : `AM — ${dayLabel} (≥6h before lifting)`,
+    color: 'red',
+    fieldSection: true,
+    note: gymBound
+      ? 'Sled/box/hurdle work lives in the gym, so it runs FIRST, fresh, before the barbell. Full recoveries — this is speed work, not conditioning.'
+      : 'Separate morning session. Maximal intent, low volume. Stop when output visibly drops.',
+    exercises: [{ id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 }, ...work],
+  };
+  if (!gymBound) sec.session = 'field';
+  return { sec, gymBound };
+}
+
 // ─── Loading-week day builder ─────────────────────────────────────────────────
 function makeDays(B, w) {
   const P = (a) => a[Math.min(w, a.length - 1)];
@@ -237,20 +321,14 @@ function makeDays(B, w) {
       ],
     },
 
-    tuesday: {
+    tuesday: (() => {
+      const field = fieldSectionFor('Jumps + Reactive Agility', tuesdayField(B.fieldPhase));
+      return {
       title: 'Tuesday — C&J · Technical Jerk · Front Squat · Bench',
-      sessionMinutes: { field: 35, main: 130 },
+      sessionMinutes: field.gymBound ? { main: 160 } : { field: 35, main: 130 },
       totalMin: 129,
       sections: [
-        { title: 'AM — Jumps + Reactive Agility (≥6h before lifting)', color: 'red', session: 'field',
-          note: '~35 min including the complete field warm-up. Maximal intent, low volume. Stop when quality drops.', exercises: [
-          { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
-          { id: 'jumps_cod', variant: B.fieldPhase, duration: '25 min', rest: 0, note: B.fieldPhase === 'foundation'
-            ? 'Pogo 2×10 · CMJ 3×3 · broad jump + stick 3×3 · lateral bound + stick 3×3/side · 2 controlled accel-to-stops + 2 submax cuts/side, then 5-10-5 ×3.'
-            : B.fieldPhase === 'reactive'
-              ? 'Pogo 2×10 · low drop jump 8–12" 3×3 (only with sound landings) · broad jump 3×3 · lateral bound 3×3/side · 5-10-5 ×2 + reactive drill ×2.'
-              : 'Low hurdle hop 3×3 · CMJ 3×2 · broad jump 3×2 · reactive agility ×4.' },
-        ]},
+        field.sec,
         { title: 'Olympic Block', color: 'gold', exercises: [
           { id: 'jerk_balance', sets: 3, reps: 3, pct: 40, baseLift: 'jerk', rest: 60 },
           { id: 'cj_floor', sets: S.cjVol, reps: '1+1', pct: P(B.cj_vol), baseLift: 'cj', rest: 180, buildup: rampOly(P(B.cj_vol), '1+1') },
@@ -267,7 +345,7 @@ function makeDays(B, w) {
           { id: 'copenhagen', sets: rampSets(2, A.ramp), fullSets: 2, cutSets: 2, rampStage: A.ramp, duration: '20–30s/side', rest: 60, warmupNote: 'Do one easier short-lever hold before the work sets.' },
         ]},
       ],
-    },
+    };})(),
 
     wednesday: {
       title: 'Wednesday — Full-Catch Technique · Upper Hypertrophy',
@@ -297,20 +375,14 @@ function makeDays(B, w) {
       ],
     },
 
-    thursday: {
+    thursday: (() => {
+      const field = fieldSectionFor('Sprints + Sled', thursdayField(B.fieldPhase));
+      return {
       title: 'Thursday — Heavy Snatch · Back Squat · Push',
-      sessionMinutes: { field: 30, main: 95 },
+      sessionMinutes: field.gymBound ? { main: 120 } : { field: 30, main: 95 },
       totalMin: 92,
       sections: [
-        { title: 'AM — Sprints + Sled (≥6h before lifting)', color: 'red', session: 'field',
-          note: '~30 min. Rest long enough that every rep stays fast.', exercises: [
-          { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
-          { id: 'sprints_sled', variant: B.fieldPhase, duration: '20 min', rest: 0, note: B.fieldPhase === 'foundation'
-            ? '3×15 m resisted sled (~30% BW start), 3 min rest · 3×20 m unresisted, 3 min rest.'
-            : B.fieldPhase === 'reactive'
-              ? '3×15 m resisted sled, 3 min rest · 3×flying 20 m off a 20 m run-in, 4 min rest.'
-              : '3×10 m, 3 min rest · 3×30 m, 5 min rest.' },
-        ]},
+        field.sec,
         { title: 'Olympic Block', color: 'gold', exercises: [
           { id: 'snatch_floor', sets: N(S.snHvy), reps: 1, pct: P(B.snatch_hvy), baseLift: 'snatch', rest: 180,
             buildup: rampOly(P(B.snatch_hvy), 1), buildupNote: 'Week 11 tops at 90–92.5% only if the lifts are pristine.' },
@@ -325,7 +397,7 @@ function makeDays(B, w) {
           acc('hanging_pelvic_curl', 3, A, [10, 15], 60, { cutSets: 2, slotKey: 'thu_core' }),
         ]},
       ],
-    },
+    };})(),
 
     friday: {
       title: 'Friday — Heavy C&J · Heavy Jerk · Front Squat · Bench',
@@ -399,11 +471,11 @@ function makeDeload(fieldPhase) {
         { id: 'cable_crunch', sets: 2, cutSets: 1, repRange: [10, 15], rest: 60, rirNote: rir, slotKey: 'mon_crunch' },
       ]},
     ]},
-    tuesday: { title: 'Tuesday — Deload', totalMin: 95, sessionMinutes: { field: 25, main: 70 }, sections: [
-      { title: 'AM — half volume', color: 'red', session: 'field', exercises: [
-        { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
-        { id: 'jumps_cod', variant: `${fieldPhase}-half`, duration: '15 min', rest: 0, note: `Perform half the ${fieldPhase} block's prescribed reps at FULL intent.` },
-      ]},
+    tuesday: (() => {
+      const field = fieldSectionFor('Jumps + Reactive Agility', tuesdayField(fieldPhase), true);
+      return { title: 'Tuesday — Deload', totalMin: 95,
+      sessionMinutes: field.gymBound ? { main: 90 } : { field: 25, main: 70 }, sections: [
+      field.sec,
       { title: 'Olympic Block', color: 'gold', exercises: [
         { id: 'jerk_balance', sets: 2, reps: 3, pct: 35, baseLift: 'jerk', rest: 60 },
         { id: 'cj_floor', sets: 3, reps: '1+1', pct: 65, baseLift: 'cj', rest: 180, buildup: rampOly(65, '1+1') },
@@ -419,7 +491,7 @@ function makeDeload(fieldPhase) {
         { id: 'incline_db_curl', sets: 2, cutSets: 1, repRange: [10, 12], rest: 90, rirNote: rir, slotKey: 'tue_curl' },
         { id: 'copenhagen', sets: 1, cutSets: 1, duration: '20–30s/side', rest: 60 },
       ]},
-    ]},
+    ]};})(),
     wednesday: { title: 'Wednesday — Deload', totalMin: 105, sessionMinutes: { main: 70, cardio: 35 }, sections: [
       { title: 'Receiving Block', color: 'gold', note: holdNote, exercises: [
         { id: 'ohs', sets: 1, reps: 5, pct: 50, baseLift: 'snatch', rest: 120 },
@@ -441,11 +513,11 @@ function makeDeload(fieldPhase) {
         { id: 'zone2', duration: '30–40 min', rest: 0 },
       ]},
     ]},
-    thursday: { title: 'Thursday — Deload', totalMin: 85, sessionMinutes: { field: 20, main: 65 }, sections: [
-      { title: 'AM — half volume', color: 'red', session: 'field', exercises: [
-        { id: 'field_warmup', duration: '10 min', timerSec: 600, rest: 0 },
-        { id: 'sprints_sled', variant: `${fieldPhase}-half`, duration: '10 min', rest: 0, note: `Perform half the ${fieldPhase} block's reps at FULL intent; skip if readiness or warm-up quality is poor.` },
-      ]},
+    thursday: (() => {
+      const field = fieldSectionFor('Sprints + Sled', thursdayField(fieldPhase), true);
+      return { title: 'Thursday — Deload', totalMin: 85,
+      sessionMinutes: field.gymBound ? { main: 80 } : { field: 20, main: 65 }, sections: [
+      field.sec,
       { title: 'Olympic Block', color: 'gold', exercises: [
         { id: 'snatch_floor', sets: 3, reps: 1, pct: 70, baseLift: 'snatch', rest: 180, buildup: rampOly(70, 1) },
         { id: 'snatch_balance', sets: 1, reps: 2, pct: 70, baseLift: 'snatch', rest: 120 },
@@ -457,7 +529,7 @@ function makeDeload(fieldPhase) {
         { id: 'standing_calf', sets: 2, cutSets: 1, repRange: [8, 15], rest: 90, rirNote: rir, slotKey: 'thu_calf' },
         { id: 'hanging_pelvic_curl', sets: 2, cutSets: 1, repRange: [10, 15], rest: 60, rirNote: rir, slotKey: 'thu_core' },
       ]},
-    ]},
+    ]};})(),
     friday: { title: 'Friday — Deload', totalMin: 75, sessionMinutes: { main: 75 }, sections: [
       { title: 'Olympic Block', color: 'gold', exercises: [
         { id: 'cj_floor', sets: 3, reps: '1+1', pct: 70, baseLift: 'cj', rest: 210, buildup: rampOly(70, '1+1') },
@@ -751,7 +823,10 @@ const PROGRAM = {
       group.sections.push(copy);
     });
     groups.forEach(session => {
-      if (session.kind === 'lifting') session.sections.unshift(this.makePrepSection(session));
+      if (session.kind !== 'lifting') return;
+      // A gym-bound field block opens the session; barbell prep follows it.
+      const idx = session.sections[0]?.fieldSection ? 1 : 0;
+      session.sections.splice(idx, 0, this.makePrepSection(session));
     });
     plan.sessions = groups;
     delete plan.sections;
@@ -838,12 +913,17 @@ const PROGRAM = {
     const cancelTuesdayField = dayCancelsTuesdayField || countFallbackField;
     const cancelIntervals = pickupDays.some(d => ['wednesday', 'friday', 'saturday'].includes(d)) || pickupCount >= 2;
 
+    const fieldCancelled = (clone.dayKey === 'tuesday' && cancelTuesdayField)
+      || (clone.dayKey === 'thursday' && cancelThursdayField);
     clone.sessions.forEach(session => {
-      if (session.kind === 'field'
-          && ((clone.dayKey === 'tuesday' && cancelTuesdayField)
-            || (clone.dayKey === 'thursday' && cancelThursdayField))) {
+      if (session.kind === 'field' && fieldCancelled) {
         session.skipped = true;
         session.skipReason = 'Replaced by pickup under the weekly contingency matrix.';
+      }
+      if (session.kind === 'lifting' && fieldCancelled
+          && (session.sections || []).some(sec => sec.fieldSection)) {
+        session.sections = session.sections.filter(sec => !sec.fieldSection);
+        notes.push('Merged field block removed: pickup already supplied the jump/sprint stimulus this week.');
       }
       if (cancelIntervals) {
         session.sections = (session.sections || []).map(sec => ({
@@ -873,6 +953,7 @@ const PROGRAM = {
         notes.push('Same-day pickup after lifting: lower-body isolation removed.');
       }
       if (todayTiming === 'before') {
+        session.sections = session.sections.filter(sec => !sec.fieldSection);
         session.sections.forEach(sec => {
           sec.exercises = sec.exercises.filter(ex => {
             if (lowerHeavy.has(ex.id) || lowerIsolation.has(ex.id) || ex.optionalTopSingle) return false;
@@ -904,10 +985,8 @@ const PROGRAM = {
           sec.exercises = sec.exercises.filter(ex => !ex.optionalTopSingle);
           sec.exercises.forEach(ex => {
             const def = EX[ex.id];
-            if (['jumps_cod', 'sprints_sled'].includes(ex.id)) {
-              const workSeconds = durationSeconds(ex.duration);
-              if (workSeconds) ex.duration = `${Math.max(1, Math.round(workSeconds * 0.75 / 60))} min`;
-              ex.contextNote = 'Yellow: perform about 75% of the listed maximal reps at full intent; stop earlier if output drops.';
+            if (def && def.type === 'jump' && typeof ex.sets === 'number') {
+              ex.contextNote = 'Yellow: reduced volume at full intent; stop earlier if output drops.';
             }
             if (ex.interval) {
               ex.interval.rounds = Math.max(1, Math.round(ex.interval.rounds * 0.75));

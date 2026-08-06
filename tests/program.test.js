@@ -90,17 +90,52 @@ test('Nordic is Friday-only and globally progresses after week 2', () => {
   assert.equal(ex(raw(3,0,'friday'),'nordic').reps, '4–6');
 });
 
-test('field variants, explicit warm-ups, and separated session durations are exact', () => {
-  const expected = [[1,0,'foundation'],[3,0,'reactive'],[5,0,'mixed'],[2,0,'foundation-half'],[4,0,'reactive-half']];
-  for (const [b,w,variant] of expected) {
-    assert.equal(ex(raw(b,w,'tuesday'),'jumps_cod').variant, variant);
-    assert.equal(ex(raw(b,w,'thursday'),'sprints_sled').variant, variant);
-    assert.ok(flat(raw(b,w,'tuesday')).some(x => x.id === 'field_warmup'));
-    assert.ok(flat(raw(b,w,'thursday')).some(x => x.id === 'field_warmup'));
+test('field drills are split, equipment decides separate-AM vs opens-the-lift', () => {
+  // [block, tuesdayDrills, tuesdayMerged, thursdayDrills, thursdayMerged]
+  const phases = [
+    [1, ['pogo_hops','cmj','broad_jump','lateral_bound','accel_stop','shuttle_5105'], false,
+        ['sled_sprint','sprint_20'], true],
+    [3, ['pogo_hops','drop_jump','broad_jump','lateral_bound','shuttle_5105','reactive_drill'], true,
+        ['sled_sprint','sprint_build_20','flying_20'], true],
+    [5, ['hurdle_hop','cmj','broad_jump','reactive_drill'], true,
+        ['sprint_10','sprint_30'], false],
+  ];
+  for (const [b, tueDrills, tueMerged, thuDrills, thuMerged] of phases) {
+    for (const [dayKey, drills, merged] of [['tuesday',tueDrills,tueMerged],['thursday',thuDrills,thuMerged]]) {
+      const p = plan(b, 0, dayKey);
+      const fieldSess = p.sessions.find(s => s.kind === 'field');
+      const lifting = p.sessions.find(s => s.kind === 'lifting');
+      const mergedSec = (lifting.sections || []).find(sec => sec.fieldSection);
+      assert.equal(!!mergedSec, merged, `${dayKey} b${b} merged`);
+      assert.equal(!!fieldSess, !merged, `${dayKey} b${b} separate`);
+      const host = merged ? mergedSec : fieldSess.sections[0];
+      const ids = host.exercises.map(e => e.id);
+      assert.equal(ids[0], 'field_warmup', `${dayKey} b${b} field warm-up first`);
+      assert.deepEqual(ids.slice(1), drills, `${dayKey} b${b} drills`);
+      host.exercises.slice(1).forEach(e => {
+        assert.ok(Number(e.sets) >= 1 && e.rest >= 60, `${dayKey} b${b} ${e.id} loggable sets/rest`);
+      });
+      if (merged) { // field opens the session: prep comes AFTER the field block
+        assert.ok(lifting.sections[0].fieldSection, `${dayKey} b${b} field first`);
+        assert.ok(lifting.sections[1].title === 'Prep', `${dayKey} b${b} prep second`);
+      }
+      // deloads: same placement, halved drill sets
+      const db = b === 1 ? 2 : b === 3 ? 4 : null;
+      if (db) {
+        const dp = plan(db, 0, dayKey);
+        const dLift = dp.sessions.find(s => s.kind === 'lifting');
+        const dSec = (dLift.sections || []).find(sec => sec.fieldSection)
+          || dp.sessions.find(s => s.kind === 'field')?.sections[0];
+        const full = Object.fromEntries(host.exercises.slice(1).map(e => [e.id, e.sets]));
+        dSec.exercises.slice(1).forEach(e => {
+          assert.equal(e.sets, Math.max(1, Math.ceil(full[e.id] / 2)), `deload ${dayKey} ${e.id} halved`);
+        });
+      }
+    }
   }
   const durations = {
     monday: [['main',105]], tuesday: [['field',35],['main',130]],
-    wednesday: [['main',110],['cardio',35]], thursday: [['field',30],['main',95]],
+    wednesday: [['main',110],['cardio',35]], thursday: [['main',120]],
     friday: [['main',120]], saturday: [['main',70]],
   };
   for (const [dayKey, pairs] of Object.entries(durations)) {
@@ -141,14 +176,23 @@ test('cut transform is pure and preserves priority-one structure while reducing 
 });
 
 test('pickup matrix and same-day timing apply without mutating the base plan', () => {
-  const matrix = [
-    ['monday','tuesday','field'], ['tuesday','tuesday','field'],
-    ['wednesday','thursday','field'], ['thursday','thursday','field'],
-  ];
-  for (const [pickup, dayKey, sessionId] of matrix) {
-    const p = plan(1,2,dayKey,false,{...GREEN,pickupDays:[pickup]});
-    assert.equal(p.sessions.find(s => s.id === sessionId).skipped, true);
+  // Tuesday b1 field is a SEPARATE session -> skipped; Thursday b1 field is
+  // MERGED into the lift -> its section is removed from the lifting session.
+  for (const pickup of ['monday','tuesday']) {
+    const p = plan(1,2,'tuesday',false,{...GREEN,pickupDays:[pickup]});
+    assert.equal(p.sessions.find(s => s.id === 'field').skipped, true, `tue field skipped on ${pickup} pickup`);
   }
+  for (const pickup of ['wednesday','thursday']) {
+    const p = plan(1,2,'thursday',false,{...GREEN,pickupDays:[pickup]});
+    const lifting = p.sessions.find(s => s.kind === 'lifting');
+    assert.equal((lifting.sections || []).some(sec => sec.fieldSection), false, `thu merged field removed on ${pickup} pickup`);
+    assert.equal(flat({sections:lifting.sections}).some(x => x.id === 'sled_sprint'), false);
+    // barbell work untouched
+    assert.ok(flat({sections:lifting.sections}).some(x => x.id === 'snatch_floor'));
+  }
+  // b5 Thursday field is separate again -> plain skip
+  const b5 = plan(5,0,'thursday',false,{...GREEN,pickupDays:['thursday']});
+  assert.equal(b5.sessions.find(s => s.id === 'field').skipped, true);
   for (const pickup of ['wednesday','friday','saturday']) {
     const sat = plan(1,2,'saturday',false,{...GREEN,pickupDays:[pickup]});
     assert.equal(flat({ sections: sat.sessions[0].sections }).some(x => x.id === 'bike_intervals'), false);
@@ -178,8 +222,14 @@ test('readiness transforms remove unsafe work and keep ramp steps below transfor
   assert.ok(work.filter(x => x.pct).every(x => x.pct <= 60));
 
   const yellowTuesday = plan(1,2,'tuesday',false,{...GREEN,readiness:'yellow'});
-  assert.equal(ex({sections:yellowTuesday.sessions.find(s => s.id === 'field').sections},'jumps_cod').duration, '19 min');
-  assert.ok(yellowTuesday.sessions.find(s => s.id === 'field').totalMin < 35);
+  const yF = yellowTuesday.sessions.find(s => s.id === 'field');
+  assert.equal(ex({sections:yF.sections},'cmj').sets, 2);          // 3 -> x0.75 -> 2
+  assert.equal(ex({sections:yF.sections},'pogo_hops').sets, 2);    // 2 -> stays >=1
+  assert.ok(yF.totalMin < 35);
+  // merged field on yellow: drill sets reduced inside the lifting session too
+  const yThu = plan(1,2,'thursday',false,{...GREEN,readiness:'yellow'});
+  const yLift = yThu.sessions.find(s => s.kind === 'lifting');
+  assert.equal(ex({sections:yLift.sections},'sled_sprint').sets, 2);
   const yellowSaturday = plan(3,2,'saturday',false,{...GREEN,readiness:'yellow'});
   assert.equal(ex({sections:yellowSaturday.sessions[0].sections},'bike_intervals').interval.rounds, 3);
   assert.ok(yellowSaturday.sessions[0].totalMin < 70);
