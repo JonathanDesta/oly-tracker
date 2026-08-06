@@ -100,6 +100,7 @@ const EX = {
   // ── Arms ──────────────────────────────────────────────────────────────────
   incline_db_curl: { name: 'Incline Dumbbell Curl', type: 'hypertrophy', notes: 'Bench 45–60°, biceps at a long muscle length. Recent direct work on lengthened-position biceps training returned null findings — reasonable, not proven.', cues: ['Arms hang behind the torso', 'Full stretch at the bottom', 'No swing'] },
   cable_curl: { name: 'Standing Cable Curl', type: 'hypertrophy', notes: 'Constant tension through the mid-range.', cues: ['Elbows pinned', 'Squeeze at the top'] },
+  reverse_curl: { name: 'Reverse-Grip Cable Curl', type: 'hypertrophy', notes: 'Brachioradialis + wrist extensors — the forearm side the hook grip never trains. Saturday-only ON PURPOSE: the next time a barbell is in your hands is Monday, so grip fatigue here costs nothing. Direct forearm evidence is thin; this is the cheap hedge, not a proven dose.', cues: ['Knuckles up, wrists straight', 'Elbows pinned', 'No wrist flick at the top'] },
   oh_cable_tri: { name: 'Overhead Cable Triceps Extension (rope)', type: 'hypertrophy', notes: 'Triceps long head at length.', cues: ['Elbows in and high', 'Full stretch behind the head', 'Lock out'] },
   cable_pressdown: { name: 'Cable Rope Pressdown', type: 'hypertrophy', notes: 'Triceps lateral and medial heads.', cues: ['Elbows pinned to the ribs', 'Spread the rope at lockout'] },
 
@@ -426,16 +427,17 @@ function makeDays(B, w) {
 
     saturday: {
       title: 'Saturday — Upper Accessories · Bike Intervals',
-      sessionMinutes: { main: 70 },
+      sessionMinutes: { main: 75 },
       totalMin: 15,          // played pickup → intervals skipped
       totalMinNoSport: 40,   // no pickup → intervals included
       sections: [
         { title: 'Accessories (moved off Friday)', color: 'blue',
-          note: 'Isolation only. The last three all run off one dual-pulley tower — reverse fly high, raise and curl low.', exercises: [
+          note: 'Isolation only. The last four all run off one dual-pulley tower — reverse fly high, raises and both curls low.', exercises: [
           acc('db_shrug', 3, A, [10, 12], 90, { cutSets: 2, slotKey: 'sat_shrug' }),
           acc('cable_lateral', 4, A, [12, 20], 90, { cutSets: 3, slotKey: 'sat_lateral' }),
           acc('reverse_cable_fly', 3, A, [15, 20], 75, { cutSets: 2, slotKey: 'sat_rear_delt' }),
           acc('cable_curl', 3, A, [10, 15], 90, { cutSets: 2, slotKey: 'sat_curl' }),
+          acc('reverse_curl', 2, A, [12, 15], 75, { cutSets: 2, slotKey: 'sat_reverse_curl' }),
         ]},
         { title: 'Bike Intervals', color: 'red', exercises: [
           { id: 'bike_intervals', duration: `4 × ${B.intervalSec / 60} min on / 3 min off`, rest: 0,
@@ -551,6 +553,7 @@ function makeDeload(fieldPhase) {
         { id: 'cable_lateral', sets: 2, cutSets: 2, repRange: [12, 20], rest: 90, rirNote: rir, slotKey: 'sat_lateral' },
         { id: 'reverse_cable_fly', sets: 2, cutSets: 1, repRange: [15, 20], rest: 75, rirNote: rir, slotKey: 'sat_rear_delt' },
         { id: 'cable_curl', sets: 2, cutSets: 1, repRange: [10, 15], rest: 90, rirNote: rir, slotKey: 'sat_curl' },
+        { id: 'reverse_curl', sets: 1, cutSets: 1, repRange: [12, 15], rest: 75, rirNote: rir, slotKey: 'sat_reverse_curl' },
       ]},
       { title: 'Easy aerobic', color: 'green', exercises: [
         { id: 'zone2', duration: '25–35 min', rest: 0 },

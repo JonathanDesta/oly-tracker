@@ -136,7 +136,7 @@ test('field drills are split, equipment decides separate-AM vs opens-the-lift', 
   const durations = {
     monday: [['main',105]], tuesday: [['field',35],['main',130]],
     wednesday: [['main',110],['cardio',35]], thursday: [['main',120]],
-    friday: [['main',120]], saturday: [['main',70]],
+    friday: [['main',120]], saturday: [['main',75]],
   };
   for (const [dayKey, pairs] of Object.entries(durations)) {
     const p = plan(1, 2, dayKey);
