@@ -355,6 +355,7 @@ function startRestTimer(seconds) {
   startAudioKeepAlive();
   clearTimeout(restDoneHide);
   clearRestTimer();
+  restTimerMinimized = false; // a fresh rest always opens full screen
   STATE.restTimer.prescribed = seconds;
   STATE.restTimer.end = Date.now() + seconds * 1000;
   STATE.restTimer.active = true;
@@ -391,6 +392,7 @@ function tickRestTimer() {
 let restDoneHide = null;
 function restTimerDone(silent = false) {
   clearRestTimer();
+  restTimerMinimized = false; // done screen always comes back to the front
   if (!silent) {
     timerDoneSound();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
@@ -814,6 +816,12 @@ function sectionColorClass(color) {
 }
 
 // ─── Render: Timer Overlay ────────────────────────────────────────────────────
+// Minimized mode collapses the full-screen overlay to a floating pill so the
+// workout underneath stays visible/scrollable while the rest keeps counting.
+let restTimerMinimized = false;
+function minimizeRestTimer() { restTimerMinimized = true; renderTimerOverlay(); }
+function expandRestTimer() { restTimerMinimized = false; renderTimerOverlay(); }
+
 function renderTimerOverlay(done = false) {
   const overlay = $('timer-overlay');
   if (!STATE.restTimer.active && !done) { overlay.classList.add('hidden'); return; }
@@ -829,6 +837,7 @@ function renderTimerOverlay(done = false) {
   // element under the finger is replaced between touchstart and touchend.
   if (!overlay.querySelector('.timer-card')) {
     overlay.innerHTML = `
+      <button class="timer-minimize" onclick="minimizeRestTimer()" aria-label="Minimize timer">▾</button>
       <div class="timer-card">
         <div class="timer-label"></div>
         <div class="timer-circle-wrap">
@@ -846,13 +855,25 @@ function renderTimerOverlay(done = false) {
           <button class="btn-outline" onclick="addRestTime(60)">+1m</button>
           <button class="btn-primary timer-skip" onclick="skipRestTimer()">Skip</button>
         </div>
-      </div>`;
+      </div>
+      <button class="timer-pill" onclick="expandRestTimer()" aria-label="Expand timer">
+        <span class="timer-pill-label">Rest</span>
+        <span class="timer-pill-num"></span>
+        <span class="timer-pill-bar"><span class="timer-pill-fill"></span></span>
+      </button>`;
+    // Tapping the dark backdrop (outside the card) also minimizes
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay && STATE.restTimer.active) minimizeRestTimer();
+    });
   }
+  overlay.classList.toggle('timer-min', restTimerMinimized && !done);
   overlay.querySelector('.timer-label').textContent = done ? 'REST COMPLETE' : 'REST';
   overlay.querySelector('.timer-progress').setAttribute('stroke-dasharray', `${dash} ${circumference}`);
   overlay.querySelector('.timer-num').textContent = done ? '✓' : fmtTime(rem);
   overlay.querySelector('.timer-prescribed').textContent = `Prescribed: ${fmtTime(STATE.restTimer.prescribed)}`;
   overlay.querySelector('.timer-skip').textContent = done ? 'Done' : 'Skip';
+  overlay.querySelector('.timer-pill-num').textContent = fmtTime(rem);
+  overlay.querySelector('.timer-pill-fill').style.width = `${pct}%`;
 }
 
 // ─── Render: Interval Timer Overlay ───────────────────────────────────────────
