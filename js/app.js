@@ -172,6 +172,7 @@ function clearRuntimeForLoad() {
   clearInterval(STATE.sessionTimer.interval);
   clearInterval(STATE.intervalTimer.interval);
   releaseWakeLock();
+  stopAudioKeepAlive();
   STATE.activeWorkout = null;
   STATE._restoreTimers = null;
   STATE.restTimer = { active: false, end: 0, prescribed: 0, interval: null };
@@ -238,8 +239,49 @@ let audioCtx = null;
 function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   // iOS suspends the context when the page is backgrounded/locked — resume or
-  // every subsequent beep is silent.
-  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  // every subsequent beep is silent. iOS also uses a non-standard 'interrupted'
+  // state after locks/calls, so check for anything other than 'running'.
+  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+}
+
+// Silent keep-alive loop. While a rest/interval timer runs, an actively playing
+// media element does two load-bearing things on iOS: (1) it keeps the page from
+// being suspended when locked/backgrounded, so the timer keeps ticking and the
+// alarm fires on time; (2) it flips the audio session to "playback", so Web
+// Audio beeps sound even with the ringer switch on silent.
+let keepAliveEl = null;
+function silentWavUrl() {
+  const rate = 8000, samples = rate; // 1s of 8-bit mono silence
+  const buf = new ArrayBuffer(44 + samples);
+  const v = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + samples, true); str(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  str(36, 'data'); v.setUint32(40, samples, true);
+  for (let i = 0; i < samples; i++) v.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function startAudioKeepAlive() {
+  if (!keepAliveEl) {
+    keepAliveEl = new Audio(silentWavUrl());
+    keepAliveEl.loop = true;
+    keepAliveEl.setAttribute('playsinline', '');
+  }
+  // Rejected when not triggered by a user gesture (e.g. resuming after a
+  // reload) — the next timer started by a tap re-arms it.
+  keepAliveEl.play().catch(() => {});
+}
+function stopAudioKeepAlive() {
+  if (keepAliveEl) { keepAliveEl.pause(); keepAliveEl.currentTime = 0; }
+}
+// Release the keep-alive once the alarm has finished sounding, unless a timer
+// was re-armed in the meantime (e.g. "+30s" on the done screen).
+function stopAudioKeepAliveSoon() {
+  setTimeout(() => {
+    if (!STATE.restTimer.active && !STATE.intervalTimer.active) stopAudioKeepAlive();
+  }, 2000);
 }
 
 function beep(freq = 880, dur = 0.4, vol = 0.6) {
@@ -256,7 +298,7 @@ function beep(freq = 880, dur = 0.4, vol = 0.6) {
 }
 
 function timerDoneSound() {
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
   // Three ascending beeps
   setTimeout(() => beep(660, 0.2, 0.5), 0);
   setTimeout(() => beep(770, 0.2, 0.6), 220);
@@ -310,6 +352,7 @@ function startRestTimer(seconds) {
   // alarm works even when the session was restored by a reload (startWorkout's
   // initAudio never ran in that page load).
   initAudio();
+  startAudioKeepAlive();
   clearTimeout(restDoneHide);
   clearRestTimer();
   STATE.restTimer.prescribed = seconds;
@@ -333,6 +376,7 @@ function resumeRestTimer(end, prescribed) {
     return;
   }
   renderTimerOverlay();
+  startAudioKeepAlive();
   STATE.restTimer.interval = setInterval(tickRestTimer, 250);
 }
 
@@ -352,6 +396,7 @@ function restTimerDone(silent = false) {
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
   }
   renderTimerOverlay(true);
+  stopAudioKeepAliveSoon();
   clearTimeout(restDoneHide);
   restDoneHide = setTimeout(() => {
     if (!STATE.restTimer.active) skipRestTimer();
@@ -368,6 +413,7 @@ function clearRestTimer() {
 function skipRestTimer() {
   clearTimeout(restDoneHide);
   clearRestTimer();
+  if (!STATE.intervalTimer.active) stopAudioKeepAlive();
   document.getElementById('timer-overlay').classList.add('hidden');
   save();
 }
@@ -400,6 +446,7 @@ function buildPhases(cfg) {
 
 function startIntervalTimer(cfg) {
   initAudio();
+  startAudioKeepAlive();
   const it = STATE.intervalTimer;
   clearInterval(it.interval);
   it.config = cfg;
@@ -435,6 +482,7 @@ function resumePersistedIntervalTimer(snapshot) {
   if (!it.paused) catchUpIntervalTimer(false);
   if (!it.active) return;
   renderIntervalOverlay();
+  startAudioKeepAlive();
   it.interval = setInterval(tickIntervalTimer, 200);
   save();
 }
@@ -472,6 +520,7 @@ function finishIntervalTimer() {
   it.active = false;
   intervalDoneSound();
   renderIntervalOverlay(true);
+  stopAudioKeepAliveSoon();
   save();
 }
 
@@ -504,6 +553,7 @@ function stopIntervalTimer() {
   it.interval = null;
   it.active = false;
   it.paused = false;
+  if (!STATE.restTimer.active) stopAudioKeepAlive();
   document.getElementById('interval-overlay').classList.add('hidden');
   save();
 }
@@ -2632,8 +2682,15 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
       catchUpIntervalTimer();
     }
     // iOS suspends the AudioContext on background/lock — resume so alarms sound
-    if (document.visibilityState === 'visible' && audioCtx && audioCtx.state === 'suspended') {
+    // ('interrupted' is iOS's non-standard post-lock state, hence !== 'running')
+    if (document.visibilityState === 'visible' && audioCtx && audioCtx.state !== 'running') {
       audioCtx.resume().catch(() => {});
+    }
+    // Re-arm the keep-alive loop if a timer is still running (iOS may have
+    // paused the element while backgrounded).
+    if (document.visibilityState === 'visible'
+        && (STATE.restTimer.active || STATE.intervalTimer.active)) {
+      startAudioKeepAlive();
     }
   });
 });
