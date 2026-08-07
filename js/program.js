@@ -145,7 +145,7 @@ const EX = {
 
 // ─── Progression tables ───────────────────────────────────────────────────────
 const LOAD1 = { // Weeks 1–3
-  startWeek: 1, fieldPhase: 'foundation', accessoryRamp: [0, 2, 2],
+  startWeek: 1, fieldPhase: 'foundation', accessoryRamp: [2, 2, 2],
   snatch_vol: [65, 70, 72.5], snatch_hvy: [75, 80, 82.5],
   cj_vol: [65, 70, 72.5], cj_hvy: [75, 80, 82.5],
   jerk_tue: [70, 72.5, 75], jerk_wed: [72.5, 75, 77.5], jerk_fri: [80, 82.5, 85],
@@ -158,7 +158,7 @@ const LOAD1 = { // Weeks 1–3
 };
 
 const LOAD2 = { // Weeks 5–7
-  startWeek: 5, fieldPhase: 'reactive', accessoryRamp: [1, 2, 2],
+  startWeek: 5, fieldPhase: 'reactive', accessoryRamp: [2, 2, 2],
   snatch_vol: [72.5, 75, 77.5], snatch_hvy: [82.5, 85, 87.5],
   cj_vol: [72.5, 75, 77.5], cj_hvy: [82.5, 85, 87.5],
   jerk_tue: [75, 77.5, 78], jerk_wed: [75, 77.5, 80], jerk_fri: [85, 87.5, 90],
@@ -171,7 +171,7 @@ const LOAD2 = { // Weeks 5–7
 };
 
 const LOAD3 = { // Weeks 9–11
-  startWeek: 9, fieldPhase: 'mixed', accessoryRamp: [1, 2, 2],
+  startWeek: 9, fieldPhase: 'mixed', accessoryRamp: [2, 2, 2],
   snatch_vol: [75, 77.5, 80], snatch_hvy: [85, 87.5, 90],
   cj_vol: [75, 77.5, 80], cj_hvy: [85, 87.5, 90],
   jerk_tue: [75, 77.5, 80], jerk_wed: [77.5, 79, 80], jerk_fri: [85, 87.5, 90],
@@ -186,13 +186,17 @@ const LOAD3 = { // Weeks 9–11
 // Accessory ramp. Weeks 1–3 use 70% → 85% → 100%; weeks 5 and 9 restart
 // at ~85%, then weeks 6–7 and 10–11 use the full prescription.
 const RAMP = { 2: [1, 2, 2], 3: [2, 3, 3], 4: [3, 3, 4], 5: [4, 4, 5] };
-const RIR = ['~3 RIR', '~2 RIR', '~1 RIR'];
+// Flat effort target every loading week — the proximity literature trends
+// toward more hypertrophy nearer failure and never validated waving effort.
+// Compounds hold the 2 side; isolation the 1 side; last isolation set may
+// go to 0. Deloads prescribe ~4 RIR separately.
+const RIR_NOTE = '~1–2 RIR';
 function rampSets(full, stage) { const r = RAMP[full]; return r ? r[Math.min(stage, 2)] : full; }
 function acc(id, full, phase, repRange, rest, extra) {
   return Object.assign({
     id, sets: rampSets(full, phase.ramp), repRange, rest,
     fullSets: full, cutSets: full, rampStage: phase.ramp,
-    rirNote: RIR[Math.min(phase.rir, 2)],
+    rirNote: RIR_NOTE,
   }, extra || {});
 }
 

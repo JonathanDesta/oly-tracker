@@ -2206,7 +2206,7 @@ function renderGuide() {
 
       ${sec('Cycle architecture', `
         <ul class="guide-ul">
-          <li><b>Weeks 1–3:</b> accumulation; accessory sets ramp ~70% → 85% → 100% and RIR waves 3 → 2 → 1.</li>
+          <li><b>Weeks 1–3:</b> accumulation. Full accessory prescription from day one at a flat ~1–2 RIR — no ramp, no effort wave.</li>
           <li><b>Week 4:</b> deload; roughly half sets, 60–70% barbell work, half field volume at full intent, easy cycling.</li>
           <li><b>Weeks 5–7:</b> intensification; accessories restart at ~85%, then full.</li>
           <li><b>Week 8:</b> deload.</li>
@@ -2231,7 +2231,7 @@ function renderGuide() {
 
       ${sec('Hypertrophy progression', `
         <p>Use controlled full ROM, about a two-second eccentric, and maximal safe concentric intent. Double progression requires every work set to reach the top of its range while meeting the assigned RIR; then add the smallest increment.</p>
-        <p>The LAST set of any stable isolation movement may go to failure in any week — earlier sets follow the RIR wave so double progression stays readable. Saturday is where failure is cheapest (all isolation, rest day next). Never take competition lifts, squats, RDLs, Nordics, bench, rows, or pull-ups to failure. If a priority muscle stalls for three weeks with good adherence and recovery, add two weekly sets. If Olympic quality or joint comfort declines, remove 2–4 accessory sets first.</p>`) }
+        <p>The LAST set of any stable isolation movement may go to failure in any week — earlier sets hold ~1–2 RIR (compounds the 2 side, isolation the 1 side) so double progression stays readable. Saturday is where failure is cheapest (all isolation, rest day next). Never take competition lifts, squats, RDLs, Nordics, bench, rows, or pull-ups to failure. If a priority muscle stalls for three weeks with good adherence and recovery, add two weekly sets. If Olympic quality or joint comfort declines, remove 2–4 accessory sets first.</p>`) }
 
       ${sec('Warm-ups & rest', `
         <p><b>Lifting:</b> raise 3–5 min, do only needed positional work, then two day-specific empty-bar rounds. Barbell ramp: 40%×3 · 50%×3 · 60%×2 · 70%×1 as needed · one feeder single between 75% and the working load on heavy days. Ramp sets never count as work sets.</p>

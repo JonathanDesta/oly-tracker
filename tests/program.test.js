@@ -69,20 +69,19 @@ test('week 11 conditional fourth singles are distinct and cut-capped', () => {
   assert.equal(flat(plan(5, 2, 'friday', false, { ...GREEN, readiness: 'red' })).some(x => x.optionalTopSingle), false);
 });
 
-test('accessory ramp applies after gain/cut slot selection', () => {
-  assert.equal(ex(raw(1,0,'monday'),'incline_db_press').sets, 3);
-  // Intro ramp collapsed to week 1 only: week 2 is full prescription
-  // (movements familiar, consistent training history — the multi-week
-  // intro had no evidential basis for this lifter).
-  assert.equal(ex(raw(1,1,'monday'),'incline_db_press').sets, 4);
-  assert.equal(ex(raw(1,1,'wednesday'),'cable_lateral').sets, 5);
-  assert.equal(ex(PROGRAM.applyCutting(raw(1,0,'monday')),'incline_db_press').sets, 2);
-  assert.equal(ex(PROGRAM.applyCutting(raw(1,0,'monday')),'cable_lateral_behind').sets, 1);
-  assert.equal(ex(raw(3,0,'monday'),'incline_db_press').sets, 3);
-  assert.equal(ex(raw(3,1,'monday'),'incline_db_press').sets, 4);
-  assert.equal(ex(raw(5,0,'wednesday'),'cable_lateral').sets, 4);
-  assert.equal(ex(raw(5,1,'wednesday'),'cable_lateral').sets, 5);
-  assert.equal(ex(raw(1,0,'tuesday'),'copenhagen').sets, 1);
+test('no accessory ramping: full prescription every loading week, flat RIR', () => {
+  // The lifter's own report resolved the baseline-volume uncertainty the
+  // ramp was hedging; the post-deload 85% restarts fell with it (a half-
+  // volume deload leaves you fresher, not fragile).
+  for (const [b,w] of [[1,0],[1,1],[3,0],[5,0]]) {
+    assert.equal(ex(raw(b,w,'monday'),'incline_db_press').sets, 4, `b${b}w${w} incline full`);
+    assert.equal(ex(raw(b,w,'wednesday'),'cable_lateral').sets, 5, `b${b}w${w} lateral full`);
+    assert.equal(ex(raw(b,w,'tuesday'),'copenhagen').sets, 2, `b${b}w${w} copenhagen full`);
+    assert.equal(ex(raw(b,w,'monday'),'incline_db_press').rirNote, '~1–2 RIR', `b${b}w${w} flat RIR`);
+  }
+  // Cut still lands on the C column
+  assert.equal(ex(PROGRAM.applyCutting(raw(1,0,'monday')),'incline_db_press').sets, 3);
+  assert.equal(ex(PROGRAM.applyCutting(raw(1,0,'monday')),'cable_lateral_behind').sets, 2);
 });
 
 test('Nordic is Friday-only and globally progresses after week 2', () => {
