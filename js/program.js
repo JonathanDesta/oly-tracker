@@ -145,7 +145,7 @@ const EX = {
 
 // ─── Progression tables ───────────────────────────────────────────────────────
 const LOAD1 = { // Weeks 1–3
-  startWeek: 1, fieldPhase: 'foundation', accessoryRamp: [0, 1, 2],
+  startWeek: 1, fieldPhase: 'foundation', accessoryRamp: [0, 2, 2],
   snatch_vol: [65, 70, 72.5], snatch_hvy: [75, 80, 82.5],
   cj_vol: [65, 70, 72.5], cj_hvy: [75, 80, 82.5],
   jerk_tue: [70, 72.5, 75], jerk_wed: [72.5, 75, 77.5], jerk_fri: [80, 82.5, 85],

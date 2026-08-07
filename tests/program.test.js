@@ -71,6 +71,11 @@ test('week 11 conditional fourth singles are distinct and cut-capped', () => {
 
 test('accessory ramp applies after gain/cut slot selection', () => {
   assert.equal(ex(raw(1,0,'monday'),'incline_db_press').sets, 3);
+  // Intro ramp collapsed to week 1 only: week 2 is full prescription
+  // (movements familiar, consistent training history — the multi-week
+  // intro had no evidential basis for this lifter).
+  assert.equal(ex(raw(1,1,'monday'),'incline_db_press').sets, 4);
+  assert.equal(ex(raw(1,1,'wednesday'),'cable_lateral').sets, 5);
   assert.equal(ex(PROGRAM.applyCutting(raw(1,0,'monday')),'incline_db_press').sets, 2);
   assert.equal(ex(PROGRAM.applyCutting(raw(1,0,'monday')),'cable_lateral_behind').sets, 1);
   assert.equal(ex(raw(3,0,'monday'),'incline_db_press').sets, 3);
