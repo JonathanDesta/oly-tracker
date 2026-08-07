@@ -2231,7 +2231,7 @@ function renderGuide() {
 
       ${sec('Hypertrophy progression', `
         <p>Use controlled full ROM, about a two-second eccentric, and maximal safe concentric intent. Double progression requires every work set to reach the top of its range while meeting the assigned RIR; then add the smallest increment.</p>
-        <p>Only the last set of a stable isolation may reach 0 RIR. Never take competition lifts, squats, RDLs, Nordics, bench, rows, or pull-ups to failure. If a priority muscle stalls for three weeks with good adherence and recovery, add two weekly sets. If Olympic quality or joint comfort declines, remove 2–4 accessory sets first.</p>`) }
+        <p>The LAST set of any stable isolation movement may go to failure in any week — earlier sets follow the RIR wave so double progression stays readable. Saturday is where failure is cheapest (all isolation, rest day next). Never take competition lifts, squats, RDLs, Nordics, bench, rows, or pull-ups to failure. If a priority muscle stalls for three weeks with good adherence and recovery, add two weekly sets. If Olympic quality or joint comfort declines, remove 2–4 accessory sets first.</p>`) }
 
       ${sec('Warm-ups & rest', `
         <p><b>Lifting:</b> raise 3–5 min, do only needed positional work, then two day-specific empty-bar rounds. Barbell ramp: 40%×3 · 50%×3 · 60%×2 · 70%×1 as needed · one feeder single between 75% and the working load on heavy days. Ramp sets never count as work sets.</p>
