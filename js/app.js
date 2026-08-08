@@ -236,7 +236,18 @@ function dayFor(dayKey, sessionId) {
 // ─── Audio ────────────────────────────────────────────────────────────────────
 let audioCtx = null;
 
+// Playing any audio normally claims iOS's exclusive "playback" session, which
+// pauses Apple Music the moment the keep-alive loop or a beep starts. The
+// 'ambient' session type mixes with other apps' audio instead. Trade-offs:
+// ambient audio follows the ringer/silent switch and won't keep the page
+// alive when locked — the screen wake lock covers the normal in-app case.
+function setAudioMixing() {
+  try { if ('audioSession' in navigator) navigator.audioSession.type = 'ambient'; } catch (e) {}
+}
+setAudioMixing();
+
 function initAudio() {
+  setAudioMixing();
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   // iOS suspends the context when the page is backgrounded/locked — resume or
   // every subsequent beep is silent. iOS also uses a non-standard 'interrupted'
@@ -247,8 +258,9 @@ function initAudio() {
 // Silent keep-alive loop. While a rest/interval timer runs, an actively playing
 // media element does two load-bearing things on iOS: (1) it keeps the page from
 // being suspended when locked/backgrounded, so the timer keeps ticking and the
-// alarm fires on time; (2) it flips the audio session to "playback", so Web
-// Audio beeps sound even with the ringer switch on silent.
+// alarm fires on time; (2) on iOS versions without the Audio Session API it
+// flips the session to "playback", so beeps sound even on silent (where the
+// API exists, setAudioMixing keeps the session 'ambient' so music isn't cut).
 let keepAliveEl = null;
 function silentWavUrl() {
   const rate = 8000, samples = rate; // 1s of 8-bit mono silence
@@ -264,6 +276,7 @@ function silentWavUrl() {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 function startAudioKeepAlive() {
+  setAudioMixing();
   if (!keepAliveEl) {
     keepAliveEl = new Audio(silentWavUrl());
     keepAliveEl.loop = true;
