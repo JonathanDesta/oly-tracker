@@ -1,2759 +1,1606 @@
 'use strict';
-
-// ─── Exercise slot cache (populated during render, used by modal) ─────────────
-const EX_CACHE = {};
-
-// ─── State ────────────────────────────────────────────────────────────────────
-const STATE = {
-  schemaVersion: 3,
+let STATE = {
+  ...MODEL.migrate(),
   view: 'home',
-  maxes: { snatch: 155, cj: 205, jerk: 205, clean: 255, bs: 365, fs: 275, bench: 265 },
-  program: { blockId: 1, weekInBlock: 0 }, // 13-week block; weekInBlock is 0-indexed
-  cycleId: 1,
-  receiving: { hh_clean: 165, recv_clean: 190 }, // absolute loads, progress on catch quality
-  receivingMeta: { hh_clean: { stalls: 0 }, recv_clean: { stalls: 0 } },
-  technicalProgress: { hhSnatchPct: 65, lastExposureKey: null },
-  cutting: false, // training phase: false = lean bulk, true = cutting (deficit)
-  readiness: 'green',
-  readinessDate: null,
-  pickupDays: [],
-  pickupTiming: {},
-  pickupWeekKey: null,
-  tmWatch: {},
-  testResults: {},
-  copenhagen: { step: 1, load: 0, lastExposureKey: null },
-  log: {},           // { 'YYYY-MM-DD': { dayKey, sections: [...], sessionMin } }
-  hypertrophyWeights: {}, // { exerciseId: { weight, sets } } last logged weights
-  restTimer: { active: false, end: 0, prescribed: 0, interval: null },
-  sessionTimer: { active: false, start: 0, interval: null },
-  intervalTimer: {
-    active: false, config: null, phases: [], phaseIdx: 0,
-    phaseEnd: 0, paused: false, pauseRemaining: 0,
-    interval: null, lastCue: -1, startedAt: 0,
-  },
-  activeWorkout: null, // { date, dayKey, sectionIdx, exerciseIdx, sets: [] }
-  wakeLock: null,
+  selectedDay: PROGRAM.days[(new Date().getDay() + 6) % 7],
 };
-
-// ─── Persistence ──────────────────────────────────────────────────────────────
-function save() {
-  localStorage.setItem('oly_state', JSON.stringify({
-    ts: Date.now(), // stamps every save so cloud sync can pick the newest copy
-    maxes: STATE.maxes,
-    schemaVersion: STATE.schemaVersion,
-    cycleId: STATE.cycleId,
-    receiving: STATE.receiving,
-    receivingMeta: STATE.receivingMeta,
-    technicalProgress: STATE.technicalProgress,
-    program: STATE.program,
-    cutting: STATE.cutting,
-    readiness: STATE.readiness,
-    readinessDate: STATE.readinessDate,
-    pickupDays: STATE.pickupDays,
-    pickupTiming: STATE.pickupTiming,
-    pickupWeekKey: STATE.pickupWeekKey,
-    tmWatch: STATE.tmWatch,
-    testResults: STATE.testResults,
-    copenhagen: STATE.copenhagen,
-    log: STATE.log,
-    hypertrophyWeights: STATE.hypertrophyWeights,
-    // Persist the in-progress session + timers so an iOS PWA teardown between
-    // sets (lock screen / app switch) restores instead of resetting. Timers are
-    // stored as absolute timestamps, so elapsed background time is accounted for
-    // on restore. Only the running (active) timers are worth saving.
-    activeWorkout: STATE.activeWorkout,
-    timers: {
-      rest: STATE.restTimer.active
-        ? { end: STATE.restTimer.end, prescribed: STATE.restTimer.prescribed } : null,
-      session: STATE.sessionTimer.active
-        ? { start: STATE.sessionTimer.start } : null,
-      interval: STATE.intervalTimer.active ? {
-        config: STATE.intervalTimer.config,
-        phases: STATE.intervalTimer.phases,
-        phaseIdx: STATE.intervalTimer.phaseIdx,
-        phaseEnd: STATE.intervalTimer.phaseEnd,
-        paused: STATE.intervalTimer.paused,
-        pauseRemaining: STATE.intervalTimer.pauseRemaining,
-        lastCue: STATE.intervalTimer.lastCue,
-        startedAt: STATE.intervalTimer.startedAt,
-      } : null,
-    },
-  }));
-  publishDayDurations();
-  if (typeof schedulePush === 'function') schedulePush(); // debounced Drive sync
+let modal = null,
+  restTick = null,
+  audioContext = null,
+  wakeLock = null,
+  toastTimeout = null;
+const $ = (id) => document.getElementById(id);
+const esc = (v) =>
+  String(v ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+const dateISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const fmt = (n) => (Number(n) % 1 ? Number(n).toFixed(1) : String(n));
+const time = (sec) =>
+  `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.floor(Math.max(0, sec) % 60)).padStart(2, '0')}`;
+const prettyDay = (day) => day[0].toUpperCase() + day.slice(1);
+const info = () => PROGRAM.weekInfo(STATE.training.week);
+const notice = (text) => `<div class="notice">${esc(text)}</div>`;
+const button = (label, action, cls = 'button', disabled = false) =>
+  `<button class="${cls}" onclick="${esc(action)}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+function durable() {
+  const { view, selectedDay, ...data } = STATE;
+  return data;
 }
-
-// Publish this week's expected session lengths (minutes, keyed mon…sun; 0 = rest)
-// into shared storage so the Day life-manager app — served from the same origin —
-// sizes its timeline gym block from the program itself instead of keeping its own
-// copy of these numbers. Recomputed on every save so block/week/cutting/no-sport
-// changes propagate immediately. The snapshot records the program state it was
-// computed from so a consumer can tell when it's stale.
-function publishDayDurations() {
-  try {
-    const min = {};
-    PROGRAM.dayKeys.forEach(k => {
-      const plan = dayPlanFor(k);
-      min[k.slice(0, 3)] = (plan && !plan.isRest)
-        ? plan.sessions.filter(s => !s.skipped).reduce((t, s) => t + (s.totalMin || 0), 0)
-        : 0;
-    });
-    localStorage.setItem('oly_day_durations', JSON.stringify({
-      v: 1,
-      blockId: STATE.program.blockId,
-      weekInBlock: STATE.program.weekInBlock || 0,
-      cutting: !!STATE.cutting,
-      readiness: effectiveReadiness(),
-      pickupDays: activePickupDays().slice(),
-      min,
-      ts: Date.now(),
-    }));
-  } catch (e) { /* storage unavailable — non-critical, Day falls back to its table */ }
-}
-
-function programWeekNumber(program = STATE.program) {
-  const block = PROGRAM.blocks.find(b => b.id === Number(program?.blockId));
-  return block ? block.startWeek + Math.max(0, Number(program?.weekInBlock) || 0) : 1;
-}
-
-function currentPickupWeekKey() {
-  return `${STATE.cycleId}:${programWeekNumber()}`;
-}
-
-function effectiveReadiness() {
-  return STATE.readinessDate === today() && ['green', 'yellow', 'red'].includes(STATE.readiness)
-    ? STATE.readiness : 'green';
-}
-
-function activePickupDays() {
-  return STATE.pickupWeekKey === currentPickupWeekKey() ? STATE.pickupDays : [];
-}
-
-function activePickupTiming() {
-  return STATE.pickupWeekKey === currentPickupWeekKey() ? STATE.pickupTiming : {};
-}
-
-function applyDurableData(data) {
-  STATE.schemaVersion = 3;
-  STATE.maxes = {
-    snatch: 155, cj: 205, jerk: 205, clean: 255, bs: 365, fs: 275, bench: 265,
-    ...(data.maxes || {}),
-  };
-  STATE.program = { blockId: 1, weekInBlock: 0, ...(data.program || {}) };
-  STATE.cycleId = Number(data.cycleId) || 1;
-  STATE.receiving = { hh_clean: 165, recv_clean: 190, ...(data.receiving || {}) };
-  STATE.receivingMeta = {
-    hh_clean: { stalls: 0 }, recv_clean: { stalls: 0 }, ...(data.receivingMeta || {}),
-  };
-  STATE.technicalProgress = { hhSnatchPct: 65, lastExposureKey: null, ...(data.technicalProgress || {}) };
-  STATE.cutting = !!data.cutting;
-  const savedReadiness = ['green', 'yellow', 'red'].includes(data.readiness) ? data.readiness : 'green';
-  const savedReadinessDate = data.readinessDate || today(); // legacy migration: current day
-  STATE.readiness = savedReadinessDate === today() ? savedReadiness : 'green';
-  STATE.readinessDate = today();
-  STATE.pickupDays = Array.isArray(data.pickupDays)
-    ? data.pickupDays.filter(d => PROGRAM.dayKeys.includes(d)) : [];
-  STATE.pickupTiming = data.pickupTiming && typeof data.pickupTiming === 'object' ? data.pickupTiming : {};
-  STATE.pickupWeekKey = data.pickupWeekKey || (STATE.pickupDays.length ? currentPickupWeekKey() : null);
-  if (STATE.pickupWeekKey !== currentPickupWeekKey()) {
-    STATE.pickupDays = [];
-    STATE.pickupTiming = {};
-    STATE.pickupWeekKey = currentPickupWeekKey();
-  }
-  STATE.tmWatch = data.tmWatch || {};
-  STATE.testResults = data.testResults || {};
-  STATE.copenhagen = { step: 1, load: 0, lastExposureKey: null, ...(data.copenhagen || {}) };
-  STATE.log = data.log || {};
-  STATE.hypertrophyWeights = data.hypertrophyWeights || {};
-}
-
-function clearRuntimeForLoad() {
-  clearInterval(STATE.restTimer.interval);
-  clearInterval(STATE.sessionTimer.interval);
-  clearInterval(STATE.intervalTimer.interval);
-  releaseWakeLock();
-  stopAudioKeepAlive();
-  STATE.activeWorkout = null;
-  STATE._restoreTimers = null;
-  STATE.restTimer = { active: false, end: 0, prescribed: 0, interval: null };
-  STATE.sessionTimer = { active: false, start: 0, interval: null };
-  STATE.intervalTimer = {
-    active: false, config: null, phases: [], phaseIdx: 0,
-    phaseEnd: 0, paused: false, pauseRemaining: 0,
-    interval: null, lastCue: -1, startedAt: 0,
-  };
-}
-
 function load() {
   try {
-    const raw = localStorage.getItem('oly_state');
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    clearRuntimeForLoad();
-    applyDurableData(data);
-    // Restore an in-progress session so it survives the PWA being torn down
-    // mid-workout. Discard anything older than 6h — that's well past any real
-    // session (incl. long rests), so it cleanly drops a stale one from earlier
-    // in the day or a previous day without a fragile calendar-date check.
-    if (data.activeWorkout &&
-        (Date.now() - (data.activeWorkout.startedAt || 0)) < 6 * 60 * 60 * 1000) {
-      STATE.activeWorkout = data.activeWorkout;
-      STATE.activeWorkout.receivingOverrides = STATE.activeWorkout.receivingOverrides || {};
-      STATE.activeWorkout.loadOverrides = STATE.activeWorkout.loadOverrides || {};
-      STATE.activeWorkout.stoppedExercises = STATE.activeWorkout.stoppedExercises || {};
-      STATE.activeWorkout.tmSnapshot = STATE.activeWorkout.tmSnapshot || { ...STATE.maxes };
-      STATE._restoreTimers = data.timers || null; // applied after render() in init
-    } else if (data.activeWorkout) {
-      // Remove an expired snapshot immediately so cloud sync cannot resurrect it.
-      save();
-    }
-  } catch (e) { console.warn('Load error', e); }
-}
-
-function programContext(dayKey, applyReadiness = dayKey === todayDayKey()) {
-  return {
-    readiness: applyReadiness ? effectiveReadiness() : 'green',
-    pickupDays: activePickupDays(),
-    pickupTiming: activePickupTiming(),
-    copenhagen: STATE.copenhagen,
-    technicalProgress: STATE.technicalProgress,
-  };
-}
-
-function dayPlanFor(dayKey) {
-  const { blockId, weekInBlock } = STATE.program;
-  return PROGRAM.getDayPlan(blockId, weekInBlock, dayKey, STATE.cutting, programContext(dayKey));
-}
-
-// Resolve one separately timed/logged session from a day.
-function dayFor(dayKey, sessionId) {
-  const { blockId, weekInBlock } = STATE.program;
-  // A makeup session is still performed today, so today's readiness applies
-  // when it is actually started even though future/past previews stay Green.
-  return PROGRAM.getWorkout(blockId, weekInBlock, dayKey, STATE.cutting, sessionId, programContext(dayKey, true));
-}
-
-// ─── Audio ────────────────────────────────────────────────────────────────────
-let audioCtx = null;
-
-// Playing any audio normally claims iOS's exclusive "playback" session, which
-// pauses Apple Music the moment the keep-alive loop or a beep starts. The
-// 'ambient' session type mixes with other apps' audio instead. Trade-offs:
-// ambient audio follows the ringer/silent switch and won't keep the page
-// alive when locked — the screen wake lock covers the normal in-app case.
-function setAudioMixing() {
-  try { if ('audioSession' in navigator) navigator.audioSession.type = 'ambient'; } catch (e) {}
-}
-setAudioMixing();
-
-function initAudio() {
-  setAudioMixing();
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  // iOS suspends the context when the page is backgrounded/locked — resume or
-  // every subsequent beep is silent. iOS also uses a non-standard 'interrupted'
-  // state after locks/calls, so check for anything other than 'running'.
-  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
-}
-
-// Silent keep-alive loop. While a rest/interval timer runs, an actively playing
-// media element does two load-bearing things on iOS: (1) it keeps the page from
-// being suspended when locked/backgrounded, so the timer keeps ticking and the
-// alarm fires on time; (2) on iOS versions without the Audio Session API it
-// flips the session to "playback", so beeps sound even on silent (where the
-// API exists, setAudioMixing keeps the session 'ambient' so music isn't cut).
-let keepAliveEl = null;
-function silentWavUrl() {
-  const rate = 8000, samples = rate; // 1s of 8-bit mono silence
-  const buf = new ArrayBuffer(44 + samples);
-  const v = new DataView(buf);
-  const str = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-  str(0, 'RIFF'); v.setUint32(4, 36 + samples, true); str(8, 'WAVEfmt ');
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, rate, true); v.setUint32(28, rate, true);
-  v.setUint16(32, 1, true); v.setUint16(34, 8, true);
-  str(36, 'data'); v.setUint32(40, samples, true);
-  for (let i = 0; i < samples; i++) v.setUint8(44 + i, 128);
-  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-}
-function startAudioKeepAlive() {
-  setAudioMixing();
-  if (!keepAliveEl) {
-    keepAliveEl = new Audio(silentWavUrl());
-    keepAliveEl.loop = true;
-    keepAliveEl.setAttribute('playsinline', '');
+    const raw = JSON.parse(localStorage.getItem('oly_state') || '{}');
+    const backup = JSON.parse(localStorage.getItem('oly_rev6_backup') || 'null');
+    const useBackup =
+      backup?.revision === 6 &&
+      (raw.revision !== 6 || (Number(backup.ts) || 0) > (Number(raw.ts) || 0));
+    const data = useBackup ? backup : raw;
+    if (Object.keys(raw).length && raw.revision !== 6 && !localStorage.getItem('oly_before_rev6'))
+      localStorage.setItem('oly_before_rev6', JSON.stringify(raw));
+    STATE = {
+      ...MODEL.migrate(data),
+      view: STATE.view || 'home',
+      selectedDay: STATE.selectedDay || PROGRAM.days[(new Date().getDay() + 6) % 7],
+    };
+    if (STATE.activeWorkout) STATE.view = 'workout';
+    return raw.revision !== 6 || useBackup;
+  } catch (e) {
+    toast('Could not load saved data. Existing storage has been left intact.');
+    STATE.storageError = true;
   }
-  // Rejected when not triggered by a user gesture (e.g. resuming after a
-  // reload) — the next timer started by a tap re-arms it.
-  keepAliveEl.play().catch(() => {});
 }
-function stopAudioKeepAlive() {
-  if (keepAliveEl) { keepAliveEl.pause(); keepAliveEl.currentTime = 0; }
-}
-// Release the keep-alive once the alarm has finished sounding, unless a timer
-// was re-armed in the meantime (e.g. "+30s" on the done screen).
-function stopAudioKeepAliveSoon() {
-  setTimeout(() => {
-    if (!STATE.restTimer.active && !STATE.intervalTimer.active) stopAudioKeepAlive();
-  }, 2000);
-}
-
-function beep(freq = 880, dur = 0.4, vol = 0.6) {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + dur);
-}
-
-function timerDoneSound() {
-  if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
-  // Three ascending beeps
-  setTimeout(() => beep(660, 0.2, 0.5), 0);
-  setTimeout(() => beep(770, 0.2, 0.6), 220);
-  setTimeout(() => beep(880, 0.5, 0.8), 440);
-}
-
-function countdownTick() {
-  // Short blip for the 3-2-1 countdown before a phase change
-  beep(720, 0.12, 0.5);
-}
-
-function workStartSound() {
-  // Urgent ascending triple — go hard
-  setTimeout(() => beep(880, 0.15, 0.7), 0);
-  setTimeout(() => beep(880, 0.15, 0.7), 180);
-  setTimeout(() => beep(1320, 0.45, 0.85), 360);
-  if (navigator.vibrate) navigator.vibrate([220, 90, 220, 90, 350]);
-}
-
-function restStartSound() {
-  // Calm descending double — ease off
-  setTimeout(() => beep(560, 0.22, 0.6), 0);
-  setTimeout(() => beep(420, 0.4, 0.6), 240);
-  if (navigator.vibrate) navigator.vibrate([180]);
-}
-
-function intervalDoneSound() {
-  setTimeout(() => beep(660, 0.18, 0.6), 0);
-  setTimeout(() => beep(880, 0.18, 0.7), 200);
-  setTimeout(() => beep(1100, 0.18, 0.8), 400);
-  setTimeout(() => beep(1320, 0.6, 0.9), 600);
-  if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
-}
-
-// ─── Wake lock ────────────────────────────────────────────────────────────────
-async function acquireWakeLock() {
+function save(markEdited = true) {
+  if (STATE.storageError) return false;
+  if (markEdited) STATE.pristine = false;
+  STATE.ts = Date.now();
   try {
-    if ('wakeLock' in navigator) {
-      STATE.wakeLock = await navigator.wakeLock.request('screen');
-    }
-  } catch (e) {}
-}
-
-function releaseWakeLock() {
-  if (STATE.wakeLock) { STATE.wakeLock.release(); STATE.wakeLock = null; }
-}
-
-// ─── Rest timer ───────────────────────────────────────────────────────────────
-function startRestTimer(seconds) {
-  // Every rest start is a user gesture — unlock/resume audio here so the done
-  // alarm works even when the session was restored by a reload (startWorkout's
-  // initAudio never ran in that page load).
-  initAudio();
-  startAudioKeepAlive();
-  clearTimeout(restDoneHide);
-  clearRestTimer();
-  restTimerMinimized = false; // a fresh rest always opens full screen
-  STATE.restTimer.prescribed = seconds;
-  STATE.restTimer.end = Date.now() + seconds * 1000;
-  STATE.restTimer.active = true;
-  renderTimerOverlay();
-  STATE.restTimer.interval = setInterval(tickRestTimer, 250);
-  save(); // persist so a reload during rest keeps counting
-}
-
-// Re-arm a rest timer from a persisted end-time after a page reload.
-function resumeRestTimer(end, prescribed) {
-  clearRestTimer();
-  STATE.restTimer.prescribed = prescribed;
-  STATE.restTimer.end = end;
-  STATE.restTimer.active = true;
-  if (end - Date.now() <= 0) {
-    // Rest elapsed while the app was gone — show the done state (no sound, since
-    // audio is blocked until a user gesture on a fresh load).
-    restTimerDone(true);
-    return;
+    const raw = JSON.stringify(durable());
+    localStorage.setItem('oly_state', raw);
+    // The older Day app can seed an old oly_state; retain the latest Rev 6 copy.
+    localStorage.setItem('oly_rev6_backup', raw);
+    publishDayDurations();
+    if (typeof schedulePush === 'function') schedulePush();
+    return true;
+  } catch (e) {
+    toast('Storage is full or unavailable. Export your data now; this change is not safely saved.');
+    return false;
   }
-  renderTimerOverlay();
-  startAudioKeepAlive();
-  STATE.restTimer.interval = setInterval(tickRestTimer, 250);
 }
-
-function tickRestTimer() {
-  const rem = Math.ceil((STATE.restTimer.end - Date.now()) / 1000);
-  if (rem <= 0) { restTimerDone(); return; }
-  renderTimerOverlay();
-}
-
-// Rest elapsed: alarm, show the done screen, then auto-dismiss it. +30s/+1m on
-// the done screen restart the timer, which cancels the pending dismiss.
-let restDoneHide = null;
-function restTimerDone(silent = false) {
-  clearRestTimer();
-  restTimerMinimized = false; // done screen always comes back to the front
-  if (!silent) {
-    timerDoneSound();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+function publishDayDurations() {
+  try {
+    const min = {},
+      sessions = {};
+    PROGRAM.days.forEach((day) => {
+      const p = plan(day);
+      sessions[day.slice(0, 3)] = p.sessions
+        .filter((s) => !s.skipped)
+        .map((s) => ({ id: s.id, kind: s.kind, minutes: s.totalMin }));
+      min[day.slice(0, 3)] = sessions[day.slice(0, 3)].reduce((n, s) => n + s.minutes, 0);
+    });
+    localStorage.setItem(
+      'oly_day_durations',
+      JSON.stringify({
+        v: 2,
+        revision: 6,
+        cycle: STATE.training.cycle,
+        week: STATE.training.week,
+        min,
+        sessions,
+        ts: STATE.ts,
+      }),
+    );
+  } catch (e) {
+    /* Non-critical companion-app snapshot. */
   }
-  renderTimerOverlay(true);
-  stopAudioKeepAliveSoon();
-  clearTimeout(restDoneHide);
-  restDoneHide = setTimeout(() => {
-    if (!STATE.restTimer.active) skipRestTimer();
-  }, 4000);
-  save(); // rest no longer active — keep the persisted snapshot in sync
 }
-
-function clearRestTimer() {
-  clearInterval(STATE.restTimer.interval);
-  STATE.restTimer.active = false;
-  STATE.restTimer.interval = null;
+function readiness() {
+  return STATE.readiness?.date === dateISO()
+    ? STATE.readiness
+    : { date: dateISO(), level: 'green', event: 'normal', localIssue: '' };
 }
-
-function skipRestTimer() {
-  clearTimeout(restDoneHide);
-  clearRestTimer();
-  if (!STATE.intervalTimer.active) stopAudioKeepAlive();
-  document.getElementById('timer-overlay').classList.add('hidden');
-  save();
+function plan(day, actual = false) {
+  const r = readiness(),
+    use = actual || day === PROGRAM.days[(new Date().getDay() + 6) % 7];
+  return PROGRAM.dayPlan(
+    STATE.training,
+    day,
+    use
+      ? {
+          readiness: r.level,
+          event: r.event,
+          localIssue: r.localIssue,
+          pivotResidual: r.pivotResidual,
+        }
+      : {},
+  );
 }
-
-function addRestTime(sec) {
-  // If the timer already completed (or was never running), the "+30s / +1m"
-  // buttons on the done screen should start a fresh rest of that length rather
-  // than silently mutating a dead end-time.
-  if (!STATE.restTimer.active) { startRestTimer(sec); return; }
-  STATE.restTimer.end += sec * 1000;
-  renderTimerOverlay();
-  save();
+function recordsFor(day, id) {
+  return STATE.records.filter(
+    (r) =>
+      r.cycle === STATE.training.cycle &&
+      r.week === STATE.training.week &&
+      r.exposure === STATE.training.exposure &&
+      r.day === day &&
+      r.session.id === id,
+  );
 }
-
-// ─── Interval timer ───────────────────────────────────────────────────────────
-// Builds a flat phase list from a config and runs it with audio/haptic cues at
-// every transition. Timestamp-driven so it stays accurate across backgrounding.
-function buildPhases(cfg) {
-  const phases = [];
-  if (cfg.warmupSec) phases.push({ type: 'warmup', sec: cfg.warmupSec, round: 0 });
-  for (let r = 1; r <= cfg.rounds; r++) {
-    phases.push({ type: 'work', sec: cfg.workSec, round: r });
-    if (cfg.lastRest || r < cfg.rounds) {
-      phases.push({ type: 'rest', sec: cfg.restSec, round: r });
-    }
-  }
-  if (cfg.cooldownSec) phases.push({ type: 'cooldown', sec: cfg.cooldownSec, round: 0 });
-  return phases;
+function done(day, id) {
+  return recordsFor(day, id).some((r) => r.status === 'complete');
 }
-
-function startIntervalTimer(cfg) {
-  initAudio();
-  startAudioKeepAlive();
-  const it = STATE.intervalTimer;
-  clearInterval(it.interval);
-  it.config = cfg;
-  it.phases = buildPhases(cfg);
-  it.phaseIdx = 0;
-  it.paused = false;
-  it.active = true;
-  it.lastCue = -1;
-  it.startedAt = Date.now();
-  it.phaseEnd = Date.now() + it.phases[0].sec * 1000;
-  // Opening cue depends on the first phase
-  if (it.phases[0].type === 'work') workStartSound(); else restStartSound();
-  renderIntervalOverlay();
-  it.interval = setInterval(tickIntervalTimer, 200);
-  save();
-}
-
-function resumePersistedIntervalTimer(snapshot) {
-  if (!snapshot?.config) return;
-  const it = STATE.intervalTimer;
-  clearInterval(it.interval);
-  it.config = snapshot.config;
-  it.phases = Array.isArray(snapshot.phases) && snapshot.phases.length
-    ? snapshot.phases : buildPhases(snapshot.config);
-  it.phaseIdx = Math.max(0, Number(snapshot.phaseIdx) || 0);
-  it.phaseEnd = Number(snapshot.phaseEnd) || Date.now();
-  it.paused = !!snapshot.paused;
-  it.pauseRemaining = Math.max(0, Number(snapshot.pauseRemaining) || 0);
-  it.lastCue = Number.isFinite(snapshot.lastCue) ? snapshot.lastCue : -1;
-  it.startedAt = Number(snapshot.startedAt) || Date.now();
-  it.active = true;
-  it.interval = null;
-  if (!it.paused) catchUpIntervalTimer(false);
-  if (!it.active) return;
-  renderIntervalOverlay();
-  startAudioKeepAlive();
-  it.interval = setInterval(tickIntervalTimer, 200);
-  save();
-}
-
-function tickIntervalTimer() {
-  const it = STATE.intervalTimer;
-  if (it.paused) return;
-  const rem = Math.ceil((it.phaseEnd - Date.now()) / 1000);
-  if (rem <= 0) { advanceIntervalPhase(); return; }
-  // 3-2-1 countdown blips before each transition (once per second)
-  if (rem <= 3 && rem >= 1 && it.lastCue !== rem) {
-    it.lastCue = rem;
-    countdownTick();
-  }
-  renderIntervalOverlay();
-}
-
-function advanceIntervalPhase() {
-  const it = STATE.intervalTimer;
-  it.phaseIdx++;
-  it.lastCue = -1;
-  if (it.phaseIdx >= it.phases.length) { finishIntervalTimer(); return; }
-  const phase = it.phases[it.phaseIdx];
-  it.phaseEnd = Date.now() + phase.sec * 1000;
-  if (phase.type === 'work') workStartSound();
-  else restStartSound();
-  renderIntervalOverlay();
-  save();
-}
-
-function finishIntervalTimer() {
-  const it = STATE.intervalTimer;
-  clearInterval(it.interval);
-  it.interval = null;
-  it.active = false;
-  intervalDoneSound();
-  renderIntervalOverlay(true);
-  stopAudioKeepAliveSoon();
-  save();
-}
-
-function pauseIntervalTimer() {
-  const it = STATE.intervalTimer;
-  if (!it.active || it.paused) return;
-  it.paused = true;
-  it.pauseRemaining = Math.max(0, it.phaseEnd - Date.now());
-  renderIntervalOverlay();
-  save();
-}
-
-function resumeIntervalTimer() {
-  const it = STATE.intervalTimer;
-  if (!it.active || !it.paused) return;
-  it.paused = false;
-  it.phaseEnd = Date.now() + it.pauseRemaining;
-  renderIntervalOverlay();
-  save();
-}
-
-function skipIntervalPhase() {
-  if (!STATE.intervalTimer.active) return;
-  advanceIntervalPhase();
-}
-
-function stopIntervalTimer() {
-  const it = STATE.intervalTimer;
-  clearInterval(it.interval);
-  it.interval = null;
-  it.active = false;
-  it.paused = false;
-  if (!STATE.restTimer.active) stopAudioKeepAlive();
-  document.getElementById('interval-overlay').classList.add('hidden');
-  save();
-}
-
-// Re-sync after the tab was backgrounded (timers are throttled when hidden).
-// Silently fast-forward through any phases that fully elapsed while away.
-function catchUpIntervalTimer(persist = true) {
-  const it = STATE.intervalTimer;
-  if (!it.active || it.paused) return;
-  let guard = 0;
-  while (it.active && Date.now() >= it.phaseEnd && guard++ < 1000) {
-    it.phaseIdx++;
-    if (it.phaseIdx >= it.phases.length) { finishIntervalTimer(); return; }
-    it.phaseEnd += it.phases[it.phaseIdx].sec * 1000;
-  }
-  it.lastCue = -1;
-  renderIntervalOverlay();
-  if (persist) save();
-}
-
-// ─── Session timer ────────────────────────────────────────────────────────────
-function startSessionTimer() {
-  clearInterval(STATE.sessionTimer.interval); // never leak a prior session's interval
-  STATE.sessionTimer.start = Date.now();
-  STATE.sessionTimer.active = true;
-  STATE.sessionTimer.interval = setInterval(updateSessionTimerDisplay, 1000);
-  save();
-}
-
-// Re-arm the session timer from a persisted start-time after a page reload.
-// It's count-down-from-start math, so the display self-corrects for the gap.
-function resumeSessionTimer(start) {
-  clearInterval(STATE.sessionTimer.interval);
-  STATE.sessionTimer.start = start;
-  STATE.sessionTimer.active = true;
-  STATE.sessionTimer.interval = setInterval(updateSessionTimerDisplay, 1000);
-}
-
-function restoreRuntimeTimers() {
-  if (!STATE.activeWorkout) return;
-  const timers = STATE._restoreTimers;
-  delete STATE._restoreTimers;
-  acquireWakeLock();
-  if (timers?.session) resumeSessionTimer(timers.session.start);
-  if (timers?.rest) resumeRestTimer(timers.rest.end, timers.rest.prescribed);
-  if (timers?.interval) resumePersistedIntervalTimer(timers.interval);
-}
-
-function stopSessionTimer() {
-  clearInterval(STATE.sessionTimer.interval);
-  STATE.sessionTimer.active = false;
-  save();
-}
-
-function updateSessionTimerDisplay() {
-  const el = document.getElementById('session-timer');
-  if (!el || !STATE.activeWorkout) return;
-  const elapsed = Math.floor((Date.now() - STATE.sessionTimer.start) / 1000);
-  const total = STATE.activeWorkout.totalSec || 0;
-  if (!total) { el.textContent = fmtTime(elapsed); return; } // fallback: count up
-  const rem = total - elapsed;
-  if (rem >= 0) {
-    el.textContent = fmtTime(rem);
-    el.classList.remove('session-over');
-  } else {
-    el.textContent = '+' + fmtTime(-rem); // overtime
-    el.classList.add('session-over');
-  }
-  highlightCurrentExercise(elapsed);
-}
-
-function fmtTime(sec) {
-  const m = Math.floor(sec / 60), s = sec % 60;
-  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-
-// ─── Navigation ───────────────────────────────────────────────────────────────
 function nav(view) {
   STATE.view = view;
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  closeModal();
+  render();
+  $('app').scrollTop = 0;
+}
+function toast(text) {
+  const box = $('toast');
+  if (!box) return;
+  box.textContent = text;
+  box.hidden = false;
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => (box.hidden = true), 6500);
+}
+function render() {
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === STATE.view);
+    b.setAttribute('aria-current', b.dataset.view === STATE.view ? 'page' : 'false');
+  });
+  $('app').innerHTML = (
+    {
+      home: renderHome,
+      workout: renderWorkout,
+      history: renderHistory,
+      guide: renderGuide,
+      settings: renderSettings,
+    }[STATE.view] || renderHome
+  )();
+  tickTimers();
+}
+function header(kicker, title, sub = '') {
+  return `<header class="page-head"><div class="eyebrow">${esc(kicker)}</div><h1>${esc(title)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}</header>`;
+}
+function renderHome() {
+  const t = STATE.training,
+    p = plan(STATE.selectedDay),
+    i = info();
+  const total = PROGRAM.days.reduce(
+    (n, d) =>
+      n +
+      plan(d)
+        .sessions.filter((s) => !s.skipped)
+        .flatMap((s) => s.rows)
+        .filter((e) => e.kind === 'failure')
+        .reduce((a, e) => a + e.sets, 0),
+    0,
+  );
+  return (
+    header(
+      'OLY TRACKER / REVISION 6',
+      'Your training week',
+      `Cycle ${t.cycle} · Week ${t.week}/13 · ${i.name}${t.onboarding && t.cycle === 1 ? ' · Entry stage ' + t.entryStage : ''}`,
+    ) +
+    (STATE.legacy && !STATE.migrationDismissed
+      ? `<div class="notice">Revision 6 starts with a fresh program position. Your previous plan, logs, loads and any unfinished workout are preserved under History and in exports. ${button('Got it', 'STATE.migrationDismissed=true;save();render()', 'text-button')}</div>`
+      : '') +
+    (STATE.activeWorkout
+      ? `<div class="resume">${button('Resume active workout →', "nav('workout')", 'primary wide')}</div>`
+      : '') +
+    `<div class="stats"><div><strong>${PROGRAM.days.filter((d) => plan(d).sessions.some((s) => !s.skipped && s.rows.some((e) => e.kind === 'quality'))).length}</strong><span>Olympic days</span></div><div><strong>${PROGRAM.days.filter((d) => plan(d).sessions.some((s) => !s.skipped && s.rows.some((e) => e.id === 'bench'))).length}</strong><span>Bench days</span></div><div><strong>${total}</strong><span>Planned failure sets</span></div></div>
+    <div class="week-strip" aria-label="Choose training day">${PROGRAM.days.map((d) => `<button class="day-tab ${d === STATE.selectedDay ? 'selected' : ''}" onclick="selectDay('${d}')" aria-pressed="${d === STATE.selectedDay}"><span>${prettyDay(d).slice(0, 3)}</span><b>${['monday', 'tuesday', 'thursday', 'friday'].includes(d) ? { monday: 'A', tuesday: 'B', thursday: 'C', friday: 'D' }[d] : '–'}</b>${plan(d).sessions.some((s) => done(d, s.id)) ? '<i>✓</i>' : ''}</button>`).join('')}</div>
+    <section class="day-panel"><div class="eyebrow">${prettyDay(p.day)} · normal calendar</div><h2>${esc(p.title)}</h2>
+    ${p.notes.map(notice).join('')}
+    ${p.sessions.length ? p.sessions.map((s) => sessionPreview(s, p)).join('') : '<p class="muted">No required workout. Optional easy walking or targeted mobility.</p>'}
+    ${(p.mobility || []).map(notice).join('')}</section>
+    <div class="footer-actions">${button('Review & advance week', 'openReview()')}${button('Rescue a missed bench', 'openBenchRescue()', 'text-button')}</div>
+    <p class="muted small">Week position advances after your review. Start a deferred session from its original day card on the day you actually perform it. Keep A–B–rest–C–D; add recovery days as needed. Omitted work from a finished session creates no debt except a separately rescued bench.</p>`
+  );
+}
+function sessionPreview(s, p) {
+  const completed = done(p.day, s.id),
+    failed = recordsFor(p.day, s.id).some((r) => r.status === 'partial');
+  return `<article class="session-preview"><div class="session-top"><h3>${esc(s.title)}</h3><span class="tag">${completed ? '✓ Logged' : s.skipped ? 'Omitted' : `~${s.totalMin} min`}</span></div>
+    ${s.note ? `<p class="muted">${esc(s.note)}</p>` : ''}${s.skipped ? notice(s.skipReason) : ''}
+    <div class="actions">${button(completed ? 'Completed' : failed ? 'Partial session saved' : 'Start this session', `startWorkout('${p.day}','${s.id}')`, 'primary wide', completed || failed || s.skipped || !!STATE.activeWorkout)}</div>
+    <div class="prescription-list">${s.rows.map((e) => `<div><span>${esc(e.name)}</span><b>${esc(prescription(e))}</b></div>`).join('')}</div>
+    <div class="actions"><details><summary>Warm-up & details</summary><p>${esc(s.warmup)}</p>${s.rows.map((e) => `<p><b>${esc(e.name)}</b><br>${esc(e.note)}<br><span class="muted">${esc(e.warmup || '')} Rest ${time(e.rest || 0)}${e.tempo ? ' · ' + esc(e.tempo) : ''}.</span></p>`).join('')}</details></div></article>`;
+}
+function prescription(ex) {
+  if (ex.minutes) return `${ex.minutes} min · RPE 3–4`;
+  if (ex.test && !ex.technicalBenchmark)
+    return '3 scored attempts · 88–92% opener, then 97–100%, then minimal PR if secure';
+  let label = `${ex.sets} × ${ex.reps}`;
+  if (ex.kind === 'failure') label += ' · 0 RIR';
+  else if (ex.kind === 'quality') {
+    if (ex.sequence)
+      label += ` · ${ex.sequence.map((r) => (r[0] === r[1] ? r[0] : r.join('–'))).join(', ')}%`;
+    else if (ex.range)
+      label += ` · ${ex.range[0] === ex.range[1] ? ex.range[0] : ex.range.join('–')}% ${ex.anchor === 'jerk' ? 'RJ' : ex.anchor === 'cj' ? 'CJ' : 'SN'}`;
+    if (ex.workingLoad) label = `${ex.sets} × ${ex.reps} · ${fmt(ex.workingLoad)} lb`;
+    label += ` · effort ≤${ex.effort}${ex.finalEffort ? ' (final ≤' + ex.finalEffort + ')' : ''}`;
+  } else if (ex.effort) label += ' · ' + ex.effort;
+  return label;
+}
+function selectDay(day) {
+  STATE.selectedDay = day;
   render();
 }
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
-// Local-date formatting (avoid toISOString's UTC rollover near midnight).
-function fmtDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function today() {
-  return fmtDate(new Date());
-}
-
-function todayDayKey() {
-  return PROGRAM.dayKeys[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
-}
-
-// Date string for weekday index i (0=Mon … 6=Sun) of the current week.
-function dateForWeekday(i) {
-  const now = new Date();
-  const dow = now.getDay(); // 0=Sun … 6=Sat
-  const toMonday = dow === 0 ? -6 : 1 - dow;
-  const d = new Date(now);
-  d.setDate(now.getDate() + toMonday + i);
-  return fmtDate(d);
-}
-
-function sessionCompleted(dayKey, sessionId, programWeek) {
-  return Object.values(STATE.log).some(log => {
-    if (log.cycleId != null && log.programWeek != null) {
-      return log.cycleId === STATE.cycleId && log.programWeek === programWeek
-        && log.dayKey === dayKey && log.sessionId === sessionId;
-    }
-    // Legacy records did not store cycle/week/session metadata.
-    return log.date === dateForWeekday(PROGRAM.dayKeys.indexOf(dayKey))
-      && log.dayKey === dayKey && (sessionId === 'main' || !log.sessionId);
-  });
-}
-
-// Best-guess timer length (seconds) for a steady cardio / mobility slot.
-function durationSec(ex) {
-  if (ex.timerSec) return ex.timerSec;
-  if (ex.duration) {
-    const m = String(ex.duration).match(/(\d+)/);
-    if (m) {
-      const value = parseInt(m[1], 10);
-      return /\bmin\b/i.test(ex.duration) ? value * 60 : value;
-    }
-  }
-  return ex.rest && ex.rest > 0 ? ex.rest : 60;
-}
-
-// One-line human summary of an interval config, e.g. "5 × 3:00 on / 3:00 off".
-function intervalSummary(cfg) {
-  const parts = [];
-  if (cfg.warmupSec) parts.push(`${fmtTime(cfg.warmupSec)} warm-up`);
-  parts.push(`${cfg.rounds} × ${fmtTime(cfg.workSec)} on / ${fmtTime(cfg.restSec)} off`);
-  if (cfg.cooldownSec) parts.push(`${fmtTime(cfg.cooldownSec)} cool-down`);
-  const totalSec = (cfg.warmupSec || 0) + (cfg.cooldownSec || 0) +
-    cfg.rounds * cfg.workSec + (cfg.lastRest ? cfg.rounds : cfg.rounds - 1) * cfg.restSec;
-  return `${parts.join(' · ')} — total ${fmtTime(totalSec)}`;
-}
-
-function fmtWeight(w) {
-  if (w === null || w === undefined) return '—';
-  return w % 1 === 0 ? `${w} lb` : `${w.toFixed(1)} lb`;
-}
-
-function hasMaxes() {
-  return Object.keys(PROGRAM.liftNames).every(k => Number(STATE.maxes[k]) > 0);
-}
-
-// Get prescribed weight for an exercise slot
-function prescribedWeight(ex, ignoreOverrides = false) {
-  const maxes = STATE.activeWorkout?.tmSnapshot || STATE.maxes;
-  let weight = null;
-  if (ex.recvKey) {
-    weight = PROGRAM.recvWeight(STATE.receiving, ex.recvKey);
-  } else if (ex.baseLift && ex.pct != null) {
-    weight = PROGRAM.calcWeight(maxes, ex.baseLift, ex.pct);
-  }
-  if (weight == null) return null;
-  if (ex.loadMultiplier) weight *= ex.loadMultiplier;
-  if (ex.loadCapPct && ex.loadCapBaseLift) {
-    const cap = PROGRAM.calcWeight(maxes, ex.loadCapBaseLift, ex.loadCapPct);
-    if (cap != null) weight = Math.min(weight, cap);
-  }
-  // A miss override stores the final reduced attempt (usually the actual load
-  // minus 10 lb). Apply it after readiness/pickup scaling so that scaling is not
-  // accidentally applied twice, while retaining whichever value is lower.
-  if (!ignoreOverrides) {
-    const slotKey = ex.slotKey || ex.id;
-    const slotOverride = STATE.activeWorkout?.loadOverrides?.[slotKey];
-    const receivingOverride = ex.recvKey
-      ? STATE.activeWorkout?.receivingOverrides?.[ex.recvKey] : null;
-    const override = slotOverride ?? receivingOverride;
-    if (override != null) weight = Math.min(weight, override);
-  }
-  return Math.round(weight / 2.5) * 2.5;
-}
-
-function progressionKey(ex) {
-  return ex.slotKey || `${STATE.activeWorkout?.dayKey || 'day'}_${ex.id}`;
-}
-
-// Get last weight used for a hypertrophy slot. The same exercise on different
-// days may have different rep ranges and must not contaminate progression.
-function lastWeight(ex) {
-  return STATE.hypertrophyWeights[progressionKey(ex)] || null;
-}
-
-// Should this hypertrophy exercise progress weight this session?
-// Reads progressNext, which is computed at the END of the previous session and
-// deliberately survives the between-session reset (unlike the live `sets` array).
-function shouldProgress(ex) {
-  const last = STATE.hypertrophyWeights[progressionKey(ex)];
-  return !!(last && last.progressNext);
-}
-
-// ─── Double progression logic ─────────────────────────────────────────────────
-// During a session we just accumulate the reps performed at the working weight.
-// repTop/setCount are stashed so progression can be evaluated at session end.
-function recordHypertrophySet(ex, weight, reps, repRange, setCount, rir) {
-  const key = progressionKey(ex);
-  const existing = STATE.hypertrophyWeights[key] || { weight, sets: [], prevSets: [], exId: ex.id };
-  existing.weight = weight;
-  existing.sets = existing.sets || [];
-  existing.sets.push({ reps, rir: rir === '' ? null : Number(rir) });
-  existing.repTop = repRange ? repRange[1] : null;
-  existing.setCount = setCount;
-  const m = String(ex.rirNote || '').match(/(\d+)/);
-  existing.targetRir = m ? Number(m[1]) : null;
-  STATE.hypertrophyWeights[key] = existing;
-  save();
-}
-
-// Called once at session end. For every tracked exercise that was worked this
-// session, decide whether to flag a weight increase next time (all of the last
-// `setCount` sets reached the top of the rep range), snapshot the session's reps
-// for the "Last:" display, then clear the live set tracker.
-function finalizeHypertrophyProgression() {
-  Object.values(STATE.hypertrophyWeights).forEach(d => {
-    if (!d.sets || d.sets.length === 0) return; // not trained this session — leave as-is
-    if (d.repTop && d.setCount && d.sets.length >= d.setCount) {
-      d.progressNext = d.sets.slice(-d.setCount).every(s => {
-        const row = typeof s === 'number' ? { reps: s, rir: null } : s;
-        const rirMet = d.targetRir == null || (row.rir != null && row.rir >= d.targetRir);
-        return row.reps >= d.repTop && rirMet;
-      });
-    } else {
-      d.progressNext = false;
-    }
-    d.prevSets = d.sets.map(s => typeof s === 'number' ? s : s.reps);
-    d.sets = [];
-  });
-}
-
-// ─── Rendering helpers ────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-const el = (tag, cls, html) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
-  return e;
-};
-
-function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, ch => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
-  })[ch]);
-}
-
-function sectionColorClass(color) {
-  return { gold: 'sec-gold', blue: 'sec-blue', green: 'sec-green', red: 'sec-red' }[color] || 'sec-gold';
-}
-
-// ─── Render: Timer Overlay ────────────────────────────────────────────────────
-// Minimized mode collapses the full-screen overlay to a floating pill so the
-// workout underneath stays visible/scrollable while the rest keeps counting.
-let restTimerMinimized = false;
-function minimizeRestTimer() { restTimerMinimized = true; renderTimerOverlay(); }
-function expandRestTimer() { restTimerMinimized = false; renderTimerOverlay(); }
-
-function renderTimerOverlay(done = false) {
-  const overlay = $('timer-overlay');
-  if (!STATE.restTimer.active && !done) { overlay.classList.add('hidden'); return; }
-  overlay.classList.remove('hidden');
-
-  const rem = Math.max(0, Math.ceil((STATE.restTimer.end - Date.now()) / 1000));
-  const pct = done ? 100 : ((STATE.restTimer.prescribed - rem) / STATE.restTimer.prescribed) * 100;
-  const circumference = 2 * Math.PI * 54;
-  const dash = (pct / 100) * circumference;
-
-  // Build the card once, then mutate it in place. Rebuilding innerHTML on every
-  // 250ms tick destroyed the buttons mid-tap — iOS drops the click if the
-  // element under the finger is replaced between touchstart and touchend.
-  if (!overlay.querySelector('.timer-card')) {
-    overlay.innerHTML = `
-      <button class="timer-minimize" onclick="minimizeRestTimer()" aria-label="Minimize timer">▾</button>
-      <div class="timer-card">
-        <div class="timer-label"></div>
-        <div class="timer-circle-wrap">
-          <svg viewBox="0 0 120 120" class="timer-svg">
-            <circle cx="60" cy="60" r="54" class="timer-track"/>
-            <circle cx="60" cy="60" r="54" class="timer-progress"
-              stroke-dashoffset="0"
-              style="transform:rotate(-90deg);transform-origin:50% 50%"/>
-          </svg>
-          <div class="timer-num"></div>
-        </div>
-        <div class="timer-prescribed"></div>
-        <div class="timer-actions">
-          <button class="btn-outline" onclick="addRestTime(30)">+30s</button>
-          <button class="btn-outline" onclick="addRestTime(60)">+1m</button>
-          <button class="btn-primary timer-skip" onclick="skipRestTimer()">Skip</button>
-        </div>
-      </div>
-      <button class="timer-pill" onclick="expandRestTimer()" aria-label="Expand timer">
-        <span class="timer-pill-label">Rest</span>
-        <span class="timer-pill-num"></span>
-        <span class="timer-pill-bar"><span class="timer-pill-fill"></span></span>
-      </button>`;
-    // Tapping the dark backdrop (outside the card) also minimizes
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay && STATE.restTimer.active) minimizeRestTimer();
-    });
-  }
-  overlay.classList.toggle('timer-min', restTimerMinimized && !done);
-  overlay.querySelector('.timer-label').textContent = done ? 'REST COMPLETE' : 'REST';
-  overlay.querySelector('.timer-progress').setAttribute('stroke-dasharray', `${dash} ${circumference}`);
-  overlay.querySelector('.timer-num').textContent = done ? '✓' : fmtTime(rem);
-  overlay.querySelector('.timer-prescribed').textContent = `Prescribed: ${fmtTime(STATE.restTimer.prescribed)}`;
-  overlay.querySelector('.timer-skip').textContent = done ? 'Done' : 'Skip';
-  overlay.querySelector('.timer-pill-num').textContent = fmtTime(rem);
-  overlay.querySelector('.timer-pill-fill').style.width = `${pct}%`;
-}
-
-// ─── Render: Interval Timer Overlay ───────────────────────────────────────────
-function renderIntervalOverlay(done = false) {
-  const overlay = $('interval-overlay');
-  const it = STATE.intervalTimer;
-  if (!it.active && !done) { overlay.classList.add('hidden'); return; }
-  overlay.classList.remove('hidden');
-
-  const phase = it.phases[Math.min(it.phaseIdx, it.phases.length - 1)];
-  const rem = done ? 0 : Math.max(0, it.paused ? Math.ceil(it.pauseRemaining / 1000)
-                                                : Math.ceil((it.phaseEnd - Date.now()) / 1000));
-  const pct = done ? 100 : phase ? ((phase.sec - rem) / phase.sec) * 100 : 0;
-  const circumference = 2 * Math.PI * 54;
-  const dash = (pct / 100) * circumference;
-
-  const totalWork = it.config ? it.config.rounds : 0;
-  const phaseClass = done ? 'ip-done' : `ip-${phase.type}`;
-  const phaseLabel = done ? 'COMPLETE'
-    : phase.type === 'work' ? 'WORK'
-    : phase.type === 'rest' ? 'RECOVER'
-    : phase.type === 'warmup' ? 'WARM-UP'
-    : 'COOL-DOWN';
-
-  // Total remaining across all phases
-  let totalRem = 0;
-  if (!done) {
-    totalRem = rem;
-    for (let i = it.phaseIdx + 1; i < it.phases.length; i++) totalRem += it.phases[i].sec;
-  }
-
-  const roundText = (phase && phase.round > 0)
-    ? `Round ${phase.round} / ${totalWork}` : phaseLabel;
-
-  overlay.innerHTML = `
-    <div class="interval-card ${phaseClass}">
-      <div class="ip-round">${done ? 'Session finished' : roundText}</div>
-      <div class="ip-phase">${phaseLabel}</div>
-      <div class="timer-circle-wrap">
-        <svg viewBox="0 0 120 120" class="timer-svg">
-          <circle cx="60" cy="60" r="54" class="timer-track"/>
-          <circle cx="60" cy="60" r="54" class="ip-progress"
-            stroke-dasharray="${dash} ${circumference}"
-            style="transform:rotate(-90deg);transform-origin:50% 50%"/>
-        </svg>
-        <div class="timer-num">${done ? '✓' : fmtTime(rem)}</div>
-      </div>
-      <div class="ip-total">${done ? '' : `Total left: ${fmtTime(totalRem)}`}</div>
-      <div class="ip-dots">
-        ${it.phases.map((p, i) => p.type === 'work'
-          ? `<span class="ip-dot ${i < it.phaseIdx ? 'ip-dot-done' : i === it.phaseIdx ? 'ip-dot-now' : ''}"></span>`
-          : '').join('')}
-      </div>
-      <div class="timer-actions">
-        ${done ? `
-          <button class="btn-primary" onclick="stopIntervalTimer()">Done</button>
-        ` : `
-          <button class="btn-outline" onclick="skipIntervalPhase()">Skip</button>
-          ${it.paused
-            ? `<button class="btn-primary" onclick="resumeIntervalTimer()">Resume</button>`
-            : `<button class="btn-primary" onclick="pauseIntervalTimer()">Pause</button>`}
-          <button class="btn-outline" onclick="stopIntervalTimer()">Stop</button>
-        `}
-      </div>
-    </div>`;
-}
-
-// Short focus label from a day title, e.g. "Snatch + Back Squat + Push Hypertrophy".
-function dayFocus(day) {
-  if (!day || !day.title) return '';
-  const idx = day.title.indexOf('—');
-  return idx >= 0 ? day.title.slice(idx + 1).trim() : day.title;
-}
-
-// Documented session length already includes warm-up, rest, transitions and
-// plate changes. Each AM/PM session is timed independently.
-function dayDocMin(day) {
-  if (!day) return null;
-  return day.totalMin || null;
-}
-
-// Real-world overhead the doc's totals don't include: moving between stations /
-// loading plates (per exercise) plus misc stoppage — restroom, waiting for a
-// rack or machine, chalk (per session, spread evenly across every set).
-const TRANSITION_SEC = 0;
-const MISC_BUFFER_SEC = 0;
-
-// Sets an exercise slot will actually take, for spreading the misc buffer.
-function itemSetCount(ex, def) {
-  if (!def || def.type === 'cardio' || def.type === 'mobility' || ex.interval) return 1;
-  if (ex.buildup && ex.buildup.length) return ex.buildup.length;
-  if (typeof ex.sets === 'number') return ex.sets;
-  if (ex.isDailyMax || ex.isMaxEffort) return 6; // matches exerciseRawSec's fallback
-  return 3;
-}
-
-function dayOverheadSec(day) {
-  if (!day || !day.sections) return 0;
-  let count = 0;
-  day.sections.forEach(sec => sec.exercises.forEach(ex => {
-    const def = PROGRAM.exercises[ex.id];
-    if (!def) return;
-    count++;
-  }));
-  return count ? count * TRANSITION_SEC + MISC_BUFFER_SEC : 0;
-}
-
-// Expected real session length = doc total + transition/misc overhead. This is
-// what the home page, weekly export, and session countdown all use.
-function dayEstMin(day) {
-  const base = dayDocMin(day);
-  if (base == null) return null;
-  return base;
-}
-
-// ─── Session scheduling ───────────────────────────────────────────────────────
-// Rough real time cost of one exercise, in seconds. Fixed-duration items
-// (cardio/mobility/intervals) use their actual length; set-based items use
-// sets × (execution + rest). Absolute values matter less than the ratios —
-// the variable items are scaled to fit the day's documented total below.
-function exerciseRawSec(ex, def) {
-  if (ex.interval) {
-    const c = ex.interval;
-    return (c.warmupSec || 0) + (c.cooldownSec || 0) +
-      c.rounds * c.workSec + (c.lastRest ? c.rounds : c.rounds - 1) * c.restSec;
-  }
-  if (def.type === 'cardio' || def.type === 'mobility' || (ex.duration && !ex.sets)) return durationSec(ex);
-  const rampSec = ex.buildup && ex.buildup.length
-    ? ex.buildup.reduce((t, s) => t + 30 + (s.rest || 0), 0)
-    : 0;
-  if (ex.isDailyMax || ex.isMaxEffort) {
-    // Fallback for any build-to-max without an explicit ladder.
-    const rest = ex.rest || 240;
-    return rampSec + 6 * (25 + rest * 0.6);
-  }
-  const sets = typeof ex.sets === 'number' ? ex.sets : 3;
-  const rest = ex.rest || 60;
-  let exec = 30; // seconds to perform one set
-  if (def.type === 'hypertrophy' || def.type === 'strength') exec = 40;
-  else if (def.type === 'core') exec = 35;
-  else if (def.type === 'jump') exec = 20;
-  else if (def.type === 'warmup') exec = 25;
-  return rampSec + sets * (exec + rest);
-}
-
-// Annotate each exercise in a day with a scheduled start offset (`_startSec`),
-// anchored so the whole session sums to the document's totalMin. Returns a flat
-// schedule list and the total seconds.
-function computeSchedule(day) {
-  if (!day || !day.sections) {
-    return { totalSec: (day && day.totalMin) ? day.totalMin * 60 : 0, list: [] };
-  }
-  let fixedSec = 0, variableRaw = 0;
-  const items = [];
-  day.sections.forEach((sec, si) => sec.exercises.forEach((ex, ei) => {
-    const def = PROGRAM.exercises[ex.id];
-    if (!def) return;
-    const fixed = def.type === 'cardio' || def.type === 'mobility' || !!ex.interval || !!(ex.duration && !ex.sets);
-    const raw = exerciseRawSec(ex, def);
-    items.push({ si, ei, ex, fixed, raw });
-    if (fixed) fixedSec += raw; else variableRaw += raw;
-  }));
-  // Anchor the lifting work to the doc's total, then add real-world overhead on
-  // top: a transition allowance per exercise plus the misc buffer spread evenly
-  // across every set. The countdown and home estimate both include the overhead.
-  const totalSec = (dayDocMin(day) || day.totalMin || 0) * 60;
-  // Distribute the time left after fixed-duration items across the lifting work.
-  const remaining = Math.max(totalSec - fixedSec, variableRaw > 0 ? 60 : 0);
-  const scale = variableRaw > 0 ? remaining / variableRaw : 1;
-  const totalSets = items.reduce((t, it) => t + itemSetCount(it.ex, PROGRAM.exercises[it.ex.id]), 0);
-  const miscPerSet = totalSets ? MISC_BUFFER_SEC / totalSets : 0;
-  let offset = 0;
-  const list = [];
-  items.forEach(it => {
-    const base = it.fixed ? it.raw : Math.round(it.raw * scale);
-    const sets = itemSetCount(it.ex, PROGRAM.exercises[it.ex.id]);
-    const dur = base + TRANSITION_SEC + Math.round(sets * miscPerSet);
-    it.ex._startSec = offset;
-    it.ex._durSec = dur;
-    list.push({ si: it.si, ei: it.ei, startSec: offset, durSec: dur });
-    offset += dur;
-  });
-  return { totalSec: offset || totalSec, list };
-}
-
-// Live: mark the exercise the schedule expects you to be on right now.
-function highlightCurrentExercise(elapsed) {
-  const sch = STATE.activeWorkout && STATE.activeWorkout.schedule;
-  if (!sch || !sch.length) return;
-  let cur = -1;
-  for (let i = 0; i < sch.length; i++) {
-    if (sch[i].startSec <= elapsed) cur = i; else break;
-  }
-  sch.forEach((s, i) => {
-    const card = document.getElementById(`ex-${s.si}-${s.ei}`);
-    if (card) card.classList.toggle('ex-now', i === cur);
-  });
-}
-
-// ─── Render: Home ─────────────────────────────────────────────────────────────
-function renderHome() {
-  const app = $('app');
-  const dayKey = todayDayKey();
-  const dayName = PROGRAM.dayNames[PROGRAM.dayKeys.indexOf(dayKey)];
-  const { blockId, weekInBlock } = STATE.program;
-  const block = PROGRAM.blocks.find(b => b.id === blockId);
-  const blockName = block ? block.name : 'Program';
-  const weekNum = block ? block.startWeek + weekInBlock : 0;
-  const noMaxes = !hasMaxes();
-  const isTestingBlock = blockId === 7;
-  const blockStartDisabled = noMaxes && !isTestingBlock;
-  const todayPlan = dayPlanFor(dayKey);
-  const readiness = effectiveReadiness();
-  const pickupDays = activePickupDays();
-
-  const sessionButtons = (plan, d, large) => {
-    if (!plan || plan.isRest || !plan.sessions.length) {
-      return `<button class="btn-outline ${large ? 'btn-lg' : ''}" onclick="startWorkout('${d}', 'rest')">View Rest Day</button>`;
-    }
-    return `<div class="session-actions">${plan.sessions.map(s => {
-      const done = sessionCompleted(d, s.id, plan.programWeek);
-      const label = s.kind === 'field' ? 'AM Field' : s.kind === 'cardio' ? 'Zone 2' : s.kind === 'test' ? 'Test' : 'Lift';
-      return `<button class="${large ? 'btn-primary' : 'btn-outline'} session-start" onclick="startWorkout('${d}', '${s.id}')"
-        ${blockStartDisabled || s.skipped ? 'disabled' : ''}>
-        <span>${done ? '✓ ' : ''}${label}${s.skipped ? ' · omitted' : ` · ~${s.totalMin || '?'} min`}</span>
-        ${s.skipped ? `<small>${s.skipReason}</small>` : ''}
-      </button>`;
-    }).join('')}</div>`;
+function setReadiness() {
+  STATE.readiness = {
+    date: dateISO(),
+    level: $('readiness').value,
+    event: $('event').value,
+    localIssue: $('local-issue').value,
+    pivotResidual: $('pivot-residual').checked,
   };
-
-  app.innerHTML = `
-    <div class="page home-page">
-      <div class="home-header">
-        <div class="home-logo">🏋️</div>
-        <div>
-          <div class="home-title">Oly Tracker</div>
-          <div class="home-sub">${blockName}
-            <span class="phase-chip ${STATE.cutting ? 'phase-cut' : 'phase-bulk'}">${STATE.cutting ? 'CUT' : 'GAIN'}</span>
-            <span class="phase-chip readiness-${readiness}">${readiness.toUpperCase()}</span>
-            ${pickupDays.length ? `<span class="phase-chip phase-cut">PICKUP ${pickupDays.length}×</span>` : ''}
-          </div>
-        </div>
-      </div>
-
-      ${isTestingBlock ? `<div class="alert alert-warn"><b>Testing Week</b> — five 1RMs plus two heavy squat doubles at known RPE. The app converts the doubles before updating their TMs.</div>`
-      : noMaxes ? `<div class="alert alert-warn"><b>Set every training max first</b> — enter them in Settings or complete week 13.</div>` : ''}
-
-      <div class="today-card">
-        <div class="day-row-peek" onclick="openPreview('${dayKey}')">
-          <div class="today-label">TODAY · ${dayName}</div>
-          <div class="today-day">${todayPlan?.title || dayName}</div>
-          <div class="today-meta">Week ${weekNum} · ${todayPlan?.isRest ? 'Rest day' : `${todayPlan?.sessions.filter(s => !s.skipped).length || 0} available session(s)`} · tap to preview</div>
-        </div>
-        ${sessionButtons(todayPlan, dayKey, true)}
-      </div>
-
-      <div class="daylist-title">This Week — tap a day to preview it; sessions log separately</div>
-      <div class="day-list">
-        ${PROGRAM.dayKeys.map((d, i) => {
-          const name = PROGRAM.dayNames[i];
-          const isToday = d === dayKey;
-          const wd = dayPlanFor(d);
-          const available = wd?.sessions.filter(s => !s.skipped) || [];
-          const logged = available.length > 0
-            && available.every(s => sessionCompleted(d, s.id, wd.programWeek));
-          const total = wd?.sessions.filter(s => !s.skipped).reduce((t, s) => t + (s.totalMin || 0), 0) || 0;
-          const availableSessions = wd?.sessions.filter(s => !s.skipped).length || 0;
-          const meta = wd?.isRest ? 'Rest' : `${availableSessions} available session(s) · ~${total} min`;
-          return `<div class="day-row day-row-sessions ${isToday ? 'day-row-today' : ''} ${logged ? 'day-row-done' : ''} ${blockStartDisabled ? 'day-row-disabled' : ''}">
-            <div class="day-row-left"><div class="day-row-abbr">${name.slice(0, 3)}</div>${logged ? '<div class="day-row-check">✓</div>' : isToday ? '<div class="day-row-now">●</div>' : ''}</div>
-            <div class="day-row-mid"><div class="day-row-peek" onclick="openPreview('${d}')"><div class="day-row-focus">${wd?.title || name}</div><div class="day-row-meta">${meta} · tap to preview</div></div>${sessionButtons(wd, d, false)}</div>
-          </div>`;
-        }).join('')}
-      </div>
-
-      ${todayPlan?.sessions?.some(s => sessionCompleted(dayKey, s.id, todayPlan.programWeek)) ? `<div class="recent-card"><div class="recent-label">Today's programmed session logged</div><button class="btn-ghost" onclick="nav('history')">View history →</button></div>` : ''}
-
-      <div class="rules-card">
-        <div class="rules-title">Non-Negotiable Rules</div>
-        <ol class="rules-list">
-          <li>Stop on material technical deterioration.</li>
-          <li>Two misses or two consecutive technically poor successes end the exercise.</li>
-          <li>Hypertrophy follows Olympic work; never cut the Olympic block to save time.</li>
-          <li>The written percentage is a ceiling, not an obligation.</li>
-        </ol>
-      </div>
-    </div>`;
+  save();
+  render();
 }
-
-// ─── Render: Workout ──────────────────────────────────────────────────────────
-function startWorkout(dayKey, sessionId) {
-  initAudio();
+function startWorkout(day, id, rescueRange = null) {
   if (STATE.activeWorkout) {
-    alert('Finish or end the active session before starting another one.');
     nav('workout');
     return;
   }
-  const plan = dayPlanFor(dayKey);
-  if (plan?.isRest || sessionId === 'rest') {
-    alert(plan?.note || 'Complete rest. Nothing structured.');
+  const p = plan(day, true);
+  let s = p.sessions.find((s) => s.id === id);
+  if (rescueRange) {
+    const key = 'bench_' + (rescueRange === 'low' ? 'low' : 'moderate');
+    if (
+      STATE.records.some(
+        (r) =>
+          r.week === STATE.training.week &&
+          r.cycle === STATE.training.cycle &&
+          r.exposure === STATE.training.exposure &&
+          r.sets.some((s) => s.exerciseKey === key),
+      )
+    ) {
+      toast('This bench exposure has already been logged. Do not repeat it as a rescue.');
+      return;
+    }
+    const ex = PROGRAM.failure('bench', 1, ...(rescueRange === 'low' ? [3, 5] : [6, 8]), 240, {
+      key: 'bench_' + (rescueRange === 'low' ? 'low' : 'moderate'),
+    });
+    s = PROGRAM.session('rescue_' + rescueRange, 'Deferred ' + rescueRange + '-rep bench', [ex]);
+    if (readiness().level !== 'green' || ['unsafe', 'game'].includes(readiness().event)) {
+      toast('Defer bench until ready.');
+      return;
+    }
+  }
+  if (!s || s.skipped) {
+    toast(s?.skipReason || 'No eligible session.');
     return;
   }
-  const day = dayFor(dayKey, sessionId);
-  if (!day) { alert('No workout found for this day.'); return; }
-  if (day.skipped) { alert(day.skipReason || 'This session is omitted by the current weekly rules.'); return; }
-
-  // Clear any live hypertrophy set tracker left over from an abandoned session
-  // (activeWorkout isn't persisted, but recordHypertrophySet saves `sets` as it
-  // goes — without this, a partial prior session would contaminate progression).
-  Object.values(STATE.hypertrophyWeights).forEach(d => { if (d) d.sets = []; });
-
-  const sched = computeSchedule(day);
-
+  if (!rescueRange && (done(day, id) || recordsFor(day, id).length)) {
+    toast(
+      'This session was already saved. Use a weekly review to repeat a week; rescue only missed bench.',
+    );
+    return;
+  }
+  const lastBench = PROGRAM.benchWindow(MODEL.benchRecords(STATE));
+  if (s.rows.some((e) => e.id === 'bench') && !lastBench.ready) {
+    showModal(
+      'Bench needs more spacing',
+      `<p>The next bench exposure is eligible after ${esc(new Date(lastBench.eligibleAt).toLocaleString())}, provided you are ready.</p><p>Start the other scheduled work and defer bench. Preserve the low-/moderate-rep sequence.</p>${button('Start without bench', `startWithoutBench('${day}','${id}')`, 'primary')}`,
+    );
+    return;
+  }
+  if (id === 'accessories') {
+    const first = recordsFor(day, 'main').at(-1);
+    if (!first) {
+      toast('Complete visit 1 first.');
+      return;
+    }
+    if (Date.now() - first.endedAt < 3 * 3600000) {
+      toast('Visit 2 begins at least 3 hours after visit 1.');
+      return;
+    }
+  }
+  if (
+    STATE.training.week === 12 &&
+    s.rows.some((e) => e.key === 'bench_moderate') &&
+    !STATE.records.some(
+      (r) =>
+        r.week === 12 &&
+        r.cycle === STATE.training.cycle &&
+        r.day === 'friday' &&
+        r.status === 'complete' &&
+        ['snatch', 'cj'].every((id) => r.sets.some((s) => s.exerciseId === id && s.grade)),
+    )
+  ) {
+    toast(
+      'Finish the Olympic test or technical benchmark before the second taper-week bench exposure.',
+    );
+    return;
+  }
+  begin(s, day, p);
+}
+function startWithoutBench(day, id) {
+  const p = plan(day, true),
+    s = p.sessions.find((s) => s.id === id);
+  if (!s || s.skipped) return;
+  s.rows = s.rows.filter((e) => e.id !== 'bench');
+  s.note += ' Bench deferred for 48-hour spacing.';
+  begin(s, day, p);
+}
+function begin(session, day, p) {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'ambient';
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume();
+  } catch (e) {}
+  const now = Date.now();
   STATE.activeWorkout = {
-    date: today(),
-    id: `${today()}-${Date.now()}`,
-    startedAt: Date.now(), // drives the 6h staleness window on restore
-    dayKey,
-    sessionId: day.id || sessionId || 'main',
-    cycleId: STATE.cycleId,
-    blockId: day.blockId,
-    weekInBlock: day.weekInBlock,
-    programWeek: day.programWeek,
-    tmSnapshot: { ...STATE.maxes },
-    readiness: effectiveReadiness(),
-    pickupDays: activePickupDays().slice(),
+    id: 'r6-' + now,
+    revision: 6,
     day,
-    setsLogged: {}, // exerciseId → array of set objects
-    receivingOverrides: {},
-    loadOverrides: {},
-    stoppedExercises: {},
-    schedule: sched.list,
-    totalSec: sched.totalSec,
-    complete: false,
+    date: dateISO(),
+    cycle: STATE.training.cycle,
+    week: STATE.training.week,
+    exposure: STATE.training.exposure,
+    startedAt: now,
+    session: JSON.parse(JSON.stringify(session)),
+    anchors: { ...STATE.training.anchors },
+    increment: STATE.training.increment,
+    context: { ...readiness(), recovery: STATE.training.recovery },
+    trialSnapshot: { ...STATE.training.trial },
+    sets: [],
+    omitted: [],
+    notes: '',
+    warmupDone: false,
   };
-
-  acquireWakeLock();
-  startSessionTimer(); // calls save() — persists the new activeWorkout too
+  STATE.restEnd = 0;
+  save();
+  closeModal();
+  requestWakeLock();
   nav('workout');
 }
-
+async function requestWakeLock() {
+  try {
+    wakeLock = await navigator.wakeLock?.request('screen');
+  } catch (e) {
+    /* Optional. */
+  }
+}
+function logged(ex, w = STATE.activeWorkout) {
+  return w.sets.filter((s) => s.exerciseKey === ex.key);
+}
+function status(ex, w = STATE.activeWorkout) {
+  const rows = logged(ex, w);
+  if (w.omitted.includes(ex.key))
+    return { done: true, stopped: true, count: rows.length, planned: ex.sets };
+  if (ex.kind === 'quality') {
+    const q = MODEL.qualityState(ex, rows);
+    return { ...q, count: rows.length };
+  }
+  return {
+    done: rows.length >= (ex.minutes ? 1 : ex.sets),
+    count: rows.length,
+    planned: ex.minutes ? 1 : ex.sets,
+  };
+}
 function renderWorkout() {
-  const app = $('app');
-  if (!STATE.activeWorkout) {
-    app.innerHTML = `<div class="page"><div class="empty-state">
-      <p>No active workout.</p>
-      <button class="btn-primary" onclick="nav('home')">Go Home</button>
-    </div></div>`;
+  const w = STATE.activeWorkout;
+  if (!w)
+    return (
+      header('SESSION', 'Ready when you are') + button('Choose a workout', "nav('home')", 'primary')
+    );
+  const finished = w.session.rows.filter((ex) => status(ex).done).length;
+  return `<div class="workout-heading"><div><div class="eyebrow">${prettyDay(w.day)} · C${w.cycle} / W${w.week}</div><h1>${esc(w.session.title)}</h1></div><span id="session-clock" class="clock">00:00</span></div>
+    <div class="progress-track"><span style="width:${(100 * finished) / w.session.rows.length}%"></span></div>
+    <p class="muted small">${finished}/${w.session.rows.length} exercises resolved · actual session date ${esc(w.date)}</p>
+    ${w.session.note ? notice(w.session.note) : ''}
+    <details class="warmup" ${w.warmupDone ? '' : 'open'}><summary>General warm-up ${w.warmupDone ? '✓' : ''}</summary><p>${esc(w.session.warmup || 'Easy start; settle into the talk-test effort.')}</p>${button(w.warmupDone ? 'Prepared' : 'Warm-up done', 'STATE.activeWorkout.warmupDone=true;save();render()', 'button', w.warmupDone)}</details>
+    ${w.session.rows.map((e, i) => exerciseCard(e, i)).join('')}
+    <label class="field">Session notes<textarea id="session-notes" onchange="STATE.activeWorkout.notes=this.value;save()" placeholder="Technique, recovery, equipment setup…">${esc(w.notes)}</textarea></label>
+    ${button('Finish session', 'openFinish()', 'primary wide')}`;
+}
+function exposures(ex) {
+  return STATE.records
+    .filter((r) => r.revision === 6)
+    .map((r) => {
+      const old = r.session.rows.find((e) => MODEL.fingerprint(e) === MODEL.fingerprint(ex));
+      return {
+        normal:
+          r.context.level === 'green' &&
+          r.context.event === 'normal' &&
+          r.recoveryNormal !== false &&
+          r.recoveryConfirmed === true &&
+          (!r.context.recovery || r.context.recovery === 'normal') &&
+          !r.context.localIssue,
+        rows: old ? r.sets.filter((s) => s.exerciseKey === old.key) : [],
+      };
+    });
+}
+function exerciseCard(ex, i) {
+  const w = STATE.activeWorkout,
+    s = status(ex),
+    rows = logged(ex),
+    q = ex.kind === 'quality' ? MODEL.qualityState(ex, rows) : null;
+  const nextIndex = MODEL.slotAt(ex, rows.length),
+    range = PROGRAM.loadRange(ex, w.anchors, nextIndex, w.increment);
+  const next = ex.kind === 'failure' ? PROGRAM.nextLoad(ex, exposures(ex)) : null;
+  return `<article class="exercise ${s.done ? 'resolved' : ''}" id="exercise-${i}"><div class="exercise-title"><span class="number">${i + 1}</span><div><h2>${esc(ex.name)}</h2><p>${esc(prescription(ex))}</p></div><span class="tag">${s.count}/${s.planned}</span></div>
+    ${
+      range && !s.done
+        ? `<div class="load-line">Next: <b>${range
+            .map(fmt)
+            .filter((v, i, a) => i === 0 || v !== a[0])
+            .join('–')} lb</b> <span>rounded down · respect effort/positions</span></div>`
+        : ''
+    }
+    ${q?.message ? notice(q.message) : ''}
+    ${ex.test && !ex.technicalBenchmark && !s.done ? button('Use ≤85% technical benchmark', `useBenchmark(${i})`, 'text-button') : ''}
+    ${next && !s.done ? `<p class="progression">${next.weight ? `Last / starting guide: ${fmt(next.weight)} lb. ` : ''}${esc(next.text)}</p>` : ''}
+    <details><summary>Execution · warm-up · rest</summary><p>${esc(ex.note)}</p><p>${esc(ex.warmup || '')}</p><p>Rest ${time(ex.rest || 0)}${ex.kind === 'failure' ? ' (compounds 3–5 min; isolations 2–3 min). About 2 s lowering.' : '. Quality and speed work never go to failure.'}</p></details>
+    ${rows.length ? `<ol class="set-log">${rows.map((r) => `<li><span>${r.weight ? fmt(r.weight) + ' lb · ' : ''}${esc(r.reps)}${ex.minutes ? ' min' : ' rep' + (r.reps === 1 ? '' : 's')}${ex.reps === '1+1' ? ' (clean + jerk pair)' : ''}</span><span>${esc(r.endpoint || r.outcome || 'done')}${r.grade ? ' · ' + r.grade + ' / ' + r.effort : ''}${r.fault ? ' · ' + esc(r.fault) : ''}</span></li>`).join('')}</ol>` : ''}
+    <div class="exercise-actions">${button(s.done ? (s.stopped ? 'Omitted' : 'Logged') : ex.kind === 'quality' ? 'Log next attempt' : 'Log next set', `openSet(${i})`, 'primary', s.done || !w.warmupDone || w.session.rows.slice(0, i).some((prior) => !status(prior).done))}${!s.done ? button('Omit', `omitExercise(${i})`, 'text-button') : ''}${rows.length ? button('Undo last', `undoSet(${i})`, 'text-button') : ''}</div></article>`;
+}
+function showModal(title, body) {
+  modal = document.activeElement;
+  $('modal').innerHTML =
+    `<div class="modal-head"><h2 id="modal-title">${esc(title)}</h2>${button('✕', 'closeModal()', 'icon-button')}</div>${body}`;
+  $('modal').showModal();
+}
+function closeModal() {
+  if ($('modal')?.open) $('modal').close();
+  if (modal?.isConnected) modal.focus();
+  modal = null;
+}
+function options(values, selected) {
+  return values
+    .map(
+      ([v, l]) =>
+        `<option value="${esc(v)}" ${String(v) === String(selected) ? 'selected' : ''}>${esc(l)}</option>`,
+    )
+    .join('');
+}
+function field(label, id, value, type = 'number', extra = '') {
+  return `<label class="field">${esc(label)}<input id="${id}" type="${type}" value="${esc(value ?? '')}" ${extra}></label>`;
+}
+function select(label, id, values, value) {
+  return `<label class="field">${esc(label)}<select id="${id}">${options(values, value)}</select></label>`;
+}
+function checkbox(label, id, checked = false) {
+  return `<label class="check"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''}><span>${esc(label)}</span></label>`;
+}
+function openSet(index) {
+  const w = STATE.activeWorkout,
+    ex = w.session.rows[index],
+    rows = logged(ex);
+  if (status(ex).done || w.session.rows.slice(0, index).some((prior) => !status(prior).done))
     return;
+  if (ex.id === 'bench') {
+    // The current exposure itself does not create a second-day spacing lock.
+    const prior = PROGRAM.benchWindow(MODEL.benchRecords({ ...STATE, activeWorkout: null }));
+    if (!prior.ready) {
+      toast('Bench remains inside the 48-hour spacing window. Defer it.');
+      return;
+    }
   }
-
-  const { day, setsLogged } = STATE.activeWorkout;
-
-  let body;
-  if (day.isRest) {
-    body = `
-      <div class="rest-day">
-        <div class="rest-day-icon">🛌</div>
-        <div class="rest-day-title">${day.title}</div>
-        ${day.note ? `<div class="rest-day-note">${day.note}</div>` : ''}
-        <button class="btn-primary" style="margin-top:20px" onclick="endWorkout()">Done</button>
-      </div>`;
-  } else if (day.isTesting) {
-    body = renderTestingDay(day);
+  const range = PROGRAM.loadRange(ex, w.anchors, MODEL.slotAt(ex, rows.length), w.increment);
+  const suggestion = ex.kind === 'failure' ? PROGRAM.nextLoad(ex, exposures(ex)) : null;
+  const last = rows.at(-1),
+    quality = ex.kind === 'quality';
+  let weight = last?.weight || suggestion?.weight || range?.[0] || '';
+  if (quality && range) weight = range[0];
+  if (quality) {
+    const q = MODEL.qualityState(ex, rows);
+    if (q.loadCap) weight = Math.min(weight || q.loadCap, q.loadCap);
+  }
+  if (ex.kind === 'failure' && last?.reps < ex.repRange[0])
+    weight = Math.floor((last.weight * 0.925) / w.increment) * w.increment;
+  let body = `<p class="muted">${esc(prescription(ex))}. Rest ${time(ex.rest || 0)}.</p>`;
+  if (quality || ex.kind === 'failure')
+    body += field(
+      'Actual load (lb)',
+      'set-weight',
+      weight,
+      'number',
+      'min="0.1" step="any" inputmode="decimal" required',
+    );
+  if (ex.kind === 'failure')
+    body +=
+      field(
+        'Valid reps completed',
+        'set-reps',
+        '',
+        'number',
+        'min="0" max="100" inputmode="numeric" required',
+      ) +
+      select(
+        'Endpoint',
+        'set-endpoint',
+        [
+          ['failure', 'Strict-form failure · 0 RIR'],
+          ['tech', 'TECH · technique ended set'],
+          ['pain', 'Pain · stop affected work'],
+        ],
+        'failure',
+      ) +
+      checkbox('An unsuccessful final attempt occurred', 'set-failed');
+  else if (quality)
+    body +=
+      select(
+        'Outcome',
+        'set-outcome',
+        [
+          ['make', 'Made the complete rep / pair'],
+          ['miss', 'Miss'],
+          ...(ex.id === 'cj'
+            ? [
+                ['clean_miss', 'Clean missed · no jerk'],
+                ['jerk_miss', 'Clean made · jerk missed'],
+              ]
+            : []),
+        ],
+        'make',
+      ) +
+      select(
+        'Technique',
+        'set-grade',
+        [
+          ['A', 'A · secure'],
+          ['B', 'B · acceptable'],
+          ['C', 'C · poor / invalid'],
+        ],
+        'A',
+      ) +
+      field(
+        'Actual effort (1–10; not RIR)',
+        'set-effort',
+        '',
+        'number',
+        'min="1" max="10" step="0.5" required',
+      ) +
+      select(
+        'Fault / miss direction',
+        'set-fault',
+        [
+          ['', 'None'],
+          ['forward', 'Forward'],
+          ['backward', 'Backward'],
+          ['receive', 'Receiving position'],
+          ['fixation', 'Fixation / press-out'],
+          ['other', 'Other'],
+        ],
+        '',
+      );
+  else if (ex.minutes)
+    body += field(
+      'Actual moving minutes',
+      'set-minutes',
+      ex.minutes,
+      'number',
+      'min="1" max="300" required',
+    );
+  else
+    body += field(
+      ex.id === 'sprint' || ex.id === 'fly'
+        ? 'Time (seconds, optional)'
+        : 'Result / jump height (optional)',
+      'set-result',
+      '',
+      'text',
+    );
+  body += `<p id="set-error" class="error" role="alert"></p><button class="primary wide" type="submit">Save ${quality ? 'attempt' : 'set'} & start rest</button>`;
+  showModal(ex.name, `<form onsubmit="event.preventDefault();submitSet(${index})">${body}</form>`);
+  setTimeout(
+    () => ($('set-reps') || $('set-effort') || $('set-weight') || $('set-minutes'))?.focus(),
+    50,
+  );
+}
+function submitSet(index) {
+  const w = STATE.activeWorkout,
+    ex = w.session.rows[index],
+    q = ex.kind === 'quality';
+  if (status(ex).done) return;
+  const row = { exerciseId: ex.id, exerciseKey: ex.key, at: Date.now() };
+  if (q || ex.kind === 'failure') {
+    row.weight = Number($('set-weight').value);
+    if (!(row.weight > 0 && row.weight < 3000))
+      return ($('set-error').textContent = 'Enter a valid positive load.');
+  }
+  if (ex.kind === 'failure') {
+    row.reps = Number($('set-reps').value);
+    row.endpoint = $('set-endpoint').value;
+    row.failedAttempt = $('set-failed').checked;
+    if (!Number.isInteger(row.reps) || row.reps < 0 || row.reps > 100)
+      return ($('set-error').textContent = 'Enter valid completed reps.');
+  } else if (q) {
+    row.reps = 1;
+    row.outcome = $('set-outcome').value;
+    row.grade = $('set-grade').value;
+    row.effort = Number($('set-effort').value);
+    row.fault = $('set-fault').value;
+    if (!(row.effort >= 1 && row.effort <= 10))
+      return ($('set-error').textContent = 'Enter actual effort from 1 to 10.');
+    row.pair = ex.reps === '1+1';
+    row.pct = ex.anchor && w.anchors[ex.anchor] ? (100 * row.weight) / w.anchors[ex.anchor] : null;
+    if ((row.outcome !== 'make' || row.grade === 'C') && !row.fault)
+      return ($('set-error').textContent = 'Choose the fault or miss direction.');
   } else {
-    body = `
-      ${(day.contextNotes || []).map(n => `<div class="alert alert-warn">${n}</div>`).join('')}
-      ${day.sections.map((sec, si) => renderSection(sec, si, setsLogged)).join('')}
-      <div class="workout-footer">
-        <button class="btn-danger" onclick="endWorkout()">Finish Workout</button>
-      </div>`;
+    row.reps = ex.minutes ? Number($('set-minutes').value) : ex.reps;
+    row.result = $('set-result')?.value || '';
+    row.endpoint = 'done';
   }
-
-  app.innerHTML = `
-    <div class="page workout-page">
-      <div class="workout-header">
-        <button class="btn-ghost-sm" onclick="endWorkout()">✕ End</button>
-        <div class="workout-title">${PROGRAM.dayNames[PROGRAM.dayKeys.indexOf(STATE.activeWorkout.dayKey)]} · ${escapeHtml(day.title || STATE.activeWorkout.sessionId)}</div>
-        <div class="session-timer-wrap">
-          <span class="session-timer-label">${STATE.activeWorkout.totalSec ? 'TIME LEFT' : 'SESSION'}</span>
-          <span id="session-timer" class="session-timer">${STATE.activeWorkout.totalSec ? fmtTime(STATE.activeWorkout.totalSec) : '00:00'}</span>
-        </div>
-      </div>
-      ${body}
-    </div>`;
-
-  // Restart the session timer display update
-  updateSessionTimerDisplay();
-}
-
-// ─── Render: Testing Day ──────────────────────────────────────────────────────
-function renderTestingDay(day) {
-  const testExerciseIds = {
-    snatch: 'snatch_floor', cj: 'cj_floor', jerk: 'jerk_rack_heavy', clean: 'recv_clean',
-    bs: 'back_squat', fs: 'front_squat', bench: 'bench',
-  };
-  const testedLifts = (day.lifts || []).map(l => l.lift);
-  const testPrepId = testedLifts.includes('bs') || testedLifts.includes('bench') ? 'prep_bar_squats'
-    : testedLifts.includes('snatch') ? 'prep_bar_snatch'
-      : 'prep_bar_cj'; // C&J day, and jerk+below-parallel-clean day
-  const prep = ['daily_mobility', testPrepId].map(id => {
-    const def = PROGRAM.exercises[id];
-    const sec = id === 'daily_mobility' ? 180 : 600;
-    return `
-      <div class="ex-card">
-        <div class="ex-header" style="cursor:default">
-          <div class="ex-name-wrap"><span class="ex-name">${def.name}</span></div>
-        </div>
-        <div class="ex-body" style="border-top:1px solid var(--border)">
-          <div class="ex-notes">${def.notes}</div>
-          <button class="btn-outline btn-full" onclick="startRestTimer(${sec})">⏱ Start Timer (${fmtTime(sec)})</button>
-        </div>
-      </div>`;
-  }).join('');
-  return `
-    <div class="section sec-green">
-      <div class="section-header">
-        <span class="section-title">Mobility & Prep</span>
-        <span class="section-note">Needs-based mobility, then raise and two empty-bar rounds.</span>
-      </div>
-      ${prep}
-    </div>
-    <div class="section sec-gold">
-      <div class="section-header">
-        <span class="section-title">${day.title}</span>
-        ${day.note ? `<span class="section-note">${day.note}</span>` : ''}
-      </div>
-      ${STATE.activeWorkout.testsApplied ? '<div class="alert alert-warn">All seven results were applied to the new cycle. Finish this session; test inputs are now locked.</div>' : ''}
-      ${day.lifts.map((l, i) => {
-        const saved = STATE.testResults[l.lift] || {};
-        const testEx = {
-          id: testExerciseIds[l.lift], slotKey: `test_${l.lift}`, reps: l.testReps || 1,
-          baseLift: l.lift, rest: 300, isMaxEffort: true, testAttempt: true,
-          testPrescription: l.testReps || 1,
-          ...(l.lift === 'clean' ? { receivingDepth: true } : {}),
-        };
-        return `${STATE.activeWorkout.testsApplied ? '' : renderExerciseCard(testEx, 90, i, STATE.activeWorkout.setsLogged)}
-        <div class="ex-card">
-          <div class="ex-header" style="cursor:default">
-            <div class="ex-name-wrap"><span class="ex-name">${l.label}</span></div>
-          </div>
-          <div class="ex-body" style="border-top:1px solid var(--border)">
-            ${l.cues && l.cues.length ? `<div class="cues">${l.cues.map(c => `<div class="cue">• ${c}</div>`).join('')}</div>` : ''}
-            ${l.lift ? `
-              <label class="form-label">${l.testReps === 2 ? 'Heavy double' : 'Made 1RM'} (lbs)</label>
-              <div class="max-row">
-                <input type="number" id="test-weight-${l.lift}" class="form-input" inputmode="decimal" step="2.5"
-                  value="${saved.rawWeight || ''}" placeholder="lbs" ${STATE.activeWorkout.testsApplied ? 'disabled' : ''}>
-                <span class="max-unit">lb</span>
-              </div>
-              ${l.requiresRpe ? `<label class="form-label">RPE of the double</label>
-                <select id="test-rpe-${l.lift}" class="form-input" ${STATE.activeWorkout.testsApplied ? 'disabled' : ''}>
-                  <option value="">Choose RPE 7–9</option>
-                  ${[7,8,9].map(r => `<option value="${r}" ${saved.rpe === r ? 'selected' : ''}>RPE ${r} · ${r === 7 ? '86' : r === 8 ? '89' : '92'}% of 1RM</option>`).join('')}
-                </select>` : ''}
-              <button class="btn-outline btn-full" style="margin-top:10px" onclick="saveTestResult('${l.lift}', ${l.testReps || 1}, ${!!l.requiresRpe})" ${STATE.activeWorkout.testsApplied ? 'disabled' : ''}>Save Test Result</button>
-              ${saved.estimated1rm ? `<div class="settings-note"><b>Staged TM: ${fmtWeight(saved.estimated1rm)}</b>${l.testReps === 2 ? ` from ${fmtWeight(saved.rawWeight)} @ RPE ${saved.rpe}` : ''}</div>` : '<div class="settings-note">Staged only; current-cycle TMs remain locked until all seven results are applied.</div>'}
-            ` : ''}
-          </div>
-        </div>`; }).join('')}
-    </div>
-    <div class="workout-footer">
-      <button class="btn-primary btn-full" onclick="applyTestResults()" ${testResultsReady() && !STATE.activeWorkout.testsApplied ? '' : 'disabled'}>Apply All 7 TMs &amp; Start New Cycle</button>
-      <button class="btn-danger" onclick="endWorkout()">Finish Session</button>
-    </div>`;
-}
-
-function saveTestResult(lift, reps, requiresRpe) {
-  if (STATE.activeWorkout?.testsApplied) { alert('These results have already been applied to the new cycle.'); return; }
-  const weight = Number($(`test-weight-${lift}`)?.value);
-  const rpe = requiresRpe ? Number($(`test-rpe-${lift}`)?.value) : null;
-  if (!weight || weight <= 0) { alert('Enter the heaviest successful result.'); return; }
-  if (requiresRpe && ![7, 8, 9].includes(rpe)) { alert('Choose the RPE of the heavy double.'); return; }
-  const attempts = STATE.activeWorkout?.setsLogged?.[`90_test_${lift}`] || [];
-  const matchingMake = hasMatchingTestAttempt(attempts, weight, reps, requiresRpe ? rpe : null);
-  if (!matchingMake) {
-    alert('Log the successful attempt at this weight before staging it as the test result.');
-    return;
+  w.sets.push(row);
+  if (row.endpoint === 'pain') w.omitted.push(ex.key);
+  if (q && MODEL.qualityState(ex, logged(ex)).stop) {
+    const family = (id) =>
+      ['snatch', 'hang', 'pull'].includes(id)
+        ? 'snatch'
+        : ['jerk', 'pause_jerk'].includes(id)
+          ? 'jerk'
+          : id;
+    w.session.rows
+      .slice(index + 1)
+      .filter((e) => e.kind === 'quality' && family(e.id) === family(ex.id))
+      .forEach((e) => {
+        if (!w.omitted.includes(e.key)) w.omitted.push(e.key);
+      });
   }
-  const estimated1rm = requiresRpe
-    ? PROGRAM.estimate1RM(weight, reps, rpe)
-    : Math.round(weight / 2.5) * 2.5;
-  STATE.testResults[lift] = {
-    rawWeight: weight,
-    reps,
-    rpe,
-    estimated1rm,
-    attemptVerified: true,
-    testedAt: Date.now(),
-    sourceCycleId: STATE.cycleId,
-  };
+  // First rep of a double uses the short reset; each C&J pair rests normally.
+  const after = logged(ex).length,
+    slot = MODEL.slotAt(ex, after - 1),
+    nextSlot = MODEL.slotAt(ex, after);
+  const rest = q && slot === nextSlot && !status(ex).done ? 20 : ex.rest || 0;
+  STATE.restEnd = rest ? Date.now() + rest * 1000 : 0;
   save();
-  renderWorkout();
+  closeModal();
+  render();
+  if (row.endpoint === 'pain') toast('Pain logged. Stop affected work and reassess today’s plan.');
+  else if (q && row.effort > (ex.finalEffort && slot === ex.sets - 1 ? ex.finalEffort : ex.effort))
+    toast('Effort exceeded the cap. Reduce or stop; do not add attempts.');
 }
-
-function hasMatchingTestAttempt(attempts, weight, reps, rpe = null) {
-  return attempts.some(attempt => attempt.outcome === 'make'
-    && !attempt.technicalMiss && Number(attempt.reps) === Number(reps)
-    && (rpe == null || Number(attempt.rpe) === Number(rpe))
-    && Math.abs(Number(attempt.weight) - Number(weight)) < 1.25);
+function useBenchmark(i) {
+  const ex = STATE.activeWorkout.session.rows[i];
+  ex.technicalBenchmark = true;
+  ex.range = [75, 85];
+  ex.effort = 8;
+  ex.note =
+    'Technical benchmark ≤85% after warm-up or phase-gate review. Keep the remaining attempt budget; no maximal test today.';
+  save();
+  render();
 }
-
-function testResultsReady() {
-  return Object.keys(PROGRAM.liftNames).every(k => {
-    const result = STATE.testResults[k];
-    return Number(result?.estimated1rm) > 0 && result.attemptVerified === true
-      && Number(result.sourceCycleId) === STATE.cycleId;
-  });
+function omitExercise(i) {
+  const ex = STATE.activeWorkout.session.rows[i];
+  STATE.activeWorkout.omitted.push(ex.key);
+  save();
+  render();
 }
-
-function applyTestResults() {
-  const lifts = Object.keys(PROGRAM.liftNames);
-  if (!testResultsReady()) {
-    alert('Save a successful result for all seven tests in the current cycle first.');
-    return;
+function undoSet(i) {
+  const w = STATE.activeWorkout,
+    ex = w.session.rows[i];
+  const idx = w.sets.map((s) => s.exerciseKey).lastIndexOf(ex.key);
+  if (idx >= 0) w.sets.splice(idx, 1);
+  w.omitted = w.omitted.filter((k) => k !== ex.key);
+  save();
+  render();
+}
+function tickTimers() {
+  if ($('session-clock') && STATE.activeWorkout)
+    $('session-clock').textContent = time((Date.now() - STATE.activeWorkout.startedAt) / 1000);
+  const remaining = Math.ceil((STATE.restEnd - Date.now()) / 1000),
+    bar = $('rest-bar');
+  if (STATE.restEnd && remaining <= 0) {
+    STATE.restEnd = 0;
+    save();
+    beep();
+    toast('Rest complete. Take longer if needed.');
   }
-  if (!confirm('Apply all seven staged training maxes and begin a new cycle at week 1?')) return;
-  const appliedResults = JSON.parse(JSON.stringify(STATE.testResults));
-  lifts.forEach(k => { STATE.maxes[k] = STATE.testResults[k].estimated1rm; });
-  STATE.cycleId += 1;
-  STATE.program = { blockId: 1, weekInBlock: 0 };
-  STATE.tmWatch = {};
-  STATE.receivingMeta = { hh_clean: { stalls: 0 }, recv_clean: { stalls: 0 } };
-  STATE.technicalProgress = { hhSnatchPct: 65, lastExposureKey: null };
-  STATE.testResults = {};
-  STATE.readiness = 'green';
-  STATE.readinessDate = today();
-  STATE.pickupDays = [];
-  STATE.pickupTiming = {};
-  STATE.pickupWeekKey = currentPickupWeekKey();
+  bar.hidden = !STATE.restEnd;
+  if (STATE.restEnd) $('rest-count').textContent = time(remaining);
+}
+function beep() {
+  try {
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioContext.createOscillator(),
+      g = audioContext.createGain();
+    g.gain.value = 0.12;
+    o.connect(g);
+    g.connect(audioContext.destination);
+    o.start();
+    o.stop(audioContext.currentTime + 0.2);
+  } catch (e) {}
+}
+function adjustRest(seconds) {
+  STATE.restEnd = Math.max(Date.now(), STATE.restEnd || Date.now()) + seconds * 1000;
+  save();
+  tickTimers();
+}
+function skipRest() {
+  STATE.restEnd = 0;
+  save();
+  tickTimers();
+}
+function restoreRuntimeTimers() {
+  tickTimers();
+  if (STATE.activeWorkout) requestWakeLock();
+}
+function openFinish() {
+  const w = STATE.activeWorkout,
+    missing = w.session.rows.filter((ex) => !status(ex).done);
+  const test = w.session.rows.some((e) => e.test);
+  showModal(
+    'Save this session',
+    `${missing.length ? notice(`${missing.length} exercises have unfinished work. Save as partial; omitted accessories are not owed.`) : '<p>Save the completed session and your actual results.</p>'}
+    ${checkbox('Normal execution and no obvious recovery issue today', 'finish-normal', w.context.level === 'green')}
+    ${test ? checkbox('Update SN/CJ anchors only from higher, technically valid scored singles', 'update-anchors') : ''}
+    ${button(missing.length ? 'Save partial session' : 'Save session', 'finishWorkout()', 'primary wide')}`,
+  );
+}
+function finishWorkout() {
+  const w = STATE.activeWorkout;
+  if (!w) return;
+  w.endedAt = Date.now();
+  w.status = w.session.rows.every((ex) => status(ex).done) ? 'complete' : 'partial';
+  w.recoveryNormal = $('finish-normal').checked;
+  w.recoveryConfirmed = false;
+  if ($('update-anchors')?.checked)
+    w.session.rows
+      .filter((e) => e.test)
+      .forEach((ex) => {
+        const best = Math.max(
+          0,
+          ...logged(ex)
+            .filter((r) => r.outcome === 'make' && r.grade !== 'C')
+            .map((r) => r.weight),
+        );
+        if (best > STATE.training.anchors[ex.id]) STATE.training.anchors[ex.id] = best;
+      });
+  // Assessments stage demonstrated references directly, never rep-equation estimates.
+  w.session.rows
+    .filter((e) => e.assessment)
+    .forEach((ex) => {
+      const best = Math.max(
+        0,
+        ...logged(ex)
+          .filter((r) => r.outcome === 'make' && r.grade !== 'C' && r.effort <= 8)
+          .map((r) => r.weight),
+      );
+      if (best) STATE.training.anchors[ex.id] = best;
+    });
+  STATE.records.push(w);
+  STATE.activeWorkout = null;
+  STATE.restEnd = 0;
+  if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+  save();
+  closeModal();
+  nav('home');
+  toast('Session saved. Confirm next-session recovery in History before load progression.');
+}
+function openBenchRescue() {
+  showModal(
+    'Rescue a missed bench',
+    `<p>Use only for an omitted bench slot. Low-rep: 1×3–5; moderate: 1×6–8. At least 48 actual hours between exposures. Keep bench after priority lifting and after any week-12 test.</p><p>Tuesday → Wednesday only if Friday remains ≥48 h later. Otherwise Friday low, Sunday moderate; shift the next Tuesday if needed. Friday → Saturday only when ready.</p>${select(
+      'Missed exposure',
+      'rescue-type',
+      [
+        ['low', 'Low-rep · 3–5'],
+        ['moderate', 'Moderate · 6–8'],
+      ],
+      'low',
+    )}${button('Start deferred bench', "const kind=$('rescue-type').value;closeModal();startWorkout(STATE.selectedDay,'rescue_'+kind,kind)", 'primary wide')}`,
+  );
+}
+function renderHistory() {
+  const rows = STATE.records.slice().reverse();
+  const attempts = rows.flatMap((r) => r.sets).filter((s) => s.grade);
+  const acceptable = attempts.filter((s) => s.outcome === 'make' && s.grade !== 'C').length;
+  const bench = PROGRAM.benchWindow(MODEL.benchRecords(STATE));
+  return (
+    header(
+      'TRAINING LOG',
+      'Your actual work',
+      `${rows.length} Revision 6 sessions · ${attempts.length ? Math.round((100 * acceptable) / attempts.length) + '% acceptable Olympic attempts' : 'No Olympic attempts logged yet'}`,
+    ) +
+    (bench.last
+      ? notice(
+          `Most recent bench: ${new Date(bench.last).toLocaleString()}. Next eligible: ${new Date(bench.eligibleAt).toLocaleString()}, if ready.`,
+        )
+      : '') +
+    rows
+      .map(
+        (
+          r,
+        ) => `<details class="history-card"><summary><span><b>${esc(r.session.title)}</b><small>${esc(new Date(r.startedAt).toLocaleString())} · C${r.cycle}/W${r.week} · ${r.status}</small></span><span>${r.sets.length} logs</span></summary>
+      <p>${esc(r.notes || 'No session notes.')}</p>
+      ${r.recoveryConfirmed ? notice('Subsequent recovery reviewed.') : button('Confirm subsequent recovery stayed normal', `confirmRecovery(${STATE.records.indexOf(r)})`, 'button')}
+      ${r.session.rows
+        .map((ex) => {
+          const sets = r.sets.filter((s) => s.exerciseKey === ex.key);
+          return `<div class="history-ex"><h3>${esc(ex.name)}</h3><p class="muted">${esc(prescription(ex))}</p>${sets.map((s) => `<p>${s.weight ? fmt(s.weight) + ' lb × ' : ''}${esc(s.reps)} · ${esc(s.endpoint || s.outcome)}${s.grade ? ' · ' + s.grade + ' / effort ' + s.effort : ''}${s.failedAttempt ? ' · unsuccessful final attempt' : ''}</p>`).join('')}${!sets.length ? '<p class="muted">Omitted / not logged</p>' : ''}</div>`;
+        })
+        .join('')}
+    </details>`,
+      )
+      .join('') +
+    (!rows.length ? '<div class="empty">Your first logged session will appear here.</div>' : '') +
+    (STATE.legacy
+      ? `<details class="history-card"><summary>Previous program archive · preserved unchanged</summary><p>${Object.keys(STATE.legacy.log || {}).length} historical sessions. Old loads and any unfinished workout are included in this archive and full exports.</p>${button('Download previous program data', 'exportLegacy()', 'button')}<pre>${esc(JSON.stringify(STATE.legacy.log || {}, null, 2))}</pre></details>`
+      : '') +
+    (STATE.legacyArchives || [])
+      .map(
+        (archive, i) =>
+          `<details class="history-card"><summary>Additional previous-program cloud archive ${i + 1}</summary><pre>${esc(JSON.stringify(archive, null, 2))}</pre></details>`,
+      )
+      .join('') +
+    `<div class="actions">${button('Export all data', 'exportData()', 'button')}</div>`
+  );
+}
+function confirmRecovery(index) {
+  const r = STATE.records[index];
+  if (r) {
+    r.recoveryConfirmed = true;
+    save();
+    render();
+  }
+}
+function openReview() {
   if (STATE.activeWorkout) {
-    STATE.activeWorkout.testsApplied = true;
-    STATE.activeWorkout.testResultsSnapshot = appliedResults;
+    toast('Finish the active session before changing the week.');
+    return;
   }
+  const t = STATE.training,
+    i = info();
+  showModal(
+    'Weekly review',
+    `<p>Cycle ${t.cycle}, week ${t.week}: ${i.name}. Repeat the successful dose when readiness or skill gates are not met.</p>
+    ${checkbox('This was a normal green week; ≥90% acceptable Olympic reps and stable receiving positions', 'review-green')}
+    ${checkbox('Two normal weeks meet the Build gate (≥90% acceptable reps; no recurring receiving limitation)', 'review-build', t.phaseGate !== 'F')}
+    ${checkbox('80–85% singles are secure: Realization gate met', 'review-realization', t.phaseGate === 'R')}
+    ${select(
+      'Next step',
+      'review-action',
+      [
+        ['advance', t.week === 13 ? 'Begin next 13-week cycle' : 'Advance to week ' + (t.week + 1)],
+        ['repeat', 'Repeat this week / dose'],
+      ],
+      'advance',
+    )}
+    ${select(
+      'Recovery prescription',
+      'review-recovery',
+      [
+        ['normal', 'Normal / held dose'],
+        ['targeted', 'Targeted reduction'],
+        ['reset', 'Full reset'],
+      ],
+      'normal',
+    )}
+    <label class="field">Review notes<textarea id="review-notes" placeholder="C→D rack-jerk cost? Squat support? Incline/delt/trap tolerance? One change to trial…"></textarea></label>
+    <p id="review-error" class="error"></p>${button('Save review', 'submitReview()', 'primary wide')}`,
+  );
+}
+function submitReview() {
+  const green = $('review-green').checked,
+    buildReady = $('review-build').checked,
+    realizationReady = $('review-realization').checked;
+  if (realizationReady && !buildReady) {
+    $('review-error').textContent = 'Realization also requires the Build criteria.';
+    return;
+  }
+  const review = {
+    green,
+    buildReady,
+    realizationReady,
+    action: $('review-action').value,
+    notes: $('review-notes').value,
+  };
+  STATE.training = MODEL.reviewAdvance(STATE.training, review);
+  STATE.training.recovery = $('review-recovery').value;
   save();
-  alert(`Cycle ${STATE.cycleId} is staged at week 1. Finish this test session normally; its original TM snapshot remains in history.`);
-  renderWorkout();
+  closeModal();
+  render();
 }
-
-function renderSection(sec, si, setsLogged) {
-  const colorCls = sectionColorClass(sec.color);
-  return `
-    <div class="section ${colorCls}">
-      <div class="section-header">
-        <span class="section-title">${sec.title}</span>
-        ${sec.note ? `<span class="section-note">${sec.note}</span>` : ''}
-      </div>
-      ${sec.exercises.map((ex, ei) => renderExerciseCard(ex, si, ei, setsLogged)).join('')}
-    </div>`;
+function renderSettings() {
+  const t = STATE.training,
+    r = readiness();
+  return (
+    header(
+      'PROGRAM SETUP',
+      'Make the plan yours',
+      'Loads in pounds. Change only what your log and readiness justify.',
+    ) +
+    (STATE.activeWorkout
+      ? notice(
+          'Finish the active session before editing the program. Its prescription and anchor snapshot stay fixed.',
+        )
+      : '') +
+    `<fieldset ${STATE.activeWorkout ? 'disabled' : ''}>
+    <section class="settings-card"><h2>Today’s readiness</h2>
+      ${select(
+        'Readiness',
+        'readiness',
+        [
+          ['green', 'Green · normal'],
+          ['amber', 'Amber · reduce Olympic work, omit failure work'],
+          ['red', 'Red · no training'],
+        ],
+        r.level,
+      )}
+      ${select(
+        'Event / return status',
+        'event',
+        [
+          ['normal', 'Normal / casual low-demand skills'],
+          ['game', 'Demanding pickup game · defer affected session'],
+          [
+            'verification',
+            'Sober and recovered after larger/uncertain exposure · verification return',
+          ],
+          ['unsafe', 'Intoxicated / uncertain sobriety / dizzy / poorly coordinated'],
+        ],
+        r.event,
+      )}
+      ${select(
+        'Isolated problem (only with otherwise normal readiness)',
+        'local-issue',
+        [
+          ['', 'None'],
+          ['upper', 'Upper body'],
+          ['lower', 'Lower body'],
+        ],
+        r.localIssue,
+      )}
+      ${checkbox('Pivot has residual fatigue: one set per conventional exercise', 'pivot-residual', r.pivotResidual)}
+      ${button('Apply to today', 'setReadiness()', 'button')}
+    </section>
+    <section class="settings-card"><h2>Demonstrated lift references</h2><p class="muted">SN/CJ begin at 155/205 lb. Clean and rack jerk remain unknown until demonstrated. The old power clean and estimated TMs are archived.</p>
+      <div class="two-col">${field('Snatch (SN)', 'anchor-snatch', t.anchors.snatch)}${field('Clean & jerk (CJ)', 'anchor-cj', t.anchors.cj)}${field('Rack jerk (RJ) · optional', 'anchor-jerk', t.anchors.jerk)}${field('Full clean · optional', 'anchor-clean', t.anchors.clean)}</div>
+      ${select(
+        'Smallest total barbell increment',
+        'increment',
+        [
+          [2.5, '2.5 lb'],
+          [5, '5 lb'],
+          [1, '1 lb'],
+        ],
+        t.increment,
+      )}
+      ${field('Rack-jerk working load · optional direct progression', 'rack-load', t.rackLoad, 'number', 'min="0" step="any"')}
+      ${button('Save demonstrated references', 'saveAnchors()', 'button')}
+    </section>
+    <section class="settings-card"><h2>Schedule & equipment</h2>
+      ${checkbox('Split B/D after lateral raises: visit 2 at least 3 h later', 'split', t.split)}
+      ${checkbox('Cutting · retain dose until recovery calls for a reduction', 'cutting', t.cutting)}
+      ${select(
+        'Lateral raise',
+        'lateral',
+        [
+          ['cable', 'Cable'],
+          ['db', 'Dumbbell'],
+        ],
+        t.lateral,
+      )}
+      ${checkbox('Overhead triceps is intolerable: use cable pressdown', 'triceps-fallback', t.tricepsFallback)}
+      ${checkbox('Use supported knee-extended calf press', 'calf-fallback', t.calfFallback)}
+      ${checkbox('Leg-extension machine cannot support reclined position: use upright', 'extension-fallback', t.legExtUpright)}
+      ${checkbox('A doubles impair B: hold Monday snatch at 4×2', 'reduce-monday', t.reduceMondaySnatch)}
+      ${checkbox('C jerks impair D: one fewer C jerk set; suspend C assistance', 'reduce-jerk', t.reduceCJerk)}
+      ${button('Save schedule & equipment', 'saveEquipment()', 'button')}
+    </section>
+    <details class="settings-card"><summary><h2>Optional dose & assistance</h2></summary><p class="muted">Introduce in normal F/B after two stable green weeks, one dose change at a time. Checkpoints and Realization hold earned doses; taper omits them. Review assistance at 2 / 4 / 8 exposures.</p>
+      ${select(
+        'Athletic module',
+        'athletic-enabled',
+        [
+          [0, 'Not introduced'],
+          [1, 'Introduced / retained'],
+        ],
+        t.athletics.enabled ? 1 : 0,
+      )}
+      ${field('Athletic progression step (0 = 6 jumps + 3×10 m)', 'athletic-stage', t.athletics.stage, 'number', 'min="0" max="50" step="1"')}
+      <p class="muted small">${esc(athleticDescription(t.athletics.stage))}. Advance one step after two productive exposures. Step 6 = 15 jumps and 3×20 m; step 7 = 15 jumps and 4×20 m. Later values remain reviewed trials.</p>
+      ${select(
+        'Primary athletic day',
+        'athletic-day',
+        [
+          ['monday', 'Monday after A'],
+          ['thursday', 'Thursday after C · relocation'],
+        ],
+        t.athletics.day,
+      )}
+      ${select(
+        'Earned second Thursday exposure',
+        'athletic-secondary',
+        [
+          [0, 'None'],
+          [1, '2×3 jumps'],
+          [2, '2×3 jumps + 2×10 m'],
+        ],
+        t.athletics.secondary,
+      )}
+      ${select(
+        'Alternate-exposure running replacement',
+        'athletic-variation',
+        [
+          ['none', 'None'],
+          ['fly', 'Replace final 2 runs with 2 flying 10s'],
+          ['cut', 'Replace final 2 runs with 2 sets of 45° cuts/side'],
+        ],
+        t.athletics.variation,
+      )}
+      ${select(
+        'Replacement effort',
+        'variation-effort',
+        [
+          [80, '75–85% cuts'],
+          [90, '90% fly / 85–90% cuts'],
+          [95, '95% fly'],
+        ],
+        t.athletics.variationEffort,
+      )}
+      ${select(
+        'Aerobic work',
+        'cardio-enabled',
+        [
+          [0, 'Not introduced'],
+          [1, 'Introduced / retained'],
+        ],
+        t.cardio.enabled ? 1 : 0,
+      )}
+      ${field('Weekly aerobic moving minutes (split Wed/Sat)', 'cardio-minutes', t.cardio.minutes, 'number', 'min="40" max="300" step="5"')}
+      <p class="muted small">Start 20+20. After two green weeks: +5 min to one session up to 30+30, then +10 weekly minutes. Review 150 for a full cycle before progressing toward 300. Longer doses can be split into walks after priority work.</p>
+      ${select(
+        'One assistance / dose trial',
+        'trial-kind',
+        [
+          ['none', 'None'],
+          ['squat', 'Extra relevant squat set · 3–5 to failure'],
+          ['press', 'Supported overhead press · replace one Friday incline set'],
+          ['pause_jerk', 'Pause-dip jerk · replace first two Thursday jerk sets'],
+          ['set', 'One extra weekly accessory set'],
+          ['calf_partial', 'Replace one Friday calf set with fixed partial ROM'],
+        ],
+        t.trial.kind,
+      )}
+      ${select(
+        'Trial day (squat or accessory set)',
+        'trial-day',
+        [
+          ['tuesday', 'Tuesday'],
+          ['friday', 'Friday'],
+        ],
+        t.trial.day,
+      )}
+      ${select(
+        'Accessory for extra-set trial',
+        'trial-exercise',
+        PROGRAM.accessories.map((x) => [x[0], PROGRAM.exercises[x[0]][0]]),
+        t.trial.exercise,
+      )}
+      ${checkbox('Omit provisional snatch pulls after checkpoint review / omission trial', 'omit-pull', t.omitPull)}
+      ${checkbox('The required stable weeks/exposures are complete; higher-priority work is unaffected', 'dose-ready')}
+      <label class="field">Reason for this one change<textarea id="dose-reason" placeholder="What the log showed; what to review next…"></textarea></label>
+      <p id="dose-error" class="error"></p>${button('Save reviewed dose', 'saveDose()', 'button')}
+      ${t.trial.kind !== 'none' ? button('Review current assistance trial', 'openTrialReview()', 'button') : ''}
+      ${(t.established || []).length ? '<h3 style="margin-top:20px">Established additions</h3>' : ''}
+      ${(t.established || []).map((trial, i) => `<p class="muted">${esc(trialLabel(trial))} ${button('Remove', `removeEstablished(${i})`, 'text-button')}</p>`).join('')}
+    </details>
+    <details class="settings-card"><summary><h2>Heavy practice & assessments</h2></summary><p class="muted">Replacements within the existing attempt budget. F: two secure 80–85% exposures before 85–88%. B/R: two secure 85–88% before final D 90–92%; two secure exposures before 93–95% in R. Extra weekly slots each require two green weeks at the current dose.</p>
+      <div class="two-col">${field('Earned final D snatch % (0 = base)', 'heavy-snatch', t.heavy.snatch, 'number', 'min="0" max="95" step="1"')}${field('Earned final D CJ % (0 = base)', 'heavy-cj', t.heavy.cj, 'number', 'min="0" max="95" step="1"')}${field('Additional snatch replacements/week', 'extra-snatch', t.heavy.extraSnatch, 'number', 'min="0" max="12" step="1"')}${field('Additional CJ replacements/week', 'extra-cj', t.heavy.extraCj, 'number', 'min="0" max="12" step="1"')}</div>
+      ${select(
+        'Component assessment replacement',
+        'assessment',
+        [
+          ['none', 'None'],
+          ['clean', 'Tuesday: 3 CJ pairs + up to 3 full cleans'],
+          ['jerk', 'Thursday: assessed rack-jerk singles'],
+        ],
+        t.assessment,
+      )}
+      ${checkbox('Eligibility reviewed; secure exposures and subsequent recovery support this change', 'heavy-ready')}
+      <p id="heavy-error" class="error"></p>${button('Save reviewed replacements', 'saveHeavy()', 'button')}
+    </details>
+    <section class="settings-card"><h2>Targeted mobility</h2><p class="muted">At most two actual restrictions. Wednesday, Saturday, Sunday; optional fourth day Monday. After lifting on lift days.</p>
+      ${['Bent-knee ankle wall stretch', 'Bench lat stretch · ribs controlled', 'Front-rack wrist stretch', 'Hip 90/90'].map((n, i) => checkbox(n, 'mobility-' + i, t.mobility.includes(n))).join('')}
+      ${select(
+        'Hold duration',
+        'mobility-seconds',
+        [
+          [30, '30 s'],
+          [45, '45 s after two weeks without improvement'],
+        ],
+        t.mobilitySeconds,
+      )}
+      ${select(
+        'Days each week',
+        'mobility-days',
+        [
+          [3, '3'],
+          [4, '4 after two weeks without improvement'],
+        ],
+        t.mobilityDays,
+      )}
+      ${button('Save mobility', 'saveMobility()', 'button')}
+    </section>
+    <details class="settings-card"><summary>Set program position manually</summary><p>For an established start or a corrected position. This does not prove a phase gate. Existing logs remain attached to their original week.</p>
+      ${field('Cycle', 'position-cycle', t.cycle, 'number', 'min="1" max="100" step="1"')}${field('Cycle week', 'position-week', t.week, 'number', 'min="1" max="13" step="1"')}
+      ${select(
+        'Verified phase gate',
+        'position-phase',
+        [
+          ['F', 'Foundation · Build criteria not yet met'],
+          ['B', 'Build cleared · two normal ≥90% weeks'],
+          ['R', 'Realization cleared · secure 80–85% singles'],
+        ],
+        t.phaseGate,
+      )}
+      ${select(
+        'Entry dose',
+        'entry-stage',
+        [
+          [1, 'Stage 1 · 14 failure sets/day'],
+          [2, 'Stage 2 · 18/day'],
+          [3, 'Full base · 22/day'],
+        ],
+        t.entryStage,
+      )}
+      ${checkbox('First-cycle onboarding is still needed', 'onboarding', t.onboarding)}
+      ${button('Set position', 'setPosition()', 'button')}
+    </details></fieldset>
+    ${typeof syncSettingsHTML === 'function' ? syncSettingsHTML() : ''}
+    <section class="settings-card"><h2>Your data</h2><div class="actions">${button('Export complete backup', 'exportData()', 'button')}<label class="button file-input">Import backup<input type="file" accept=".json,application/json" onchange="importData(this)"></label></div><p class="muted small">Revision 6 logs, active session, timers, reviews and the full previous program archive are included. No Google credentials are exported.</p></section>`
+  );
 }
-
-function exerciseStopReason(logged) {
-  const misses = logged.filter(s => s.outcome === 'miss' || s.technicalMiss).length;
-  if (misses >= 2) return 'Two misses: exercise ended for today.';
-  const lastTwo = logged.slice(-2);
-  if (lastTwo.length === 2 && lastTwo.every(s => s.outcome === 'make' && s.grade === 'C')) {
-    return 'Two consecutive technically poor successes: exercise ended for today.';
+function saveAnchors() {
+  const values = {};
+  for (const k of ['snatch', 'cj', 'jerk', 'clean']) {
+    const value = Number($('anchor-' + k).value);
+    if ((['snatch', 'cj'].includes(k) && value <= 0) || value < 0 || value > 2000) {
+      toast('Enter valid demonstrated references.');
+      return;
+    }
+    values[k] = value || null;
   }
+  const rack = Number($('rack-load').value) || null;
+  if (rack && !values.jerk) {
+    toast('Assess RJ before using a directly progressed rack-jerk working load.');
+    return;
+  }
+  STATE.training.anchors = values;
+  STATE.training.increment = Number($('increment').value);
+  STATE.training.rackLoad = rack;
+  save();
+  toast('References saved.');
+  render();
+}
+function saveEquipment() {
+  const t = STATE.training;
+  t.split = $('split').checked;
+  t.cutting = $('cutting').checked;
+  t.lateral = $('lateral').value;
+  t.tricepsFallback = $('triceps-fallback').checked;
+  t.calfFallback = $('calf-fallback').checked;
+  t.legExtUpright = $('extension-fallback').checked;
+  t.reduceMondaySnatch = $('reduce-monday').checked;
+  t.reduceCJerk = $('reduce-jerk').checked;
+  save();
+  toast('Schedule and equipment saved.');
+  render();
+}
+function athleticDescription(stage) {
+  const d = PROGRAM.athleticDose(stage);
+  return `${d.jumpSets}×3 jumps, ${d.runs}×${d.meters} m at ${d.effort}`;
+}
+function saveDose() {
+  const t = STATE.training,
+    next = {
+      athletics: {
+        enabled: $('athletic-enabled').value === '1',
+        stage: Number($('athletic-stage').value),
+        day: $('athletic-day').value,
+        secondary: Number($('athletic-secondary').value),
+        variation: $('athletic-variation').value,
+        variationEffort: Number($('variation-effort').value),
+      },
+      cardio: {
+        enabled: $('cardio-enabled').value === '1',
+        minutes: Number($('cardio-minutes').value),
+      },
+      trial: {
+        ...t.trial,
+        kind: $('trial-kind').value,
+        day: $('trial-day').value,
+        exercise: $('trial-exercise').value,
+      },
+      omitPull: $('omit-pull').checked,
+    };
+  if (['press', 'calf_partial', 'pause_jerk'].includes(next.trial.kind))
+    next.trial.day = next.trial.kind === 'pause_jerk' ? 'thursday' : 'friday';
+  const error = validateDose(t, next, $('dose-ready').checked, $('dose-reason').value);
+  if (error) {
+    $('dose-error').textContent = error;
+    return;
+  }
+  if (JSON.stringify(t.trial) !== JSON.stringify(next.trial)) next.trial.startedAt = Date.now();
+  t.review.push({
+    at: Date.now(),
+    week: t.week,
+    cycle: t.cycle,
+    kind: 'dose',
+    notes: $('dose-reason').value,
+    before: { athletics: t.athletics, cardio: t.cardio, trial: t.trial, omitPull: t.omitPull },
+    after: next,
+  });
+  Object.assign(t, next);
+  save();
+  toast('Reviewed dose saved.');
+  render();
+}
+function validateDose(t, n, ready, reason) {
+  const changed = ['athletics', 'cardio', 'trial', 'omitPull'].filter(
+    (k) => JSON.stringify(t[k]) !== JSON.stringify(n[k]),
+  );
+  if (changed.length > 1)
+    return 'Change one module at a time, then observe its effect before changing another.';
+  if (
+    !Number.isInteger(n.athletics.stage) ||
+    n.athletics.stage < 0 ||
+    n.athletics.stage > 50 ||
+    n.cardio.minutes < 40 ||
+    n.cardio.minutes > 300
+  )
+    return 'Check the progression step and aerobic minutes.';
+  const increases =
+    (n.athletics.enabled && !t.athletics.enabled) ||
+    n.athletics.stage > t.athletics.stage ||
+    n.athletics.secondary > t.athletics.secondary ||
+    (n.cardio.enabled && !t.cardio.enabled) ||
+    n.cardio.minutes > t.cardio.minutes ||
+    (n.trial.kind !== 'none' && JSON.stringify(n.trial) !== JSON.stringify(t.trial)) ||
+    (n.athletics.variation !== 'none' && n.athletics.variation !== t.athletics.variation) ||
+    n.athletics.variationEffort > t.athletics.variationEffort;
+  if (increases && PROGRAM.weekInfo(t.week).held)
+    return 'No new dose in checkpoint, Realization, taper or pivot. Retain or reduce an earned dose.';
+  if (increases && (!ready || !reason.trim()))
+    return 'Record the eligibility review and a reason for the change.';
+  if (increases && t.recovery !== 'normal') return 'Restore normal recovery before adding dose.';
+  if (n.athletics.stage > t.athletics.stage + 1)
+    return 'Advance only one athletic step after two productive exposures.';
+  if (
+    !t.athletics.enabled &&
+    n.athletics.enabled &&
+    (n.athletics.stage !== 0 || n.athletics.secondary || n.athletics.variation !== 'none')
+  )
+    return 'Introduce the primary athletic module at step 0 alone.';
+  const components = ['enabled', 'stage', 'secondary', 'variation', 'variationEffort'].filter(
+    (k) => n.athletics[k] !== t.athletics[k],
+  );
+  if (components.length > 1) return 'Change one athletic component at a time.';
+  if (n.athletics.secondary > 0 && n.athletics.day === 'thursday')
+    return 'Thursday is either the primary relocation or a second exposure, not both.';
+  const dose = PROGRAM.athleticDose(n.athletics.stage);
+  if (n.athletics.variation !== 'none' && (dose.runs < 4 || dose.meters < 20))
+    return 'Flying/cutting replacements require a tolerated 4×20 m primary running dose.';
+  if (n.athletics.variation === 'fly' && n.athletics.variationEffort < 90)
+    return 'Flying work begins at 90%, then progresses to 95%.';
+  if (n.athletics.variation === 'cut' && n.athletics.variationEffort > 90)
+    return 'Cutting progresses from 75–85% to 85–90%.';
+  if (!t.cardio.enabled && n.cardio.enabled && n.cardio.minutes !== 40)
+    return 'Introduce aerobics at 20 minutes on Wednesday and Saturday.';
+  if (n.cardio.minutes > t.cardio.minutes + (t.cardio.minutes < 60 ? 5 : 10))
+    return 'Increase aerobics by 5 weekly minutes below 60, then 10, after two green weeks.';
+  if (
+    ['press', 'pause_jerk', 'calf_partial'].includes(n.trial.kind) &&
+    (t.established || []).some((x) => x.kind === n.trial.kind)
+  )
+    return 'This assistance is already established; remove it before starting a different trial of the same type.';
   return '';
 }
-
-function qualityAttemptsPerSet(ex) {
-  if (ex?.testAttempt) return 1; // a max-test double is one set-level attempt
-  const reps = Number(ex?.reps);
-  return Number.isInteger(reps) && reps > 0 ? reps : 1;
+function trialLabel(t) {
+  return `${prettyDay(t.day)} · ${t.kind === 'set' ? '+1 ' + (PROGRAM.exercises[t.exercise]?.[0] || t.exercise) : { squat: '+1 relevant squat set', press: 'Overhead press replacing incline', pause_jerk: 'Pause-dip jerk replacement', calf_partial: 'Calf partial-ROM replacement' }[t.kind] || t.kind}`;
 }
-
-function qualityAttemptEndsSet(ex, attempt) {
-  return attempt?.outcome === 'miss' || attempt?.technicalMiss
-    || Number(attempt?.repNumber) >= qualityAttemptsPerSet(ex);
+function openTrialReview() {
+  const t = STATE.training.trial;
+  const exposures = STATE.records.filter(
+    (r) =>
+      r.trialSnapshot?.startedAt === t.startedAt &&
+      r.session.rows.some((e) => e.trial && r.sets.some((s) => s.exerciseKey === e.key)),
+  ).length;
+  showModal(
+    'Assistance trial review',
+    `<p>${esc(trialLabel(t))}</p><p>${exposures} logged trial exposures. Review tolerance at 2, direction at 4, benefit at 8; a promising trial may continue another 4. Stop for pain or interference.</p>${select(
+      'Decision',
+      'trial-decision',
+      [
+        ['continue', 'Continue trial'],
+        ['retain', 'Retain this dose; free the trial slot'],
+        ['stop', 'Remove this trial'],
+      ],
+      'continue',
+    )}<label class="field">Outcome / next review<textarea id="trial-outcome" required></textarea></label><p id="trial-error" class="error"></p>${button('Save trial review', 'saveTrialReview()', 'primary wide')}`,
+  );
 }
-
-function completedQualitySets(ex, logged) {
-  return logged.reduce((count, attempt) => count + (
-    attempt.setNumber == null || qualityAttemptEndsSet(ex, attempt) ? 1 : 0
-  ), 0);
-}
-
-function nextQualityAttempt(ex, logged) {
-  if (!logged.length) return { setNumber: 1, repNumber: 1 };
-  const last = logged[logged.length - 1];
-  // A restored pre-v3 session recorded one row per whole set. Continue at the
-  // next set instead of trying to infer rep-level structure retroactively.
-  if (last.setNumber == null || qualityAttemptEndsSet(ex, last)) {
-    return { setNumber: (Number(last.setNumber) || logged.length) + 1, repNumber: 1 };
+function saveTrialReview() {
+  const t = STATE.training,
+    decision = $('trial-decision').value,
+    notes = $('trial-outcome').value;
+  if (!notes.trim()) {
+    $('trial-error').textContent =
+      'Record what changed and why the dose is being retained, continued or removed.';
+    return;
   }
-  return { setNumber: Number(last.setNumber), repNumber: Number(last.repNumber) + 1 };
-}
-
-function renderExerciseCard(ex, si, ei, setsLogged) {
-  const exDef = PROGRAM.exercises[ex.id];
-  if (!exDef) return '';
-
-  const key = `${si}_${ex.slotKey || ex.id}`;
-  const logged = setsLogged[key] || [];
-  const isDailyMax = ex.isDailyMax;
-  const isMaxEffort = ex.isMaxEffort;
-  const isCardio = exDef.type === 'cardio';
-  const isMobility = exDef.type === 'mobility';
-  const isCore = exDef.type === 'core';
-  const isJump = exDef.type === 'jump';
-  const isWarmup = exDef.type === 'warmup';
-  const isTimedSet = !!ex.timedSets;
-  const tracksQuality = !!ex.testAttempt || exDef.type === 'oly' || ['jerk_rack', 'split_jerk_rack'].includes(ex.id);
-  const isTimed = (isCardio || isMobility || isJump || isWarmup) && ex.duration && !ex.sets;
-  const isHypertrophy = !isTimedSet && (exDef.type === 'hypertrophy' || (ex.repRange && !ex.pct && !isDailyMax));
-  const stopped = STATE.activeWorkout?.stoppedExercises?.[key] || exerciseStopReason(logged);
-
-  // Store exercise slot in cache for modal lookup
-  EX_CACHE[`${si}_${ei}`] = { si, exId: ex.id, ei, ex };
-
-  // Prescribed weight
-  const pw = prescribedWeight(ex);
-  const pwDisplay = pw ? fmtWeight(pw) : null;
-
-  // For hypertrophy: last weight + progression
-  const lastW = isHypertrophy ? lastWeight(ex) : null;
-  const progress = isHypertrophy && ex.repRange ? shouldProgress(ex) : false;
-
-  // Rep display
-  let repDisplay = '';
-  if (ex.testPrescription === 2) repDisplay = 'attempt · target is a heavy double';
-  else if (ex.repRange) repDisplay = `${ex.repRange[0]}–${ex.repRange[1]} reps`;
-  else if (ex.reps) repDisplay = `${ex.reps} ${Number(ex.reps) === 1 ? 'rep' : 'reps'}`;
-  else if (ex.duration) repDisplay = ex.duration;
-
-  // Sets display
-  let setsDisplay = ex.sets ? `${ex.sets} sets` : '';
-  if (ex.testAttempt) setsDisplay = 'Log every attempt';
-  if (isDailyMax) setsDisplay = 'Build to daily max';
-  if (isMaxEffort) setsDisplay = 'Work up (RPE 9)';
-  if (ex.testAttempt) setsDisplay = 'Log every attempt';
-
-  // Rest display
-  const restDisplay = ex.rest ? fmtTime(ex.rest) : '';
-
-  const lastWasRetryableMiss = logged.length > 0 &&
-    (logged[logged.length - 1].outcome === 'miss' || logged[logged.length - 1].technicalMiss) && !stopped;
-  const prescribedWorkComplete = tracksQuality
-    ? completedQualitySets(ex, logged) >= (ex.sets || Infinity)
-    : logged.length >= (ex.sets || Infinity);
-  const qualityPosition = tracksQuality ? nextQualityAttempt(ex, logged) : null;
-  const collapsed = !!stopped || (logged.length > 0 && !isDailyMax && !isMaxEffort
-    && prescribedWorkComplete && !lastWasRetryableMiss);
-
-  return `
-    <div class="ex-card ${collapsed ? 'ex-done' : ''} ${ex.optional ? 'ex-optional' : ''}" id="ex-${si}-${ei}">
-      <div class="ex-header" onclick="toggleExCard(${si},${ei})">
-        <div class="ex-name-wrap">
-          <span class="ex-name">${exDef.name}</span>
-          ${ex.optional ? '<span class="badge badge-gold">OPTIONAL</span>' : ''}
-          ${isDailyMax ? '<span class="badge badge-gold">DAILY MAX</span>' : ''}
-          ${isMaxEffort ? '<span class="badge badge-gold">MAX EFFORT</span>' : ''}
-          ${ex.cutNote ? `<span class="badge badge-cut">${ex.cutNote}</span>` : ''}
-          ${ex.rirNote ? `<span class="badge badge-rir">${ex.rirNote}</span>` : ''}
-          ${stopped ? '<span class="badge badge-stop">STOPPED</span>' : ''}
-          ${collapsed ? '<span class="badge badge-green">✓ Done</span>' : ''}
-        </div>
-        <div class="ex-meta">
-          ${ex._startSec != null && STATE.activeWorkout ? `<span class="ex-start">⏱ Start @ ${fmtTime(Math.max(0, STATE.activeWorkout.totalSec - ex._startSec))}</span>` : ''}
-          ${setsDisplay ? `<span>${setsDisplay}</span>` : ''}
-          ${repDisplay ? `<span>${repDisplay}</span>` : ''}
-          ${pwDisplay ? `<span class="ex-pct">${pwDisplay}${ex.pct != null ? ` (${ex.pct}%)` : (ex.recvKey ? ' · catch-quality load' : '')}</span>` : ''}
-          ${restDisplay ? `<span class="ex-rest">Rest: ${restDisplay}</span>` : ''}
-        </div>
-        ${progress ? `<div class="progress-banner">⬆ INCREASE WEIGHT this session</div>` : ''}
-        ${lastW && lastW.prevSets && lastW.prevSets.length ? `<div class="last-weight">Last: ${fmtWeight(lastW.weight)} × ${lastW.prevSets.join(', ')} reps</div>` : ''}
-      </div>
-
-      <div class="ex-body ${collapsed ? 'hidden' : ''}">
-        ${ex.optNote ? `<div class="ex-notes ex-notes-warn">○ ${ex.optNote}</div>` : ''}
-        ${exDef.notes ? `<div class="ex-notes">${exDef.notes}</div>` : ''}
-        ${ex.note ? `<div class="ex-notes ex-notes-warn">⚠ ${ex.note}</div>` : ''}
-        ${ex.contextNote ? `<div class="ex-notes ex-notes-warn">${ex.contextNote}</div>` : ''}
-        ${ex.readinessNote ? `<div class="ex-notes ex-notes-warn">${ex.readinessNote}</div>` : ''}
-        ${ex.warmupNote ? `<div class="ex-notes">Warm-up: ${ex.warmupNote}</div>` : ''}
-        ${stopped ? `<div class="ex-notes ex-notes-stop">${escapeHtml(stopped)}</div>` : ''}
-        ${exDef.cues && exDef.cues.length ? `
-          <div class="cues">
-            ${exDef.cues.map(c => `<div class="cue">• ${c}</div>`).join('')}
-          </div>` : ''}
-
-        ${ex.buildup && ex.buildup.length ? `
-          <div class="buildup">
-            <div class="buildup-title">Build-up ladder — tap a step to start its rest</div>
-            ${ex.buildup.map(s => {
-              const w = s.relativeToWork
-                ? (lastW?.weight ? Math.round((lastW.weight * s.relativeToWork / 100) / 2.5) * 2.5 : null)
-                : PROGRAM.calcWeight(STATE.activeWorkout?.tmSnapshot || STATE.maxes, ex.baseLift, s.pct);
-              return `<button class="buildup-step ${s.top ? 'buildup-top' : ''}" onclick="startRestTimer(${s.rest})">
-                <span class="bs-pct">${s.relativeToWork || s.pct}%</span>
-                <span class="bs-w">${w ? fmtWeight(w) : '—'}</span>
-                <span class="bs-reps">× ${s.reps}</span>
-                <span class="bs-rest">rest ${fmtTime(s.rest)}</span>
-                ${s.top ? '<span class="bs-tag">TOP</span>' : ''}
-              </button>`;
-            }).join('')}
-            ${ex.buildupNote ? `<div class="buildup-note">${ex.buildupNote}</div>` : ''}
-          </div>` : ''}
-
-        ${ex.interval ? `
-          <button class="btn-log" onclick='startIntervalTimer(${JSON.stringify(ex.interval)})'>
-            ▶ Start Interval Timer
-          </button>
-          <div class="interval-preview">${intervalSummary(ex.interval)}</div>
-        ` : isTimed ? `
-          <button class="btn-outline btn-full" onclick="startRestTimer(${durationSec(ex)})">
-            ⏱ Start Timer (${Math.round(durationSec(ex) / 60)} min)
-          </button>` : ''}
-
-        ${!isTimed ? `
-          <div class="set-log" id="setlog-${si}-${ei}">
-            ${logged.map((s, i) => renderLoggedSet(s, i)).join('')}
-          </div>
-          <button class="btn-log" onclick="openLogSet('${si}_${ei}')" ${stopped ? 'disabled' : ''}>
-            ${stopped ? 'Exercise ended by miss rule' : tracksQuality
-              ? `+ Log Attempt · Set ${qualityPosition.setNumber}${ex.sets ? ` / ${ex.sets}` : ''}${qualityAttemptsPerSet(ex) > 1 ? ` · Rep ${qualityPosition.repNumber} / ${qualityAttemptsPerSet(ex)}` : ''}`
-              : `+ Log Set ${logged.length + 1}${isDailyMax || isMaxEffort ? '' : ex.sets ? ` / ${ex.sets}` : ''}`}
-          </button>
-          ${ex.rest ? `<button class="btn-timer" onclick="startRestTimer(${ex.rest})">⏱ Start Rest (${fmtTime(ex.rest)})</button>` : ''}
-        ` : ''}
-      </div>
-    </div>`;
-}
-
-function renderLoggedSet(s, i) {
-  return `<div class="logged-set">
-    <span class="set-num">${s.setNumber != null ? `Set ${s.setNumber}${s.repNumber != null ? ` · Rep ${s.repNumber}` : ''}` : `Set ${i + 1}`}</span>
-    <span class="set-weight">${s.bodyweight && !s.weight ? 'BW' : fmtWeight(s.weight)}</span>
-    <span class="set-reps">${s.seconds != null ? `${s.seconds}s/side` : s.testAttempt ? (s.testPrescription === 2 ? 'double attempt' : 'single attempt') : `${s.reps} reps`}</span>
-    ${s.rir !== '' && s.rir != null ? `<span class="set-rir">RIR ${s.rir}</span>` : ''}
-    ${s.rpe !== '' && s.rpe != null ? `<span class="set-rir">RPE ${s.rpe}</span>` : ''}
-    ${s.outcome ? `<span class="attempt-${s.outcome}">${s.outcome === 'make' ? 'MAKE' : 'MISS'}</span>` : ''}
-    ${s.grade ? `<span class="grade grade-${s.grade.toLowerCase()}">${s.grade}</span>` : ''}
-    ${s.actualPct != null ? `<span class="set-rir">${s.actualPct}% TM</span>` : ''}
-    ${s.lowReps != null ? `<span class="set-depth">${s.lowReps} low · ${s.highReps} high · ${s.stood ? 'stood' : 'not stood'}</span>` : ''}
-    ${s.missDirection ? `<span class="set-note">${escapeHtml(s.missDirection)}${s.missStage ? ` · ${escapeHtml(s.missStage)}` : ''}</span>` : ''}
-    ${s.note ? `<span class="set-note">"${escapeHtml(s.note)}"</span>` : ''}
-  </div>`;
-}
-
-function toggleExCard(si, ei) {
-  const body = document.querySelector(`#ex-${si}-${ei} .ex-body`);
-  if (body) body.classList.toggle('hidden');
-}
-
-// ─── Log Set Modal ────────────────────────────────────────────────────────────
-function openLogSet(cacheKey) {
-  initAudio();
-  const cached = EX_CACHE[cacheKey];
-  if (!cached) return;
-  const { si, exId, ei, ex } = cached;
-  const exDef = PROGRAM.exercises[exId];
-  const pw = prescribedWeight(ex);
-  const logKey = `${si}_${ex.slotKey || exId}`;
-  const logged = STATE.activeWorkout?.setsLogged[logKey] || [];
-  const lastW = lastWeight(ex);
-  const timedSets = !!ex.timedSets;
-  const bodyweight = !!exDef.bodyweight || timedSets;
-  const suggestedWeight = pw ?? ex.externalLoad ?? (lastW ? lastW.weight : (bodyweight ? 0 : ''));
-  const tracksQuality = !!ex.testAttempt || exDef.type === 'oly' || ['jerk_rack', 'split_jerk_rack'].includes(exId);
-  const tracksDepth = !!(ex.recvKey || ex.receivingDepth);
-  const qualityPosition = tracksQuality ? nextQualityAttempt(ex, logged) : null;
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-backdrop';
-  modal.id = 'log-modal';
-  modal.innerHTML = `
-    <div class="modal">
-      <div class="modal-title">${exDef.name}</div>
-      <div class="modal-sub">${tracksQuality ? `Set ${qualityPosition.setNumber}${ex.sets ? ` of ${ex.sets}` : ''}${qualityAttemptsPerSet(ex) > 1 ? ` · Rep ${qualityPosition.repNumber} of ${qualityAttemptsPerSet(ex)}` : ''}` : `Set ${logged.length + 1}${ex.sets ? ` of ${ex.sets}` : ''}`}
-        ${pw ? ` · Prescribed: ${fmtWeight(pw)}${ex.pct ? ` (${ex.pct}%)` : ''}` : ''}
-        ${lastW ? ` · Last: ${fmtWeight(lastW.weight)}` : ''}
-      </div>
-
-      <label class="form-label">${bodyweight ? 'External load / assistance (lbs, optional)' : 'Weight (lbs)'}</label>
-      <input type="number" id="inp-weight" class="form-input" value="${suggestedWeight || ''}"
-        inputmode="decimal" step="2.5" placeholder="lbs">
-
-      ${timedSets ? `
-      <label class="form-label">Seconds completed per side</label>
-      <div class="rep-picker">
-        ${[20,25,30,35,40,45,60].map(n => `<button class="rep-btn" onclick="pickTimedSeconds(${n})">${n}</button>`).join('')}
-      </div>
-      <input type="number" id="inp-seconds" class="form-input" inputmode="numeric" min="0" placeholder="seconds per side">
-      <input type="hidden" id="inp-reps" value="1">` : tracksQuality ? `
-      <input type="hidden" id="inp-reps" value="">
-      <input type="hidden" id="inp-made-reps" value="${ex.testAttempt ? ex.testPrescription || 1 : 1}">` : `
-      <label class="form-label">Reps completed</label>
-      <div class="rep-picker">
-        ${[...Array(21)].map((_,i) => `<button class="rep-btn" onclick="pickRep(${i})">${i}</button>`).join('')}
-      </div>
-      <input type="number" id="inp-reps" class="form-input" inputmode="numeric" placeholder="or type reps">`}
-
-      ${tracksQuality ? `<label class="form-label">Attempt RPE</label>
-        <div class="rir-picker">${[6,7,8,9,10].map(r => `<button class="rir-btn effort-btn" onclick="pickEffort('rpe', ${r})">${r}</button>`).join('')}</div>
-        <input type="hidden" id="inp-rpe" value="">` : timedSets ? `
-        <input type="hidden" id="inp-rir" value="">` : `
-        <label class="form-label">RIR (Reps in Reserve)</label>
-        <div class="rir-picker">${[0,1,2,3,4,5].map(r => `<button class="rir-btn effort-btn" onclick="pickEffort('rir', ${r})">${r}</button>`).join('')}</div>
-        <input type="hidden" id="inp-rir" value="">`}
-
-      ${tracksQuality ? `
-      <label class="form-label">Outcome</label>
-      <div class="rir-picker">
-        <button class="rir-btn outcome-btn" data-v="make" onclick="pickChoice('outcome','make')">Made</button>
-        <button class="rir-btn outcome-btn" data-v="miss" onclick="pickChoice('outcome','miss')">Missed</button>
-      </div>
-      <input type="hidden" id="inp-outcome" value="">
-      <label class="form-label">Grade this attempt</label>
-      <div class="rir-picker">
-        <button class="rir-btn grade-btn" data-g="A" onclick="pickGrade('A')">A</button>
-        <button class="rir-btn grade-btn" data-g="B" onclick="pickGrade('B')">B</button>
-        <button class="rir-btn grade-btn" data-g="C" onclick="pickGrade('C')">C</button>
-      </div>
-      <div class="modal-hint">A = felt solid, nothing you'd change · B = made it but chased it or the bar drifted · C = miss, or a make you'd be embarrassed by</div>
-      <input type="hidden" id="inp-grade" value="">
-      <label class="form-label">Miss direction (only if missed)</label>
-      <div class="rir-picker">
-        ${['forward','backward','other'].map(v => `<button class="rir-btn direction-btn" data-v="${v}" onclick="pickChoice('direction','${v}')">${v}</button>`).join('')}
-      </div>
-      <input type="hidden" id="inp-direction" value="">
-      ${exId === 'cj_floor' ? `<label class="form-label">If missed: where?</label><div class="rir-picker">
-        <button class="rir-btn stage-btn" data-v="clean" onclick="pickChoice('stage','clean')">Clean</button>
-        <button class="rir-btn stage-btn" data-v="jerk" onclick="pickChoice('stage','jerk')">Jerk</button>
-      </div><input type="hidden" id="inp-stage" value="">` : ''}` : ''}
-
-      ${tracksDepth ? `
-      <label class="form-label">Receiving depth — count every rep</label>
-      <div class="depth-counts">
-        <label>Below parallel <input type="number" id="inp-low-reps" class="form-input" min="0" max="10" inputmode="numeric" value="${Number(ex.reps) || 1}"></label>
-        <label>Caught high <input type="number" id="inp-high-reps" class="form-input" min="0" max="10" inputmode="numeric" value="0"></label>
-      </div>
-      <label class="form-label">Stood every received rep completely?</label>
-      <div class="rir-picker"><button class="rir-btn stood-btn" data-v="yes" onclick="pickChoice('stood','yes')">Yes</button><button class="rir-btn stood-btn" data-v="no" onclick="pickChoice('stood','no')">No</button></div>
-      <input type="hidden" id="inp-stood" value="">
-      <div class="modal-hint">Any high catch or failed stand blocks progression. Drop 10 lb immediately and repeat; next week's baseline holds.</div>` : ''}
-
-      <label class="form-label">Notes (optional)</label>
-      <input type="text" id="inp-note" class="form-input" placeholder="e.g. felt heavy, good speed...">
-
-      <div class="modal-actions">
-        <button class="btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn-primary" onclick="submitSet('${cacheKey}')">Save Set</button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(modal);
-  setTimeout(() => $('inp-weight')?.focus(), 100);
-}
-
-function pickRep(n) {
-  $('inp-reps').value = n;
-  document.querySelectorAll('.rep-btn').forEach(b => b.classList.toggle('active', parseInt(b.textContent) === n));
-}
-
-function pickTimedSeconds(n) {
-  $('inp-seconds').value = n;
-  document.querySelectorAll('.rep-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
-}
-
-function pickEffort(kind, n) {
-  const input = $(`inp-${kind}`);
-  if (input) input.value = n;
-  document.querySelectorAll('.effort-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
-}
-
-function pickGrade(g) {
-  $('inp-grade').value = g;
-  document.querySelectorAll('.grade-btn').forEach(b => b.classList.toggle('active', b.dataset.g === g));
-}
-
-function pickChoice(kind, value) {
-  const input = $(`inp-${kind}`);
-  if (input) input.value = value;
-  if (kind === 'outcome' && $('inp-reps')) {
-    $('inp-reps').value = value === 'make' ? ($('inp-made-reps')?.value || '1') : '0';
+  t.review.push({ kind: 'trial-review', at: Date.now(), decision, notes, trial: { ...t.trial } });
+  if (decision === 'retain') {
+    t.established = t.established || [];
+    t.established.push({ ...t.trial, acceptedAt: Date.now() });
   }
-  const cls = kind === 'outcome' ? 'outcome-btn'
-    : kind === 'direction' ? 'direction-btn'
-      : kind === 'stage' ? 'stage-btn' : 'stood-btn';
-  document.querySelectorAll(`.${cls}`).forEach(b => b.classList.toggle('active', b.dataset.v === value));
-}
-
-function closeModal() {
-  const m = $('log-modal');
-  if (m) m.remove();
-}
-
-function submitSet(cacheKey) {
-  const cached = EX_CACHE[cacheKey];
-  if (!cached) return;
-  const { si, exId, ex } = cached;
-  const activeSlotKey = ex.slotKey || ex.id;
-  const retryOverrideActive = STATE.activeWorkout?.loadOverrides?.[activeSlotKey] != null
-    || (ex.recvKey && STATE.activeWorkout?.receivingOverrides?.[ex.recvKey] != null);
-
-  const exDef = PROGRAM.exercises[exId];
-  const timedSets = !!ex.timedSets;
-  const bodyweight = !!exDef.bodyweight || timedSets;
-  const weightRaw = $('inp-weight').value.trim();
-  const weight = weightRaw === '' ? (bodyweight ? 0 : null) : Number(weightRaw);
-  const repRaw = $('inp-reps').value;
-  const reps = repRaw === '' ? null : Math.max(0, parseInt(repRaw, 10));
-  const seconds = timedSets ? Math.max(0, parseInt($('inp-seconds').value, 10) || 0) : null;
-  const rir = $('inp-rir') ? $('inp-rir').value : '';
-  const rpe = $('inp-rpe') ? $('inp-rpe').value : '';
-  const note = $('inp-note').value.trim();
-  const tracksQuality = !!ex.testAttempt || exDef.type === 'oly' || ['jerk_rack', 'split_jerk_rack'].includes(exId);
-  const tracksDepth = !!(ex.recvKey || ex.receivingDepth);
-  const outcome = $('inp-outcome') ? $('inp-outcome').value : '';
-  const grade = $('inp-grade') ? $('inp-grade').value : '';
-  const missDirection = $('inp-direction') ? $('inp-direction').value : '';
-  const missStage = $('inp-stage') ? $('inp-stage').value : '';
-
-  if (tracksQuality && (!outcome || !grade || !rpe)) { alert('Record outcome, grade, and RPE for every competition-lift attempt.'); return; }
-  if (reps == null) { alert('Record whether the attempt was made or missed.'); return; }
-  if (weight == null || Number.isNaN(weight) || weight < 0) { alert('Enter the attempted weight.'); return; }
-  if (timedSets && seconds <= 0) { alert('Enter the seconds completed on each side.'); return; }
-  if (ex.rirNote && rir === '') { alert(`Record RIR so double progression can apply the ${ex.rirNote} target.`); return; }
-  if (outcome === 'miss' && grade !== 'C') { alert('A missed lift must be graded C.'); return; }
-  const expectedMadeReps = ex.testAttempt ? Number(ex.testPrescription) || 1 : 1;
-  if (outcome === 'make' && reps !== expectedMadeReps) { alert(`A made attempt must record ${expectedMadeReps} completed rep${expectedMadeReps === 1 ? '' : 's'}.`); return; }
-  if (outcome === 'miss' && reps !== 0) { alert('A missed attempt records zero completed reps.'); return; }
-  if (outcome === 'miss' && !missDirection) { alert('Record the miss direction.'); return; }
-  if (outcome === 'miss' && exId === 'cj_floor' && !missStage) { alert('Record whether the clean or jerk was missed.'); return; }
-
-  let lowReps = null, highReps = null, stood = null;
-  if (tracksDepth) {
-    lowReps = Math.max(0, parseInt($('inp-low-reps').value, 10) || 0);
-    highReps = Math.max(0, parseInt($('inp-high-reps').value, 10) || 0);
-    stood = $('inp-stood').value;
-    const depthAttempts = ex.testAttempt ? 1 : reps;
-    if (lowReps + highReps !== depthAttempts) { alert('Below-parallel plus high catches must equal reps attempted.'); return; }
-    if (!stood) { alert('Record whether every rep was stood completely.'); return; }
-    if (tracksQuality && (highReps > 0 || stood === 'no') && (outcome !== 'miss' || grade !== 'C')) {
-      alert('A high or unstood receiving-test attempt must be logged as a C-grade miss.');
-      return;
-    }
-  }
-
-  const key = `${si}_${ex.slotKey || exId}`;
-  if (!STATE.activeWorkout.setsLogged[key]) STATE.activeWorkout.setsLogged[key] = [];
-  const qualityPosition = tracksQuality
-    ? nextQualityAttempt(ex, STATE.activeWorkout.setsLogged[key]) : null;
-
-  const liftKey = ex.baseLift || exDef.baseLift || (ex.recvKey ? 'clean' : null);
-  const tm = liftKey ? STATE.activeWorkout.tmSnapshot[liftKey] : null;
-  const setObj = {
-    exId, slotKey: ex.slotKey || exId, liftKey,
-    weight, reps, seconds, bodyweight, rir, rpe, note, ts: Date.now(),
-    cycleId: STATE.activeWorkout.cycleId,
-    blockId: STATE.activeWorkout.blockId,
-    weekInBlock: STATE.activeWorkout.weekInBlock,
-    programWeek: STATE.activeWorkout.programWeek,
-    sessionId: STATE.activeWorkout.sessionId,
-    prescribedPct: ex.pct ?? null,
-    tmSnapshot: tm,
-    actualPct: tm && weight > 0 ? Math.round(weight / tm * 1000) / 10 : null,
-    retryOverride: !!retryOverrideActive,
-    testAttempt: !!ex.testAttempt,
-    testPrescription: ex.testPrescription || null,
-    qualityAnalytics: !ex.testAttempt || ['snatch', 'cj', 'jerk', 'clean'].includes(liftKey),
-  };
-  if (tracksQuality) Object.assign(setObj, { outcome, grade, missDirection: outcome === 'miss' ? missDirection : '', missStage: outcome === 'miss' ? missStage : '' });
-  if (qualityPosition) Object.assign(setObj, qualityPosition);
-  if (tracksDepth) Object.assign(setObj, {
-    lowReps, highReps, stood: stood === 'yes',
-    technicalMiss: highReps > 0 || stood !== 'yes',
-  });
-  STATE.activeWorkout.setsLogged[key].push(setObj);
-
-  // A high catch changes only the next attempt in this session. It never lowers
-  // the following week's baseline; settlement at session end will simply hold.
-  if (tracksDepth && (highReps > 0 || stood === 'no')) {
-    const repeatWeight = Math.max(0, weight - 10);
-    STATE.activeWorkout.loadOverrides[activeSlotKey] = repeatWeight;
-    if (ex.recvKey) STATE.activeWorkout.receivingOverrides[ex.recvKey] = repeatWeight;
-    toast(`${PROGRAM.exercises[ex.id].name}: repeat at ${fmtWeight(repeatWeight)}.`);
-  } else if (retryOverrideActive) {
-    delete STATE.activeWorkout.loadOverrides[activeSlotKey];
-    if (ex.recvKey) delete STATE.activeWorkout.receivingOverrides[ex.recvKey];
-  }
-
-  // Track hypertrophy progression
-  if (!timedSets && ex.repRange && (exDef.type === 'hypertrophy' || !ex.pct)) {
-    const totalSets = ex.sets || 3;
-    recordHypertrophySet(ex, weight, reps, ex.repRange, totalSets, rir);
-  }
-
-  const stopReason = exerciseStopReason(STATE.activeWorkout.setsLogged[key]);
-  if (stopReason) {
-    STATE.activeWorkout.stoppedExercises[key] = stopReason;
-    delete STATE.activeWorkout.loadOverrides[activeSlotKey];
-    if (ex.recvKey) delete STATE.activeWorkout.receivingOverrides[ex.recvKey];
-    toast(stopReason);
-  } else if (outcome === 'miss' && !setObj.technicalMiss) {
-    toast('First miss: rest fully; repeat once, or reduce 2.5–5% if fatigue clearly caused it.');
-  }
-
-  // Auto-start rest timer unless the exercise has just been ended.
-  const atSetBoundary = !tracksQuality || qualityAttemptEndsSet(ex, setObj);
-  const completedWork = tracksQuality
-    ? completedQualitySets(ex, STATE.activeWorkout.setsLogged[key])
-    : STATE.activeWorkout.setsLogged[key].length;
-  const retryableMiss = outcome === 'miss' || setObj.technicalMiss;
-  const moreWorkRemains = ex.isDailyMax || ex.isMaxEffort || !ex.sets
-    || completedWork < ex.sets || retryableMiss;
-  if (ex.rest > 0 && !stopReason && atSetBoundary && moreWorkRemains) startRestTimer(ex.rest);
-
-  save(); // persist the logged set (startRestTimer also saves, but not every set rests)
+  if (decision !== 'continue') t.trial = { kind: 'none', day: 'friday', exercise: 'shrug' };
+  save();
   closeModal();
-  renderWorkout();
-}
-
-// ─── Training-max policy ──────────────────────────────────────────────────────
-// TMs are LOCKED for the whole 13-week block. A well-programmed single at 85%
-// *should* feel below RPE 8 — that is the design, not evidence the max is wrong.
-// Raising the denominator on that basis inflates every percentage until the
-// ladder stops meaning anything.
-//
-// The one bounded exception: three CONSECUTIVE scheduled non-deload top-single
-// exposures at >=85%, every prescribed attempt made, graded A and RPE <=7,
-// earns +5 lb once per lift and cycle. Anything
-// short of that streak resets the counter.
-const TM_EXC = { minPct: 85, maxRpe: 7, streak: 3, bump: 5 };
-
-function settleTmException(day) {
-  if (!day?.sections || [2, 4, 6, 7].includes(STATE.activeWorkout?.blockId)) return [];
-  const msgs = [];
-  day.sections.forEach((sec, si) => sec.exercises.forEach(ex => {
-    const def = PROGRAM.exercises[ex.id];
-    if (!def || def.type !== 'oly' || ex.optionalTopSingle || ex.pct < TM_EXC.minPct) return;
-    if (![1, '1+1'].includes(ex.reps)) return;
-    const lift = ex.baseLift;
-    if (!lift || !STATE.maxes[lift]) return;
-    const key = `${si}_${ex.slotKey || ex.id}`;
-    const sets = STATE.activeWorkout.setsLogged[key] || [];
-    const exposureKey = `${STATE.activeWorkout.cycleId}:${STATE.activeWorkout.programWeek}:${lift}`;
-    const watch = STATE.tmWatch[lift] || { streak: 0, bumped: false, lastExposureKey: null };
-    if (watch.lastExposureKey === exposureKey) return;
-    watch.lastExposureKey = exposureKey;
-    const prescribed = sets.slice(0, ex.sets || sets.length);
-    const qualifies = prescribed.length >= (ex.sets || 1)
-      && prescribed.every(s => s.outcome === 'make' && s.grade === 'A'
-        && Number(s.rpe) <= TM_EXC.maxRpe && Number(s.actualPct) >= TM_EXC.minPct);
-    watch.streak = qualifies ? watch.streak + 1 : 0;
-    if (watch.streak >= TM_EXC.streak && !watch.bumped) {
-      STATE.maxes[lift] += TM_EXC.bump;
-      watch.bumped = true;
-      watch.streak = 0;
-      msgs.push(`${PROGRAM.liftNames[lift]} TM +${TM_EXC.bump} lb → ${fmtWeight(STATE.maxes[lift])}. This lift's one bounded exception is now used for cycle ${STATE.activeWorkout.cycleId}.`);
-    }
-    STATE.tmWatch[lift] = watch;
-  }));
-  return msgs;
-}
-
-// ─── Receiving-load gate ──────────────────────────────────────────────────────
-// The high-hang clean and the received clean progress on CATCH QUALITY, not a
-// percentage. +5 lb only when the complete prescribed rep count passes. A high
-// catch causes an immediate in-session repeat 10 lb lower but next week's
-// baseline holds; it is never automatically reduced here.
-function settleReceiving(day) {
-  if (!day || !day.sections) return [];
-  const msgs = [];
-  day.sections.forEach((sec, si) => sec.exercises.forEach(ex => {
-    if (!ex.recvKey) return;
-    const sets = (STATE.activeWorkout.setsLogged[`${si}_${ex.slotKey || ex.id}`]) || [];
-    if (!sets.length) return;
-    // Deloads and the taper hold the load — no progression either way.
-    if ([2, 4, 6].includes(STATE.activeWorkout?.blockId)) {
-      msgs.push(`${PROGRAM.exercises[ex.id].name}: load held (deload/taper).`);
-      return;
-    }
-    const def = PROGRAM.receiving[ex.recvKey];
-    const before = PROGRAM.recvWeight(STATE.receiving, ex.recvKey);
-    if (!STATE.receiving) STATE.receiving = {};
-    if (!STATE.receivingMeta) STATE.receivingMeta = {};
-    const meta = STATE.receivingMeta[ex.recvKey] || { stalls: 0, lastExposureKey: null };
-    const exposureKey = `${STATE.activeWorkout.cycleId}:${STATE.activeWorkout.programWeek}:${ex.recvKey}`;
-    if (meta.lastExposureKey === exposureKey) return;
-    meta.lastExposureKey = exposureKey;
-    const expected = def.requiredReps;
-    const completed = sets.reduce((n, s) => n + (Number(s.reps) || 0), 0);
-    const low = sets.reduce((n, s) => n + (Number(s.lowReps) || 0), 0);
-    const high = sets.reduce((n, s) => n + (Number(s.highReps) || 0), 0);
-    const allStood = sets.every(s => s.stood === true);
-    const relaxed = meta.stalls >= 3;
-    const progressionLoadEligible = completed >= expected
-      && sets.every(s => Number(s.weight) >= before);
-    const stallLoadEligible = completed >= expected
-      && sets.every(s => Number(s.weight) >= before || s.retryOverride === true);
-    const passed = progressionLoadEligible && low >= expected - (relaxed ? 1 : 0)
-      && high <= (relaxed ? 1 : 0) && allStood;
-    if (passed) {
-      STATE.receiving[ex.recvKey] = Math.min(before + def.step, def.cap);
-      meta.stalls = 0;
-      const after = STATE.receiving[ex.recvKey];
-      msgs.push(after > before
-        ? `${def.name}: gate passed${relaxed ? ' under the all-but-one rule' : ''} → ${fmtWeight(after)} next week.`
-        : `${def.name}: at the ${fmtWeight(def.cap)} cap — hold.`);
-    } else {
-      if (stallLoadEligible) meta.stalls += 1;
-      const why = completed < expected ? `${completed}/${expected} prescribed reps logged`
-        : !stallLoadEligible ? `one or more voluntarily loaded reps were below the ${fmtWeight(before)} stored baseline`
-          : `${high} high catch(es) or an incomplete stand`;
-      msgs.push(`${def.name}: ${why} → baseline holds at ${fmtWeight(before)}.${meta.stalls >= 3 ? ' Next exposure may use the documented all-but-one gate.' : ''}`);
-    }
-    STATE.receivingMeta[ex.recvKey] = meta;
-  }));
-  return msgs;
-}
-
-function settleHighHangSnatch(day) {
-  if (STATE.activeWorkout?.blockId !== 5 || STATE.activeWorkout?.readiness !== 'green' || !day?.sections) return [];
-  let message = '';
-  day.sections.forEach((sec, si) => sec.exercises.forEach(ex => {
-    if (ex.id !== 'hh_snatch' || !ex.qualityCeiling) return;
-    const exposureKey = `${STATE.activeWorkout.cycleId}:${STATE.activeWorkout.programWeek}:hh_snatch`;
-    if (STATE.technicalProgress.lastExposureKey === exposureKey) return;
-    const sets = STATE.activeWorkout.setsLogged[`${si}_${ex.slotKey || ex.id}`] || [];
-    if (!sets.length) return;
-    STATE.technicalProgress.lastExposureKey = exposureKey;
-    const completed = sets.reduce((n, s) => n + (Number(s.reps) || 0), 0);
-    const scheduled = prescribedWeight(ex, true);
-    const loadEligible = scheduled != null && sets.every(s => Number(s.weight) >= scheduled);
-    const passed = completed >= 8
-      && sets.reduce((n, s) => n + (Number(s.lowReps) || 0), 0) >= 8
-      && sets.every(s => !s.highReps && s.stood === true) && loadEligible;
-    const before = Number(STATE.technicalProgress.hhSnatchPct) || 65;
-    if (passed) STATE.technicalProgress.hhSnatchPct = Math.min(70, before + 2.5);
-    message = passed
-      ? `High-hang snatch gate passed → ${STATE.technicalProgress.hhSnatchPct}% next exposure (70% cap).`
-      : `High-hang snatch quality/load gate not passed → hold ${before}%.`;
-  }));
-  return message ? [message] : [];
-}
-
-function settleCopenhagen(day) {
-  if ([2, 4, 6, 7].includes(STATE.activeWorkout?.blockId) || !day?.sections) return [];
-  let message = '';
-  day.sections.forEach((sec, si) => sec.exercises.forEach(ex => {
-    if (ex.id !== 'copenhagen') return;
-    const exposureKey = `${STATE.activeWorkout.cycleId}:${STATE.activeWorkout.programWeek}:copenhagen`;
-    if (STATE.copenhagen.lastExposureKey === exposureKey) return;
-    const sets = STATE.activeWorkout.setsLogged[`${si}_${ex.slotKey || ex.id}`] || [];
-    if (!sets.length) return;
-    STATE.copenhagen.lastExposureKey = exposureKey;
-    const step = Math.min(5, Math.max(1, Number(STATE.copenhagen.step) || 1));
-    const target = PROGRAM.copenhagenSteps[step].targetSec;
-    if (step < 5 && sets.length >= 2 && sets.slice(0, 2).every(s => Number(s.seconds) >= target)) {
-      STATE.copenhagen.step = step + 1;
-      message = `Copenhagen cleared on both sides → advance to step ${STATE.copenhagen.step}.`;
-    } else if (step < 5) {
-      message = `Copenhagen holds at step ${step}; clear both work sets at ${target}s/side to advance.`;
-    }
-  }));
-  return message ? [message] : [];
-}
-
-// A-rate at a given percentage band, read across a whole block rather than
-// week to week — it moves with fatigue and your own standard tightens over time.
-function allLoggedSets() {
-  return Object.values(STATE.log).flatMap(d => Object.values(d.setsLogged || {}).flat());
-}
-
-function aRate(sinceDays) {
-  const cutoff = Date.now() - (sinceDays || 28) * 864e5;
-  const attempts = allLoggedSets().filter(s => s.grade && s.qualityAnalytics !== false && Number(s.ts) >= cutoff);
-  const a = attempts.filter(s => s.grade === 'A').length;
-  const misses = attempts.filter(s => s.outcome === 'miss').length;
-  return {
-    attempts: attempts.length,
-    aRate: attempts.length ? Math.round(a / attempts.length * 100) : null,
-    missRate: attempts.length ? Math.round(misses / attempts.length * 100) : null,
-  };
-}
-
-function qualityAnalytics() {
-  const groups = new Map();
-  allLoggedSets().forEach(s => {
-    if (!s.grade || !s.liftKey || s.actualPct == null || s.qualityAnalytics === false) return;
-    const pctBand = Math.round(Number(s.actualPct) / 2.5) * 2.5;
-    const cycleId = Number(s.cycleId) || 1;
-    const blockId = Number(s.blockId) || 0;
-    const key = `${cycleId}|${blockId}|${s.liftKey}|${pctBand}`;
-    if (!groups.has(key)) groups.set(key, {
-      cycleId, blockId, liftKey: s.liftKey, pctBand,
-      attempts: 0, a: 0, b: 0, c: 0, misses: 0,
-      directions: { forward: 0, backward: 0, other: 0 },
-    });
-    const g = groups.get(key);
-    g.attempts += 1;
-    g[s.grade.toLowerCase()] += 1;
-    if (s.outcome === 'miss') {
-      g.misses += 1;
-      g.directions[s.missDirection] = (g.directions[s.missDirection] || 0) + 1;
-    }
-  });
-  return [...groups.values()].map(g => ({
-    ...g,
-    aRate: Math.round(g.a / g.attempts * 100),
-    missRate: Math.round(g.misses / g.attempts * 100),
-  })).sort((x, y) => y.cycleId - x.cycleId || y.blockId - x.blockId
-    || x.liftKey.localeCompare(y.liftKey) || x.pctBand - y.pctBand);
-}
-
-function renderQualityAnalytics() {
-  const groups = qualityAnalytics();
-  if (!groups.length) return '<div class="empty-state">Grade competition attempts to populate block-level quality data.</div>';
-  return `<div class="quality-grid">${groups.slice(0, 30).map(g => {
-    const directions = Object.entries(g.directions).filter(([, n]) => n).map(([d, n]) => `${d} ${n}`).join(' · ');
-    return `<div class="quality-card">
-      <div class="quality-title">C${g.cycleId} · B${g.blockId} · ${escapeHtml(PROGRAM.liftNames[g.liftKey] || g.liftKey)} · ${g.pctBand}%</div>
-      <div class="quality-stats"><b>${g.aRate}% A</b><b>${g.missRate}% missed</b><span>${g.attempts} attempts</span></div>
-      <div class="quality-grades">A ${g.a} · B ${g.b} · C ${g.c}${directions ? ` · misses: ${directions}` : ''}</div>
-    </div>`;
-  }).join('')}</div>`;
-}
-
-// Lightweight transient toast (self-contained styles so it needs no CSS).
-function toast(msg) {
-  const t = document.createElement('div');
-  t.textContent = msg;
-  t.style.cssText = 'position:fixed;left:50%;bottom:88px;transform:translateX(-50%);'
-    + 'z-index:9999;background:var(--gold);color:#0f0f0f;font-weight:700;'
-    + 'padding:12px 18px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.45);'
-    + 'max-width:88%;text-align:center;font-size:15px;line-height:1.35;';
-  document.body.appendChild(t);
-  if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
-  setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 3200);
-  setTimeout(() => t.remove(), 3700);
-}
-
-function endWorkout() {
-  if (!STATE.activeWorkout) { nav('home'); return; }
-  if (!confirm('End this workout and save it?')) return;
-
-  // Save session to log
-  const workout = STATE.activeWorkout;
-  const { date, dayKey, day, setsLogged } = workout;
-  const sessionSec = STATE.sessionTimer.active
-    ? Math.floor((Date.now() - STATE.sessionTimer.start) / 1000) : 0;
-
-  const policyMsgs = [
-    ...settleTmException(day),
-    ...settleReceiving(day),
-    ...settleHighHangSnatch(day),
-    ...settleCopenhagen(day),
-  ];
-
-  // Every separately timed AM/PM/cardio session gets its own immutable key.
-  const logKey = workout.id;
-  const testSource = workout.testResultsSnapshot || STATE.testResults;
-  const sessionTestResults = day.isTesting ? Object.fromEntries((day.lifts || [])
-    .map(lift => [lift.lift, testSource[lift.lift]])
-    .filter(([, result]) => result)) : null;
-  STATE.log[logKey] = {
-    date,
-    completedAt: Date.now(),
-    dayKey,
-    sessionId: workout.sessionId,
-    kind: day.kind || 'lifting',
-    title: day.title,
-    cycleId: workout.cycleId,
-    blockId: workout.blockId,
-    weekInBlock: workout.weekInBlock,
-    programWeek: workout.programWeek,
-    readiness: workout.readiness,
-    pickupDays: workout.pickupDays,
-    tmSnapshot: workout.tmSnapshot,
-    testResults: sessionTestResults,
-    setsLogged,
-    sessionMin: Math.round(sessionSec / 60),
-  };
-
-  // Evaluate double-progression for next session, then clear the live set tracker.
-  finalizeHypertrophyProgression();
-
-  stopSessionTimer();
-  releaseWakeLock();
-  clearRestTimer();
-  stopIntervalTimer(); // never leave the VO₂max interval engine running past a session
-  STATE.activeWorkout = null;
-  save();
-
-  alert(`Workout saved! Session: ${Math.round(sessionSec / 60)} min`
-    + (policyMsgs.length ? '\n\n' + policyMsgs.join('\n') : ''));
-  nav('home');
-}
-
-// ─── Render: History ──────────────────────────────────────────────────────────
-function renderHistory() {
-  const app = $('app');
-  const entries = Object.entries(STATE.log).sort(([, a], [, b]) =>
-    (Number(b.completedAt) || Date.parse(b.date || 0)) - (Number(a.completedAt) || Date.parse(a.date || 0)));
-
-  app.innerHTML = `
-    <div class="page history-page">
-      <div class="page-title">History</div>
-      ${entries.length === 0 ? '<div class="empty-state">No sessions logged yet.</div>' : ''}
-      ${entries.map(([d, s]) => {
-        const totalSets = Object.values(s.setsLogged || {}).reduce((a,b) => a + b.length, 0);
-        const testCount = Object.keys(s.testResults || {}).length;
-        return `
-          <div class="history-card" onclick="toggleHistoryDetail('${d}')">
-            <div class="history-date">${escapeHtml(s.date || d.split('#')[0])}</div>
-            <div class="history-day">${escapeHtml(s.title || s.dayKey)}${s.sessionId ? ` · ${escapeHtml(s.sessionId)}` : ''}</div>
-            <div class="history-meta">${testCount ? `${testCount} test result${testCount === 1 ? '' : 's'}` : `${totalSets} logged set${totalSets === 1 ? '' : 's'}`} · ${s.sessionMin || '?'} min${s.programWeek ? ` · C${s.cycleId || 1} W${s.programWeek}` : ''}</div>
-            <div class="history-detail hidden" id="hd-${d}">
-              ${renderHistoryDetail(s)}
-            </div>
-          </div>`;
-      }).join('')}
-
-      <div class="history-lifts">
-        <div class="page-subtitle">Competition Quality by Block &amp; %TM</div>
-        ${renderQualityAnalytics()}
-      </div>
-
-      <div class="history-lifts">
-        <div class="page-subtitle">Weight History by Exercise</div>
-        ${renderExerciseHistory()}
-      </div>
-    </div>`;
-}
-
-function toggleHistoryDetail(d) {
-  const el = $(`hd-${d}`);
-  if (el) el.classList.toggle('hidden');
-}
-
-function renderHistoryDetail(session) {
-  const tests = Object.entries(session.testResults || {}).map(([lift, result]) => `
-    <div class="hd-ex"><div class="hd-ex-name">${escapeHtml(PROGRAM.liftNames[lift] || lift)}</div>
-      <div class="logged-set"><span class="set-weight">${fmtWeight(result.rawWeight)}</span>
-        ${result.rpe ? `<span class="set-rir">Double @ RPE ${result.rpe}</span>` : '<span class="set-rir">Made 1RM</span>'}
-        <span class="set-depth">TM ${fmtWeight(result.estimated1rm)}</span>
-      </div>
-    </div>`).join('');
-  const setsHtml = Object.entries(session.setsLogged || {}).map(([key, sets]) => {
-    const exId = sets[0]?.exId || key.split('_').slice(1).join('_');
-    const exDef = PROGRAM.exercises[exId];
-    if (!exDef) return '';
-    return `<div class="hd-ex">
-      <div class="hd-ex-name">${exDef.name}</div>
-      ${sets.map((s,i) => renderLoggedSet(s, i)).join('')}
-    </div>`;
-  }).join('');
-  return tests + setsHtml;
-}
-
-function renderExerciseHistory() {
-  // Find exercises that have been logged
-  const exWeights = {}; // exId → [{date, weight, reps}]
-  Object.entries(STATE.log).forEach(([date, session]) => {
-    if (!session.setsLogged) return;
-    Object.entries(session.setsLogged).forEach(([key, sets]) => {
-      const exId = sets[0]?.exId || key.split('_').slice(1).join('_');
-      const successful = sets.filter(s => s.outcome !== 'miss' && !s.technicalMiss);
-      const heaviest = successful.reduce((best, s) => (!best || (s.weight || 0) > (best.weight || 0)) ? s : best, null);
-      if (!heaviest) return;
-      if (!exWeights[exId]) exWeights[exId] = [];
-      if (heaviest) exWeights[exId].push({ date: session.date || date, weight: heaviest.weight, reps: heaviest.reps });
-    });
-  });
-
-  const tracked = Object.entries(exWeights).filter(([,v]) => v.length > 0);
-  if (tracked.length === 0) return '<div class="empty-state">Log some workouts to see progress.</div>';
-
-  return tracked.map(([exId, history]) => {
-    const exDef = PROGRAM.exercises[exId];
-    if (!exDef) return '';
-    const sorted = history.slice().sort((a,b) => a.date.localeCompare(b.date));
-    const maxW = Math.max(...sorted.map(h => h.weight || 0));
-    return `<div class="ex-history-card">
-      <div class="ex-history-name">${exDef.name}</div>
-      <div class="mini-chart">
-        ${sorted.map(h => {
-          const pct = maxW > 0 ? (h.weight || 0) / maxW * 100 : 0;
-          return `<div class="mini-bar-wrap" title="${h.date}: ${fmtWeight(h.weight)} × ${h.reps}">
-            <div class="mini-bar" style="height:${Math.max(pct,8)}%"></div>
-            <div class="mini-label">${h.date.slice(5)}</div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="ex-history-best">Best successful load: ${fmtWeight(maxW)}</div>
-    </div>`;
-  }).join('');
-}
-
-// ─── Render: Guide ────────────────────────────────────────────────────────────
-function renderGuide() {
-  const app = $('app');
-  const sec = (title, body) => `<details class="guide-sec"><summary class="guide-sum">${title}</summary><div class="guide-body">${body}</div></details>`;
-  app.innerHTML = `
-    <div class="page guide-page">
-      <div class="page-title">Program Guide</div>
-      <div class="guide-intro"><b>Priority order:</b> Olympic weightlifting → hypertrophy → athleticism → longevity. The schedule tab is the executable prescription; this guide contains the rules that change how it is performed.</div>
-
-      ${sec('Cycle architecture', `
-        <ul class="guide-ul">
-          <li><b>Weeks 1–3:</b> accumulation. Full accessory prescription from day one at a flat ~1–2 RIR — no ramp, no effort wave.</li>
-          <li><b>Week 4:</b> deload; roughly half sets, 60–70% barbell work, half field volume at full intent, easy cycling.</li>
-          <li><b>Weeks 5–7:</b> intensification; accessories restart at ~85%, then full.</li>
-          <li><b>Week 8:</b> deload.</li>
-          <li><b>Weeks 9–11:</b> realization; week 11 reaches 90%, with one optional 92.5% single only after pristine required singles.</li>
-          <li><b>Week 12:</b> taper; no accessories, field work, or intervals.</li>
-          <li><b>Week 13:</b> seven tests across four days. Apply all seven together to start the next cycle.</li>
-        </ul>`) }
-
-      ${sec('Execution & miss policy', `
-        <ul class="guide-ul">
-          <li>The written percentage is a ceiling. Drop 5–10% whenever technique misses the required standard.</li>
-          <li>Competition snatch/C&amp;J may be caught high and still count. Receiving drills must be caught below parallel, paused when prescribed, and stood completely.</li>
-          <li>Grade every competition attempt immediately: <b>A</b> solid; <b>B</b> made with a chase/drift; <b>C</b> miss or technically poor make.</li>
-          <li>After one miss, rest fully and repeat once, or reduce 2.5–5% if fatigue clearly caused it. Two misses or two consecutive C-grade makes end that exercise. Never make up missed reps.</li>
-          <li>Heavy singles normally remain RPE 7–8.5. No squat, RDL, row, pull-up, bench, or Nordic grinding.</li>
-        </ul>`) }
-
-      ${sec('Training maxes & receiving gates', `
-        <p>TMs stay locked through week 12. The only exception is +5 lb once per lift per cycle after three consecutive eligible ≥85% top-single exposures where every prescribed attempt is made, A-grade, and RPE ≤7.</p>
-        <p>Wednesday high-hang clean advances 5 lb only after all eight catches are low and stood; Friday received clean requires all three. High catches lower only the next attempt by 10 lb and never lower the stored baseline. After three complete failed exposures, the documented all-but-one gate becomes available.</p>
-        <p>Read A-rate and miss rate at the same %TM across a whole block, not week to week. The History tab groups those measures correctly and keeps C-grade makes separate from misses.</p>`) }
-
-      ${sec('Hypertrophy progression', `
-        <p>Use controlled full ROM, about a two-second eccentric, and maximal safe concentric intent. Double progression requires every work set to reach the top of its range while meeting the assigned RIR; then add the smallest increment.</p>
-        <p>The LAST set of any stable isolation movement may go to failure in any week — earlier sets hold ~1–2 RIR (compounds the 2 side, isolation the 1 side) so double progression stays readable. Saturday is where failure is cheapest (all isolation, rest day next). Never take competition lifts, squats, RDLs, Nordics, bench, rows, or pull-ups to failure. If a priority muscle stalls for three weeks with good adherence and recovery, add two weekly sets. If Olympic quality or joint comfort declines, remove 2–4 accessory sets first.</p>`) }
-
-      ${sec('Warm-ups & rest', `
-        <p><b>Lifting:</b> raise 3–5 min, do only needed positional work, then two day-specific empty-bar rounds. Barbell ramp: 40%×3 · 50%×3 · 60%×2 · 70%×1 as needed · one feeder single between 75% and the working load on heavy days. Ramp sets never count as work sets.</p>
-        <p><b>Other work:</b> first press 50%×5 and 75%×3; later incline exposures one 60%×5; rows/pull-ups one 60%×6; first isolation for a muscle one 12–15-rep half-load set; Nordic, Copenhagen, and RDL one light set.</p>
-        <p><b>Field:</b> complete the listed ten-minute movement and acceleration warm-up before maximal work. Rest 2–5 min according to performance quality.</p>
-        <p>Rest 3–5 min for heavy singles and major strength work, 2–4 min for doubles/complexes, 2–3 min for compound accessories, and 75–120 s for isolation.</p>`) }
-
-      ${sec('Readiness & pickup', `
-        <p><b>Green:</b> ≥7 h sleep, morning HR within about 5 bpm of baseline, no illness or unusual pain, and a normal warm-up — full prescription.</p>
-        <p><b>Yellow:</b> any one of 5–7 h sleep, HR 6–10 bpm above baseline, unusual soreness, intense sport in the last 24 h, or clear warm-up underperformance — main loads ×0.95, work sets/rounds −20–30%, optional tops omitted.</p>
-        <p><b>Red:</b> &lt;5 h sleep, HR &gt;10 bpm above baseline with poor symptoms, illness, dizziness, altered coordination, or pain that changes movement — rest, or optional technique ≤60% only with normal coordination.</p>
-        <p>Record pickup day and same-day timing in Settings. The app applies the full matrix: Monday/Tuesday replaces Tuesday field; Wednesday/Thursday replaces Thursday field; Wednesday/Friday/Saturday replaces intervals; same-day pickup after lifting removes lower isolation, while pickup before lifting removes heavy lower work and caps Olympic technique at 70%.</p>
-        <p>Never make up omitted field work and never place sprints or jumps within 24 hours of a game.</p>`) }
-
-      ${sec('Field, conditioning & placement', `
-        <p>Tuesday field work progresses foundation → reactive → mixed across the three loading blocks. Thursday progresses accelerations/sled → flying 20s → 30 m maximum-velocity work. Keep field and lifting separated by at least six hours; if impossible, lift first and halve field volume.</p>
-        <p>Wednesday Zone 2 is 30–40 min easy cycling, separated at least six hours. Saturday intervals include a 12-minute progressive warm-up and 8-minute spin-down; work is 4×3 min in weeks 1–3 and 4×4 min in weeks 5–11, but remains 4×3 on a cut.</p>`) }
-
-      ${sec('When to rebuild the program', `
-        <p>Keep the principal exercise pool for the full 13-week cycle. Review correctives every four weeks, changing one only if it has produced no change. Rebuild after week 13 from the seven test results, or earlier only for a real constraint change, injury, persistent readiness/quality decline, or a clearly documented programming failure.</p>`) }
-    </div>`;
-}
-
-function renderSettings() {
-  const app = $('app');
-  const { blockId, weekInBlock } = STATE.program;
-  const block = PROGRAM.blocks.find(b => b.id === blockId);
-  const cStep = PROGRAM.copenhagenSteps[STATE.copenhagen.step] || PROGRAM.copenhagenSteps[1];
-  const readiness = effectiveReadiness();
-  const pickupDays = activePickupDays();
-  const pickupTiming = activePickupTiming();
-  app.innerHTML = `
-    <div class="page settings-page">
-      <div class="page-title">Settings</div>
-
-      <div class="settings-section">
-        <div class="settings-label">Training Phase</div>
-        <div class="phase-toggle">
-          <button class="phase-btn ${!STATE.cutting ? 'phase-btn-active' : ''}" onclick="setCutting(false)"><div class="phase-btn-title">Gain</div><div class="phase-btn-sub">Full prescribed volume</div></button>
-          <button class="phase-btn ${STATE.cutting ? 'phase-btn-active phase-btn-cut' : ''}" onclick="setCutting(true)"><div class="phase-btn-title">Cut</div><div class="phase-btn-sub">C-column volume</div></button>
-        </div>
-        <div class="settings-note">${STATE.cutting ? 'C-column accessory/squat sets, 87.5% top-intensity cap, and 4×3-minute intervals. Competition-lift frequency, field work, and hamstring volume stay intact.' : 'Gain phase: full G-column sets and the complete intensity ladder.'}</div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-label">Readiness Today</div>
-        <div class="readiness-toggle">
-          ${['green','yellow','red'].map(r => `<button class="readiness-btn readiness-${r} ${readiness === r ? 'active' : ''}" onclick="setReadiness('${r}')">${r.toUpperCase()}</button>`).join('')}
-        </div>
-        <div class="settings-note">${readiness === 'green'
-          ? 'Green: ≥7 h sleep, morning HR within ~5 bpm of baseline, no illness or unusual pain, and a normal warm-up — full prescription.'
-          : readiness === 'yellow'
-            ? 'Yellow if ANY ONE applies: 5–7 h sleep, HR 6–10 bpm high, unusual soreness, intense sport within 24 h, or clear warm-up underperformance. Loads −5%, work sets/rounds −20–30%, optional tops omitted.'
-            : 'Red if <5 h sleep, HR >10 bpm high with poor symptoms, illness, dizziness, altered coordination, or pain changes movement. No heavy lifting, squats, field work, conditioning, or tests; optional technique ≤60% only with normal coordination.'} This selection resets to Green on the next calendar day.</div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-label">Pickup This Program Week</div>
-        <div class="pickup-days">${PROGRAM.dayKeys.map((d, i) => `<button class="pickup-day ${pickupDays.includes(d) ? 'active' : ''}" onclick="togglePickup('${d}')">${PROGRAM.dayNames[i].slice(0,3)}</button>`).join('')}</div>
-        ${pickupDays.map(d => `<div class="pickup-timing"><label>${PROGRAM.dayNames[PROGRAM.dayKeys.indexOf(d)]}</label><select class="form-input" onchange="setPickupTiming('${d}', this.value)">
-          <option value="" ${!pickupTiming[d] ? 'selected' : ''}>No same-day lifting / unknown</option>
-          <option value="after" ${pickupTiming[d] === 'after' ? 'selected' : ''}>Pickup after lifting</option>
-          <option value="before" ${pickupTiming[d] === 'before' ? 'selected' : ''}>Pickup before lifting</option>
-        </select></div>`).join('')}
-        <div class="settings-note">The schedule updates immediately from the seven-day contingency matrix. Two pickup sessions remove intervals and at least one field exposure. Entries reset when the program week changes.</div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-label">Copenhagen Progression</div>
-        <div class="copenhagen-status"><b>Step ${STATE.copenhagen.step}</b> · ${cStep.label} · ${cStep.duration}</div>
-        <div class="step-actions"><button class="btn-outline" onclick="setCopenhagenStep(${STATE.copenhagen.step - 1})" ${STATE.copenhagen.step <= 1 ? 'disabled' : ''}>← Previous</button><button class="btn-outline" onclick="setCopenhagenStep(${STATE.copenhagen.step + 1})" ${STATE.copenhagen.step >= 5 ? 'disabled' : ''}>Next →</button></div>
-        ${STATE.copenhagen.step === 5 ? `<label class="form-label">Dumbbell on top hip (lb)</label><input class="form-input" type="number" step="2.5" min="0" value="${STATE.copenhagen.load || 0}" onchange="updateCopenhagenLoad(this.value)">` : ''}
-        <div class="settings-note">The app auto-advances steps 1–4 after both work sets clear the target on both sides. Manual controls let you correct the state.</div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-label">Training Maxes (lb)</div>
-        <div class="maxes-grid">${Object.entries(PROGRAM.liftNames).map(([k, name]) => `<div class="max-row"><label class="max-label">${name}</label><input type="number" id="max-${k}" class="max-input" value="${STATE.maxes[k] || ''}" inputmode="decimal" step="2.5" onchange="updateMax('${k}', this.value)"><span class="max-unit">lb</span></div>`).join('')}</div>
-        <div class="settings-note">All seven are required. They remain locked through week 12 apart from the bounded A-grade exception; week 13 stages and applies the next set together.</div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-label">Program Position</div>
-        <div class="program-pos"><label class="form-label">Block</label><select id="sel-block" class="form-input" onchange="updateBlock(this.value)">${PROGRAM.blocks.map(b => `<option value="${b.id}" ${b.id === blockId ? 'selected' : ''}>${b.name}</option>`).join('')}</select><label class="form-label">Week within block (1–${block?.weeks || 1})</label><input type="number" id="inp-week" class="form-input" min="1" max="${block?.weeks || 1}" value="${weekInBlock + 1}" onchange="updateWeek(this.value)"></div>
-        <div class="settings-note">Cycle ${STATE.cycleId} · Program week ${block ? block.startWeek + weekInBlock : '?'}. Manual navigation does not create a new cycle; applying all seven week-13 tests does.</div>
-      </div>
-
-      ${typeof syncSettingsHTML === 'function' ? syncSettingsHTML() : ''}
-      <div class="settings-section"><div class="settings-label">Data</div><button class="btn-outline btn-full" onclick="exportData()">Export Backup (JSON)</button><button class="btn-outline btn-full" style="margin-top:8px" onclick="$('import-input').click()">Import Backup</button><input type="file" id="import-input" accept=".json" class="hidden" onchange="importData(this)"><button class="btn-danger-outline btn-full" style="margin-top:8px" onclick="clearAllData()">Clear All Data</button></div>
-    </div>`;
-}
-
-function updateMax(lift, val) {
-  // Guard the free-text input: the whole program prescribes off these numbers,
-  // so a blank, a typo ('16o' parses as 16), or a negative must never land.
-  const n = Number(String(val).trim());
-  if (!Number.isFinite(n) || n <= 0 || n > 1000) {
-    if (typeof document !== 'undefined') {
-      toast(`${PROGRAM.liftNames[lift] || lift} unchanged — enter a positive weight.`);
-      renderSettings(); // snap the field back to the stored value
-    }
-    return;
-  }
-  STATE.maxes[lift] = Math.round(n / 2.5) * 2.5;
-  save();
-  if (typeof document !== 'undefined') renderSettings();
-}
-
-function updateBlock(val) {
-  const id = parseInt(val, 10);
-  if (!PROGRAM.blocks.some(b => b.id === id)) return;
-  STATE.program.blockId = id;
-  STATE.program.weekInBlock = 0;
-  resetPickupContext();
-  save();
-  renderSettings();
-}
-
-function setCutting(on) {
-  STATE.cutting = !!on;
-  save();
-  renderSettings();
-}
-
-function setReadiness(level) {
-  if (!['green', 'yellow', 'red'].includes(level)) return;
-  STATE.readiness = level;
-  STATE.readinessDate = today();
-  save();
-  renderSettings();
-}
-
-function togglePickup(dayKey) {
-  if (!PROGRAM.dayKeys.includes(dayKey)) return;
-  if (STATE.pickupWeekKey !== currentPickupWeekKey()) resetPickupContext();
-  if (STATE.pickupDays.includes(dayKey)) {
-    STATE.pickupDays = STATE.pickupDays.filter(d => d !== dayKey);
-    delete STATE.pickupTiming[dayKey];
-  } else {
-    STATE.pickupDays.push(dayKey);
-    STATE.pickupDays.sort((a, b) => PROGRAM.dayKeys.indexOf(a) - PROGRAM.dayKeys.indexOf(b));
-  }
-  save();
-  renderSettings();
-}
-
-function setPickupTiming(dayKey, timing) {
-  if (STATE.pickupWeekKey !== currentPickupWeekKey()) resetPickupContext();
-  if (!STATE.pickupDays.includes(dayKey)) return;
-  if (['before', 'after'].includes(timing)) STATE.pickupTiming[dayKey] = timing;
-  else delete STATE.pickupTiming[dayKey];
-  save();
-  renderSettings();
-}
-
-function setCopenhagenStep(step) {
-  STATE.copenhagen.step = Math.min(5, Math.max(1, Number(step) || 1));
-  STATE.copenhagen.lastExposureKey = null;
-  save();
-  renderSettings();
-}
-
-function updateCopenhagenLoad(value) {
-  STATE.copenhagen.load = Math.max(0, Number(value) || 0);
-  save();
-  renderSettings();
-}
-
-function updateWeek(val) {
-  const block = PROGRAM.blocks.find(b => b.id === STATE.program.blockId);
-  const max = block?.weeks || 4;
-  const wk = parseInt(val, 10);
-  if (!Number.isFinite(wk)) return;
-  STATE.program.weekInBlock = Math.min(Math.max(wk - 1, 0), max - 1);
-  resetPickupContext();
-  save();
-  renderSettings();
-}
-
-function resetPickupContext() {
-  STATE.pickupDays = [];
-  STATE.pickupTiming = {};
-  STATE.pickupWeekKey = currentPickupWeekKey();
-}
-
-function exportData() {
-  const data = JSON.stringify({
-    schemaVersion: STATE.schemaVersion,
-    cycleId: STATE.cycleId,
-    maxes: STATE.maxes,
-    receiving: STATE.receiving,
-    receivingMeta: STATE.receivingMeta,
-    technicalProgress: STATE.technicalProgress,
-    program: STATE.program,
-    cutting: STATE.cutting,
-    readiness: STATE.readiness,
-    readinessDate: STATE.readinessDate,
-    pickupDays: STATE.pickupDays,
-    pickupTiming: STATE.pickupTiming,
-    pickupWeekKey: STATE.pickupWeekKey,
-    tmWatch: STATE.tmWatch,
-    testResults: STATE.testResults,
-    copenhagen: STATE.copenhagen,
-    log: STATE.log,
-    hypertrophyWeights: STATE.hypertrophyWeights,
-  }, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `oly-tracker-backup-${today()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function importData(input) {
-  if (STATE.activeWorkout) {
-    alert('Finish or end the active session before importing a backup.');
-    input.value = '';
-    return;
-  }
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (!data || typeof data !== 'object' || !data.maxes) throw new Error('Invalid backup');
-      applyDurableData(data);
-      save();
-      alert('Backup imported successfully!');
-      render();
-    } catch (err) {
-      alert('Invalid backup file.');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function clearAllData() {
-  if (!confirm('Delete ALL workout data? This cannot be undone.')) return;
-  clearInterval(STATE.restTimer.interval);
-  clearInterval(STATE.sessionTimer.interval);
-  clearInterval(STATE.intervalTimer.interval);
-  localStorage.removeItem('oly_state');
-  Object.assign(STATE, {
-    schemaVersion: 3,
-    maxes: {snatch:155,cj:205,jerk:205,clean:255,bs:365,fs:275,bench:265},
-    program: {blockId:1,weekInBlock:0}, cycleId: 1,
-    receiving:{hh_clean:165,recv_clean:190},
-    receivingMeta:{hh_clean:{stalls:0},recv_clean:{stalls:0}},
-    technicalProgress:{hhSnatchPct:65,lastExposureKey:null},
-    cutting: false, readiness: 'green', readinessDate: today(),
-    pickupDays: [], pickupTiming: {}, pickupWeekKey: '1:1',
-    tmWatch: {}, testResults: {}, copenhagen:{step:1,load:0,lastExposureKey:null},
-    log: {}, hypertrophyWeights: {}, activeWorkout: null,
-    restTimer:{active:false,end:0,prescribed:0,interval:null},
-    sessionTimer:{active:false,start:0,interval:null},
-    intervalTimer:{active:false,config:null,phases:[],phaseIdx:0,phaseEnd:0,paused:false,pauseRemaining:0,interval:null,lastCue:-1,startedAt:0},
-    wakeLock:null,
-  });
-  save();
-  nav('home');
-}
-
-// ─── Render: Preview (read-only look at any day, no session started) ─────────
-function openPreview(dayKey) {
-  STATE.previewDay = dayKey; // transient — never persisted
-  nav('preview');
-}
-
-function previewExerciseRow(ex) {
-  const def = PROGRAM.exercises[ex.id] || {};
-  const w = prescribedWeight(ex);
-  const reps = ex.reps != null ? ex.reps
-    : ex.repRange ? `${ex.repRange[0]}–${ex.repRange[1]}`
-      : ex.duration || '';
-  const dose = ex.sets ? `${ex.sets} × ${reps}` : (ex.duration || '—');
-  const load = w != null ? fmtWeight(w) + (ex.pct != null ? ` (${ex.pct}%)` : ex.recvKey ? ' · catch-quality' : '')
-    : ex.pct != null ? `${ex.pct}%` : '';
-  const ramp = (ex.buildup || []).map(st => st.pct != null
-    ? `${st.pct}%×${st.reps}`
-    : `${st.relativeToWork}%×${st.reps}`).join(' · ');
-  return `
-    <div class="pv-ex ${ex.optional ? 'ex-optional' : ''}">
-      <div class="pv-ex-main">
-        <span class="pv-ex-name">${escapeHtml(def.name || ex.id)}${ex.optional ? ' <span class="badge badge-optional">OPTIONAL</span>' : ''}</span>
-        <span class="pv-ex-dose">${dose}${load ? ` · ${load}` : ''}${ex.rest ? ` · rest ${fmtTime(ex.rest)}` : ''}${ex.rirNote ? ` · ${ex.rirNote}` : ''}</span>
-      </div>
-      ${ramp ? `<div class="pv-ex-ramp">Ramp: ${ramp}</div>` : ''}
-      ${ex.note || ex.contextNote || ex.readinessNote ? `<div class="pv-ex-note">${escapeHtml(ex.note || ex.contextNote || ex.readinessNote)}</div>` : ''}
-    </div>`;
-}
-
-function renderPreview() {
-  const app = $('app');
-  const dayKey = STATE.previewDay;
-  if (!dayKey) { nav('home'); return; }
-  const plan = dayPlanFor(dayKey);
-  const dayName = PROGRAM.dayNames[PROGRAM.dayKeys.indexOf(dayKey)];
-  const isToday = dayKey === todayDayKey();
-
-  let body;
-  if (!plan || plan.isRest) {
-    body = `<div class="rest-day"><div class="rest-emoji">😴</div>
-      <div class="ex-notes">${escapeHtml(plan?.note || 'Complete rest. Nothing structured.')}</div></div>`;
-  } else if (plan.isTesting) {
-    const t = plan.sessions[0];
-    body = `<div class="preview-session">
-      <div class="pv-session-head"><b>${escapeHtml(t.title)}</b><span>~${t.totalMin} min</span></div>
-      ${t.note ? `<div class="ex-notes">${escapeHtml(t.note)}</div>` : ''}
-      ${(t.lifts || []).map(l => `<div class="pv-ex"><div class="pv-ex-main">
-        <span class="pv-ex-name">${escapeHtml(l.label)}</span>
-        <span class="pv-ex-dose">${l.testReps === 2 ? 'heavy double' : '1RM'}${l.requiresRpe ? ' · RPE required' : ''}</span>
-      </div></div>`).join('')}
-      <button class="btn-primary btn-full" onclick="startWorkout('${dayKey}', 'test')">Start Test Session</button>
-    </div>`;
-  } else {
-    body = plan.sessions.map(sess => {
-      const done = sessionCompleted(dayKey, sess.id, plan.programWeek);
-      const label = sess.kind === 'field' ? 'AM Field' : sess.kind === 'cardio' ? 'Zone 2' : 'Lift';
-      return `<div class="preview-session ${sess.skipped ? 'ex-optional' : ''}">
-        <div class="pv-session-head">
-          <b>${done ? '✓ ' : ''}${label} — ${escapeHtml(sess.title || '')}</b>
-          <span>~${sess.totalMin || '?'} min</span>
-        </div>
-        ${sess.skipped ? `<div class="ex-notes ex-notes-warn">Omitted: ${escapeHtml(sess.skipReason || '')}</div>` : ''}
-        ${(sess.sections || []).map(sec => `
-          <div class="pv-section">
-            <div class="pv-section-title">${escapeHtml(sec.title)}</div>
-            ${sec.note ? `<div class="pv-section-note">${escapeHtml(sec.note)}</div>` : ''}
-            ${sec.exercises.map(previewExerciseRow).join('')}
-          </div>`).join('')}
-        ${!sess.skipped ? `<button class="btn-primary btn-full" onclick="startWorkout('${dayKey}', '${sess.id}')">${done ? 'Repeat' : 'Start'} ${label} Session</button>` : ''}
-      </div>`;
-    }).join('');
-  }
-
-  app.innerHTML = `
-    <div class="page preview-page">
-      <div class="workout-header" style="position:static">
-        <button class="btn-ghost" onclick="nav('home')">‹ Back</button>
-        <div class="page-title" style="margin:0">${dayName}${isToday ? ' · Today' : ''} — Preview</div>
-        <span></span>
-      </div>
-      ${plan?.contextNotes?.length ? `<div class="alert alert-warn">${plan.contextNotes.map(escapeHtml).join('<br>')}</div>` : ''}
-      <div class="today-meta" style="margin-bottom:12px">${escapeHtml(plan?.title || '')} · Week ${plan?.programWeek ?? '—'} · nothing starts until you tap Start</div>
-      ${body}
-    </div>`;
-}
-
-// ─── Main render ──────────────────────────────────────────────────────────────
-function render() {
-  switch (STATE.view) {
-    case 'home':    renderHome(); break;
-    case 'preview': renderPreview(); break;
-    case 'workout': renderWorkout(); break;
-    case 'history': renderHistory(); break;
-    case 'guide':   renderGuide(); break;
-    case 'settings': renderSettings(); break;
-  }
-}
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => {
-  load();
-  publishDayDurations(); // keep the shared duration snapshot fresh on every open
-  // A session was restored from storage — land back in it, not on home.
-  if (STATE.activeWorkout) STATE.view = 'workout';
   render();
-
-  // Re-arm the timers for a restored session (after render so the overlay/DOM
-  // nodes they update exist).
-  if (STATE.activeWorkout) restoreRuntimeTimers();
-
-  // Bottom nav
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => nav(btn.dataset.view));
-  });
-
-  // Service worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
-
-  // Re-acquire wake lock after visibility change
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && STATE.activeWorkout && !STATE.wakeLock) {
-      acquireWakeLock();
-    }
-    // Check if rest timer elapsed while backgrounded
-    if (document.visibilityState === 'visible' && STATE.restTimer.active) {
-      const rem = STATE.restTimer.end - Date.now();
-      if (rem <= 0) restTimerDone();
-    }
-    // Re-sync the interval timer if phases elapsed while backgrounded
-    if (document.visibilityState === 'visible' && STATE.intervalTimer.active) {
-      catchUpIntervalTimer();
-    }
-    // iOS suspends the AudioContext on background/lock — resume so alarms sound
-    // ('interrupted' is iOS's non-standard post-lock state, hence !== 'running')
-    if (document.visibilityState === 'visible' && audioCtx && audioCtx.state !== 'running') {
-      audioCtx.resume().catch(() => {});
-    }
-    // Re-arm the keep-alive loop if a timer is still running (iOS may have
-    // paused the element while backgrounded).
-    if (document.visibilityState === 'visible'
-        && (STATE.restTimer.active || STATE.intervalTimer.active)) {
-      startAudioKeepAlive();
-    }
-  });
-});
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    STATE,
-    save,
-    load,
-    applyDurableData,
-    programContext,
-    effectiveReadiness,
-    activePickupDays,
-    prescribedWeight,
-    recordHypertrophySet,
-    finalizeHypertrophyProgression,
-    exerciseStopReason,
-    qualityAttemptsPerSet,
-    qualityAttemptEndsSet,
-    completedQualitySets,
-    nextQualityAttempt,
-    settleTmException,
-    settleReceiving,
-    settleHighHangSnatch,
-    settleCopenhagen,
-    updateMax,
-    testResultsReady,
-    hasMatchingTestAttempt,
-    aRate,
-    qualityAnalytics,
-  };
 }
+function removeEstablished(index) {
+  const t = STATE.training,
+    removed = t.established.splice(index, 1)[0];
+  t.review.push({ kind: 'removed-addition', at: Date.now(), trial: removed });
+  save();
+  render();
+}
+function saveHeavy() {
+  const t = STATE.training,
+    h = {
+      snatch: Number($('heavy-snatch').value),
+      cj: Number($('heavy-cj').value),
+      extraSnatch: Number($('extra-snatch').value),
+      extraCj: Number($('extra-cj').value),
+    },
+    assessment = $('assessment').value;
+  const cap = t.phaseGate === 'F' ? 90 : t.phaseGate === 'B' ? 92 : 95;
+  const error = (msg) => {
+    $('heavy-error').textContent = msg;
+  };
+  if ([h.snatch, h.cj].some((n) => n !== 0 && (n < 85 || n > cap)))
+    return error(`Earned final D must be 85–${cap}% or 0 for the base prescription.`);
+  if ([h.extraSnatch, h.extraCj].some((n) => !Number.isInteger(n) || n < 0 || n > 12))
+    return error('Enter a whole replacement count from 0–12.');
+  const increases = Object.keys(h).some((k) => h[k] > t.heavy[k]);
+  if (increases && ([4, 8, 11, 12, 13].includes(t.week) || t.recovery !== 'normal'))
+    return error('No added heavy exposure in checkpoints, week 11/12, pivot or reduced weeks.');
+  // Final-D load can progress within Realization, but new weekly dose cannot.
+  if (h.extraSnatch > t.heavy.extraSnatch + 1 || h.extraCj > t.heavy.extraCj + 1)
+    return error(
+      'Add only one weekly replacement for one lift after two green weeks at the current dose.',
+    );
+  if ((h.extraSnatch || h.extraCj) && t.phaseGate === 'F')
+    return error('Additional >90% practice requires Build/Realization eligibility.');
+  const snatchChanged = h.snatch !== t.heavy.snatch || h.extraSnatch !== t.heavy.extraSnatch,
+    cjChanged = h.cj !== t.heavy.cj || h.extraCj !== t.heavy.extraCj;
+  if (increases && snatchChanged && cjChanged)
+    return error('Progress one lift at a time while other workload changes are held.');
+  if ((h.extraSnatch && !h.snatch) || (h.extraCj && !h.cj))
+    return error('Earn the final D exposure before adding other heavy slots.');
+  if (increases && !$('heavy-ready').checked)
+    return error('Review eligibility and subsequent recovery before increasing heavy practice.');
+  if (assessment === 'jerk' && t.reduceCJerk)
+    return error(
+      'Resolve the C-to-D recovery issue before replacing reduced jerk work with an assessment.',
+    );
+  if (assessment !== 'none' && (!['F', 'B'].includes(info().phase) || !$('heavy-ready').checked))
+    return error(
+      'Component assessments require two secure weeks in F/B, including a green checkpoint.',
+    );
+  t.heavy = h;
+  t.assessment = assessment;
+  t.review.push({
+    kind: 'heavy',
+    at: Date.now(),
+    week: t.week,
+    cycle: t.cycle,
+    heavy: h,
+    assessment,
+  });
+  save();
+  render();
+  toast('Replacements saved.');
+}
+function saveMobility() {
+  const names = [
+    'Bent-knee ankle wall stretch',
+    'Bench lat stretch · ribs controlled',
+    'Front-rack wrist stretch',
+    'Hip 90/90',
+  ].filter((_, i) => $('mobility-' + i).checked);
+  if (names.length > 2) {
+    toast('Choose at most two actual restrictions.');
+    return;
+  }
+  STATE.training.mobility = names;
+  STATE.training.mobilitySeconds = Number($('mobility-seconds').value);
+  STATE.training.mobilityDays = Number($('mobility-days').value);
+  save();
+  render();
+}
+function setPosition() {
+  const t = STATE.training,
+    week = Number($('position-week').value),
+    cycle = Number($('position-cycle').value);
+  if (!Number.isInteger(week) || week < 1 || week > 13 || !Number.isInteger(cycle) || cycle < 1) {
+    toast('Use a valid cycle and week 1–13.');
+    return;
+  }
+  Object.assign(t, {
+    week,
+    cycle,
+    phaseGate: $('position-phase').value,
+    entryStage: Number($('entry-stage').value),
+    onboarding: $('onboarding').checked,
+    exposure: t.exposure + 1,
+    assessment: 'none',
+  });
+  save();
+  render();
+  toast('Program position set.');
+}
+function download(data, name) {
+  const url = URL.createObjectURL(
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    ),
+    a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportData() {
+  download(durable(), 'oly-tracker-revision6-' + dateISO() + '.json');
+}
+function exportLegacy() {
+  download(STATE.legacy, 'oly-tracker-before-revision6.json');
+}
+async function importData(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const data = MODEL.migrate(JSON.parse(await file.text()));
+    if (
+      !confirm(
+        'Replace current app state with this backup? Export current data first if you need both versions.',
+      )
+    )
+      return;
+    STATE = {
+      ...data,
+      view: data.activeWorkout ? 'workout' : 'home',
+      selectedDay: STATE.selectedDay,
+    };
+    save();
+    render();
+  } catch (e) {
+    toast('Import rejected: ' + e.message);
+  }
+  input.value = '';
+}
+const GUIDE = [
+  [
+    'The weekly prescription',
+    'A Monday: snatch and CJ. B Tuesday: CJ, hang snatch, front squat, low-rep flat bench, accessories. C Thursday: snatch, rack jerk, provisional explosive snatch pulls. D Friday: snatch, CJ, high-bar squat, moderate flat bench, accessories. Split B/D after lateral raises if useful: 9 base failure sets in visit 1, 13 in visit 2 at least 3 h later. One visit is acceptable with full rest and normal execution.',
+  ],
+  [
+    'Failure means the conventional work sets',
+    'All squat, bench and hypertrophy work sets: strict-form failure / 0 RIR, about 2 s eccentric. Free weights stop at the last valid rep; use safeties/spotter. Stable machines/cables may include a controlled unsuccessful final attempt. No forced reps, drop sets, cheating or unplanned partials. Log TECH and pain separately. Olympic lifts, explosive pulls, warm-ups, sprints, jumps and mobility never go to failure.',
+  ],
+  [
+    'Thirteen weeks, repeated four times',
+    'Weeks 1–3 Foundation; week 4 holds week 3 at a green checkpoint. Weeks 5–7 Build; week 8 holds week 7. Weeks 9–11 Realization; Friday 11 has one failure set per conventional exercise. Week 12 tapers and tests Friday; bench Monday 3–5 and Saturday 6–8, after testing. Week 13 pivots: Monday/Thursday SN 4 singles + CJ 3 pairs at 60–70%, effort 6; Tuesday/Friday no Olympic work, squat 4–6, bench and recovered base accessories. Interruptions extend elapsed time; never compress work to a deadline.',
+  ],
+  [
+    'Entry and phase gates',
+    'First cycle: stage 1 uses low-end Olympic loads and ceil(⅔ sets), one set per accessory + squat and bench (14/day). Stage 2: full Olympic work if green; incline 2, lateral 3, row 2, others 1 (18/day). Stage 3: full base (22/day) only after both prior weeks green. Build requires two normal weeks ≥90% good work reps with no recurring receiving limitation. Realization requires secure 80–85% singles. Hold the last successful phase otherwise; week 12 becomes a ≤85% technical benchmark.',
+  ],
+  [
+    'Olympic progression and misses',
+    'Use the smallest increase after a normal week with ≥90% acceptable work reps, stable positions and effort inside the cap. F effort ≤7 except D ≤8; B/R ≤8; pulls ≤7. Two consecutive misses/same technical fault: reduce 5–10%, rest fully; either of the next two attempts poor ends the exercise. Misses count toward the attempt budget; never repay them. Component assessments stop at effort 8 or the first error with no retry.',
+  ],
+  [
+    'Bench continuity',
+    'One failure set on each of two distinct days; low 3–5 and moderate 6–8. Normal Tue/Fri spacing is 72/96 h. Preserve at least 48 actual hours when moving sessions, including across weeks. Tuesday can move to Wednesday only if Friday stays ≥48 h later; otherwise Friday low/Sunday moderate and shift next Tuesday. Friday can move to a ready Saturday. Whole-session deferrals carry their bench; do not duplicate it. Rescuing a bench must never compromise priority lifting.',
+  ],
+  [
+    'Conventional load progression',
+    'Squats/low bench: at the exact upper rep bound, add 2.5–5 lb after two normal successful exposures at that load. Above the bound: correct +2.5–5 lb next eligible exposure, no second overshoot required. Other multi-set exercises: every set at/above the upper bound, same load and standard, add the smallest increment. Every single-set row requires two successful exposures. Below the lower bound: reduce 5–10% next set/exposure after full rest. TECH, pain or subsequent recovery cost do not earn progression. Confirm subsequent recovery in History.',
+  ],
+  [
+    'Weekly recovery review',
+    'If two sessions fall >5% below normal, acceptable reps are <90% twice, or positions deteriorate twice: remove the obvious cause. Otherwise remove aerobic additions, then athletics, then local hypertrophy, protecting Olympic/squat support. Targeted reduction halves Olympic sets (ceil), low range, effort ≤7, omit pulls; one squat/bench if locally ready, incline/laterals ≤2 sets, other accessory rows ≤1. Full reset: half Olympic sets at 50–65%, effort ≤6; no pulls/squats/accessories, bench only if ready. Repeat the last successful week and restore +1 set per row/exposure. Do not replace reductions with lighter high-rep failure work.',
+  ],
+  [
+    'Games, alcohol, and shifted sessions',
+    'Demanding pickup replaces overlapping athletic work (secondary first) and may require deferring the affected whole lifting day. Casual skills can leave training unchanged. Known limited event: train only while sober/ready, without additions. Intoxicated, uncertain sobriety, dizzy, nauseated or poorly coordinated: no training and no barbell test of sobriety. Larger/uncertain exposure: after confirmed recovery use low-end Olympic practice, no PR, at most one failure set per already prescribed row; normal training returns at the next normal exposure. If Saturday test-week alcohol is larger/unfamiliar, move the bench after the event and after the Olympic test, preserving ≥48 h before the next bench.',
+  ],
+  [
+    'Heavy-practice replacements',
+    'Final D: after two secure 80–85% exposures, F can reach 85–88%; later F can retain one secure 85–90% exposure. B/R: after two secure 85–88% exposures, final D 90–92%; after two secure exposures, 93–95% in R. Final D may reach effort 9 in B/R. Additional heavy-dose trials: two green weeks at current dose, one extra >90% attempt per lift per week, replacing final C snatch / final B CJ, then penultimate D, then final A. Added attempts 90–92%, effort ≤8. Further replacements use remaining C/B then A, leaving one light A set. Review at 2/3/4 heavy attempts weekly; reverse additions that worsen priority work. Progress one lift at a time while other workload changes are held. No new heavy-dose additions in checkpoints, week 11/12 or reduced weeks.',
+  ],
+  [
+    'Squat / overhead assistance trials',
+    'After onboarding and two stable F/B weeks, explicitly review whether an extra relevant squat set could help clean stand-up or jerk drive; no plateau required. One extra 3–5 failure set after the base squat, before bench. Plausible fixation strength limitation can justify one Friday supported seated overhead press set 6–10 to failure, replacing an incline set. Paused dip assistance: 2 singles at 60–75% assessed RJ, 1 s pause, effort ≤7, replacing the first two C jerk sets. Without RJ use the distinct light 40–60% CJ regression. One trial at a time: tolerance at 2, direction at 4, benefit at 8 exposures; a promising trial may extend another 4. Stop for pain or interference.',
+  ],
+  [
+    'Trial phase rules',
+    'Checkpoints and weeks 9–10 retain the earned dose/load. Week 11: no pause-dip trial; Tuesday conventional trial retained, Friday one set per prescribed exercise and no extra squat. A Friday press replaces its only incline set. Week 12: none. Week 13: base dose, hold conventional/jerk trials until next Foundation. At the next cycle explicitly review whether to restart a held trial.',
+  ],
+  [
+    'Component references and rack jerk',
+    'After two secure F/B weeks, an eligible B can replace its ordinary CJ row with 3 CJ pairs at 60–70% and up to 3 full-clean singles, starting known-secure (usually CJ or lower); +5–10 lb after a secure rep. Next eligible C can replace rack work with up to 5 singles, capped by normal jerk-rep count. First about 80% CJ or lower; effort ≤6 +10–20 lb, 7 +5–10 lb, 8 stop. First error ends the assessment. These are demonstrated technical references, not inferred 1RMs. Normal rack jerk can add 2.5–5 lb after two wholly secure C exposures and may exceed its starting range/old reference. Watch whether Thursday rack work degrades Friday CJ. Reverse an implicated jerk increase first; if still impaired, trial one fewer C jerk set for two exposures, suspending C assistance. Retain only if Friday improves and ordinary jerk execution stays normal. If Monday doubles repeatedly compromise B, reduce A snatch to 4×2 before adding other work.',
+  ],
+  [
+    'Optional athletic work',
+    'Introduce only after two stable green weeks with no other dose increase, normally week 5 after weeks 3/4. Monday after A, preferably ≥3 h later; Thursday backup. Start 2×3 jumps and 3×10 m at 85–90%. After two good exposures at each step: 3×3 jumps, then 3×15 m, then 90–95%, then +3 jumps; alternate run progress (20 m, then +one run) with +3 jumps. Review 4×3 jumps / 4×20 m; not a ceiling. After four productive primary exposures, a second Thursday can start 2×3 jumps; after two green Thursday exposures add 2×10 m. Watch Friday.',
+  ],
+  [
+    'Later athletic options and returns',
+    'After 4×20 m is tolerated, on alternate exposures replace the last two runs with 2 flying 10s (20 m run-in, 90%, then 95% after two successes, rest 3–4 min) OR two sets of a 45° cut/side (5 m in/out, 75–85% then 85–90%, rest 2 min). Toggle the replacement off on the intervening exposure. Review 24–36 jumps and 6–8 runs without treating those as ceilings. Checkpoint/R9–10 hold. Week 11: Monday only, half jump sets/run reps rounded up. Week 12: none. Pivot: recovered pre-taper dose, no additions. After >14 days away, step back once for two exposures. Games replace overlapping modules, secondary first.',
+  ],
+  [
+    'Aerobics and mobility',
+    'Introduce aerobics separately from other dose increases after two green lifting weeks: Wed/Sat 20 min cycle/walk, RPE 3–4 full-sentence talk test. After two green weeks add 5 minutes to one session to 30+30; then +10 weekly moving minutes at a time to 150, and after a full tolerated cycle at 150, toward 300. Split longer doses into walks after priority work if needed. Checkpoint/R hold; week 12 no formal aerobic work or added walking (easy 10–15 min allowed); pivot restores tolerated dose without adding. Mobility: at most two restrictions, 2×30 s/side, rest 15 s, 3 days/week and 5 active reps. If unchanged after two weeks, 45 s or a fourth day.',
+  ],
+  [
+    'Exercise substitutions and early review',
+    'Cable and DB lateral raises are both menu options. Overhead cable triceps is the default; pressdown is an actual-intolerance fallback. Standing knee-extended calves both days; supported knee-extended calf press if shoulder loading is unsuitable. Leg extension prefers a securely supported reclined hip angle about 40° anatomical flexion; use upright if the machine cannot support it. After two stable F/B weeks, a planned calf trial can replace ONE Friday set with heel-down-to-neutral partials for 10–15 failure reps, fixed range. Provisional snatch pulls: at the first green checkpoint, if no clear target, omit for two C exposures with other changes held; retain omission if no useful performance is lost.',
+  ],
+  [
+    'Dose review and physique priorities',
+    'Base per B/D: incline 3, lateral 4, row 2, pulldown 1, shrug 1, rear delt 1, curl 1, overhead triceps 1, seated leg curl 2, standing calf 2, reclined leg extension 1, crunch 1, plus one squat and one bench. One weekly set addition at a time after two stable normal F/B weeks; observe two weeks. Priority-1 support first, then incline/delts; early trap trial after the first successful cycle can move 2→4 weekly sets one at a time. No glute isolation; retain useful squats. Later first sets losing ≥2 reps repeatedly despite full rest: trial the split for two exposures, then remove the latest addition if impairment persists.',
+  ],
+];
+function renderGuide() {
+  return (
+    header(
+      'EXECUTION GUIDE',
+      'Rules for the work',
+      'Revision 6 · Keep the higher-priority work productive.',
+    ) +
+    GUIDE.map(
+      ([title, text]) =>
+        `<details class="guide-card"><summary>${esc(title)}</summary><p>${esc(text)}</p></details>`,
+    ).join('') +
+    `<details class="guide-card"><summary>Exercise-specific warm-ups</summary>${Object.entries(
+      PROGRAM.ramps,
+    )
+      .map(([k, v]) => `<h3>${esc(k)}</h3><p>${esc(v)}</p>`)
+      .join('')}</details>`
+  );
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const needsSave = load();
+  // Only migrate known legacy data; a corrupt stored record is never overwritten.
+  if (!STATE.storageError) {
+    if (needsSave) save(false);
+    else publishDayDurations();
+  }
+  document
+    .querySelectorAll('[data-view]')
+    .forEach((b) => b.addEventListener('click', () => nav(b.dataset.view)));
+  $('modal').addEventListener('click', (e) => {
+    if (e.target === $('modal')) closeModal();
+  });
+  render();
+  restTick = setInterval(tickTimers, 1000);
+  if ('serviceWorker' in navigator)
+    navigator.serviceWorker
+      .register('./sw.js')
+      .catch(() => toast('Offline cache unavailable; online logging still works.'));
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    tickTimers();
+    if (STATE.activeWorkout) requestWakeLock();
+  }
+});
+window.addEventListener('storage', (e) => {
+  if (e.key === 'oly_state' && !STATE.activeWorkout) {
+    load();
+    render();
+  }
+});

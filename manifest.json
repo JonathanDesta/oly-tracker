@@ -1,13 +1,13 @@
 {
   "name": "Oly Tracker",
   "short_name": "OlyTracker",
-  "description": "Olympic weightlifting program tracker",
+  "description": "Revision 6 weightlifting-first program and failure-work-set logger",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f0f0f",
-  "theme_color": "#0f0f0f",
+  "background_color": "#101510",
+  "theme_color": "#101510",
   "icons": [
     {
       "src": "icon.svg",

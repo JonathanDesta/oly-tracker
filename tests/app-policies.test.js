@@ -1,260 +1,226 @@
 'use strict';
-
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { PROGRAM } = require('../js/program.js');
-global.PROGRAM = PROGRAM;
-const storage = new Map();
-Object.defineProperty(global, 'localStorage', { value: {
-  setItem: (k, v) => storage.set(k, String(v)),
-  getItem: k => storage.get(k) || null,
-  removeItem: k => storage.delete(k),
-}, configurable: true });
-const app = require('../js/app.js');
-const { STATE } = app;
-
-function reset() {
-  storage.clear();
-  STATE.maxes = { snatch:155, cj:205, jerk:205, clean:255, bs:365, fs:275, bench:265 };
-  STATE.program = { blockId:1, weekInBlock:0 };
-  STATE.cycleId = 1;
-  STATE.readiness = 'green';
-  STATE.readinessDate = null;
-  STATE.pickupDays = [];
-  STATE.pickupTiming = {};
-  STATE.pickupWeekKey = null;
-  STATE.receiving = { hh_clean:165, recv_clean:190 };
-  STATE.receivingMeta = { hh_clean:{stalls:0}, recv_clean:{stalls:0} };
-  STATE.technicalProgress = { hhSnatchPct:65, lastExposureKey:null };
-  STATE.copenhagen = { step:1, load:0, lastExposureKey:null };
-  STATE.tmWatch = {};
-  STATE.log = {};
-  STATE.hypertrophyWeights = {};
-  STATE.activeWorkout = null;
+const test = require('node:test'),
+  assert = require('node:assert/strict'),
+  fs = require('node:fs'),
+  vm = require('node:vm');
+const { PROGRAM: P } = require('../js/program'),
+  { MODEL: M } = require('../js/model');
+function app() {
+  const store = new Map(),
+    inputs = {},
+    ctx = vm.createContext({
+      PROGRAM: P,
+      MODEL: M,
+      console,
+      Date,
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+      JSON,
+      URL,
+      Blob,
+      navigator: {},
+      window: { addEventListener() {} },
+      document: {
+        addEventListener() {},
+        getElementById(id) {
+          return (
+            inputs[id] || {
+              hidden: false,
+              textContent: '',
+              innerHTML: '',
+              close() {},
+              showModal() {},
+            }
+          );
+        },
+        querySelectorAll() {
+          return [];
+        },
+      },
+      localStorage: { getItem: (k) => store.get(k) || null, setItem: (k, v) => store.set(k, v) },
+      schedulePush() {},
+    });
+  vm.runInContext(fs.readFileSync(require.resolve('../js/app'), 'utf8'), ctx);
+  return { ctx, store, inputs, run: (code) => vm.runInContext(code, ctx) };
 }
-
-test.beforeEach(reset);
-
-test('updateMax rejects garbage, blanks, and negatives; rounds valid input', () => {
-  const { updateMax } = app;
-  updateMax('snatch', '160');
-  assert.equal(STATE.maxes.snatch, 160);
-  updateMax('snatch', 'abc');      // garbage
-  assert.equal(STATE.maxes.snatch, 160);
-  updateMax('snatch', '');         // blank (stray onchange while editing)
-  assert.equal(STATE.maxes.snatch, 160);
-  updateMax('snatch', '-135');     // negative
-  assert.equal(STATE.maxes.snatch, 160);
-  updateMax('snatch', '162');      // rounds to nearest 2.5
-  assert.equal(STATE.maxes.snatch, 162.5);
-  updateMax('snatch', '155');
-  assert.equal(STATE.maxes.snatch, 155);
-});
-
-test('slot-specific double progression requires the rep ceiling and target RIR', () => {
-  STATE.activeWorkout = { dayKey:'monday' };
-  const monday = { id:'incline_db_press', slotKey:'mon_incline', sets:3, repRange:[6,8], rirNote:'~3 RIR' };
-  const wednesday = { ...monday, slotKey:'wed_incline' };
-  for (let i = 0; i < 3; i++) app.recordHypertrophySet(monday, 60, 8, monday.repRange, 3, 3);
-  for (let i = 0; i < 3; i++) app.recordHypertrophySet(wednesday, 65, 8, wednesday.repRange, 3, i === 2 ? '' : 3);
-  app.finalizeHypertrophyProgression();
-  assert.equal(STATE.hypertrophyWeights.mon_incline.progressNext, true);
-  assert.equal(STATE.hypertrophyWeights.wed_incline.progressNext, false);
-});
-
-test('bounded TM exception needs three complete A-grade exposures and fires once', () => {
-  const day = { sections:[{ exercises:[{ id:'snatch_floor', sets:1, reps:1, pct:85, baseLift:'snatch' }] }] };
-  for (const week of [9,10,11]) {
-    STATE.activeWorkout = {
-      blockId:5, programWeek:week,
-      setsLogged:{ '0_snatch_floor':[{ outcome:'make', grade:'A', rpe:7, actualPct:85 }] },
-    };
-    app.settleTmException(day);
-  }
-  assert.equal(STATE.maxes.snatch, 160);
-  assert.equal(STATE.tmWatch.snatch.bumped, true);
-  STATE.activeWorkout = { blockId:5, programWeek:12, setsLogged:{ '0_snatch_floor':[{ outcome:'make', grade:'A', rpe:6, actualPct:90 }] } };
-  app.settleTmException(day);
-  assert.equal(STATE.maxes.snatch, 160);
-});
-
-test('a partial or B-grade eligible exposure resets the TM streak', () => {
-  const day = { sections:[{ exercises:[{ id:'jerk_rack_heavy', sets:2, reps:1, pct:85, baseLift:'jerk' }] }] };
-  STATE.tmWatch.jerk = { streak:2, bumped:false, lastExposureKey:null };
-  STATE.activeWorkout = { blockId:5, programWeek:10, setsLogged:{ '0_jerk_rack_heavy':[{ outcome:'make', grade:'A', rpe:7, actualPct:85 }] } };
-  app.settleTmException(day);
-  assert.equal(STATE.tmWatch.jerk.streak, 0);
-  STATE.activeWorkout = { blockId:5, programWeek:11, setsLogged:{ '0_jerk_rack_heavy':[
-    { outcome:'make', grade:'A', rpe:7, actualPct:85 }, { outcome:'make', grade:'B', rpe:7, actualPct:85 },
-  ] } };
-  app.settleTmException(day);
-  assert.equal(STATE.tmWatch.jerk.streak, 0);
-});
-
-test('receiving gates use fixed 8/3-rep standards and are idempotent per week', () => {
-  const wed = { sections:[{ exercises:[{ id:'hh_clean', recvKey:'hh_clean', sets:4, reps:2 }] }] };
-  const cleanSets = Array.from({length:4}, () => ({ weight:165, reps:2, lowReps:2, highReps:0, stood:true }));
-  STATE.activeWorkout = { blockId:1, programWeek:1, setsLogged:{ '0_hh_clean':cleanSets } };
-  app.settleReceiving(wed);
-  assert.equal(STATE.receiving.hh_clean, 170);
-  app.settleReceiving(wed);
-  assert.equal(STATE.receiving.hh_clean, 170);
-
-  STATE.activeWorkout = { blockId:1, programWeek:2, setsLogged:{ '0_hh_clean':cleanSets.slice(0,3) } };
-  app.settleReceiving(wed);
-  assert.equal(STATE.receiving.hh_clean, 170);
-  assert.equal(STATE.receivingMeta.hh_clean.stalls, 0);
-
-  const fri = { sections:[{ exercises:[{ id:'recv_clean', recvKey:'recv_clean', sets:3, reps:1 }] }] };
-  STATE.activeWorkout = { blockId:1, programWeek:1, setsLogged:{ '0_recv_clean':[
-    {weight:190,reps:1,lowReps:1,highReps:0,stood:true}, {weight:190,reps:1,lowReps:1,highReps:0,stood:true}, {weight:190,reps:1,lowReps:1,highReps:0,stood:true},
-  ] } };
-  app.settleReceiving(fri);
-  assert.equal(STATE.receiving.recv_clean, 195);
-
-  STATE.activeWorkout = { cycleId:1, blockId:1, programWeek:2, setsLogged:{ '0_recv_clean':[
-    {weight:185,reps:1,lowReps:1,highReps:0,stood:true}, {weight:185,reps:1,lowReps:1,highReps:0,stood:true}, {weight:185,reps:1,lowReps:1,highReps:0,stood:true},
-  ] } };
-  app.settleReceiving(fri);
-  assert.equal(STATE.receiving.recv_clean, 195);
-  assert.equal(STATE.receivingMeta.recv_clean.stalls, 0);
-
-  STATE.activeWorkout = { cycleId:1, blockId:1, programWeek:3, setsLogged:{ '0_recv_clean':[
-    {weight:195,reps:1,lowReps:0,highReps:1,stood:true},
-    {weight:185,reps:1,lowReps:1,highReps:0,stood:true,retryOverride:true},
-    {weight:195,reps:1,lowReps:1,highReps:0,stood:true},
-  ] } };
-  app.settleReceiving(fri);
-  assert.equal(STATE.receiving.recv_clean, 195);
-  assert.equal(STATE.receivingMeta.recv_clean.stalls, 1);
-});
-
-test('high-hang snatch and Copenhagen progress only through their quality gates', () => {
-  const hh = { sections:[{ exercises:[{ id:'hh_snatch', qualityCeiling:true, sets:4, reps:2, pct:65, baseLift:'snatch' }] }] };
-  STATE.activeWorkout = { cycleId:1, blockId:5, readiness:'green', programWeek:9, setsLogged:{ '0_hh_snatch':Array.from({length:4}, () => ({weight:100,reps:2,lowReps:2,highReps:0,stood:true})) } };
-  app.settleHighHangSnatch(hh);
-  assert.equal(STATE.technicalProgress.hhSnatchPct, 67.5);
-
-  const cph = { sections:[{ exercises:[{ id:'copenhagen', sets:2, timedSets:true }] }] };
-  STATE.activeWorkout = { blockId:1, programWeek:1, setsLogged:{ '0_copenhagen':[{seconds:20},{seconds:20}] } };
-  app.settleCopenhagen(cph);
-  assert.equal(STATE.copenhagen.step, 2);
-});
-
-test('miss-stop policy distinguishes true misses from C-grade makes', () => {
-  assert.match(app.exerciseStopReason([{outcome:'miss'},{outcome:'miss'}]), /Two misses/);
-  assert.match(app.exerciseStopReason([{outcome:'make',grade:'C'},{outcome:'make',grade:'C'}]), /poor successes/);
-  assert.equal(app.exerciseStopReason([{outcome:'make',grade:'C'},{outcome:'make',grade:'B'}]), '');
-});
-
-test('competition doubles are logged and counted as individual attempts', () => {
-  const ex = {id:'snatch_floor',sets:5,reps:2};
-  const first = {...app.nextQualityAttempt(ex,[]),outcome:'make',grade:'A'};
-  assert.deepEqual(first,{setNumber:1,repNumber:1,outcome:'make',grade:'A'});
-  const secondPos = app.nextQualityAttempt(ex,[first]);
-  assert.deepEqual(secondPos,{setNumber:1,repNumber:2});
-  const second = {...secondPos,outcome:'make',grade:'B'};
-  assert.equal(app.completedQualitySets(ex,[first,second]),1);
-  const miss = {...app.nextQualityAttempt(ex,[first,second]),outcome:'miss',grade:'C'};
-  assert.deepEqual([miss.setNumber,miss.repNumber],[2,1]);
-  assert.equal(app.completedQualitySets(ex,[first,second,miss]),2);
-  assert.deepEqual(app.nextQualityAttempt(ex,[first,second,miss]),{setNumber:3,repNumber:1});
-});
-
-test('quality analytics keeps C-grade makes separate from actual misses', () => {
-  const base = { liftKey:'snatch', actualPct:85, cycleId:1, blockId:5, ts:Date.now() };
-  STATE.log = { a:{ setsLogged:{ x:[
-    {...base,grade:'A',outcome:'make'},
-    {...base,grade:'C',outcome:'make'},
-    {...base,grade:'C',outcome:'miss',missDirection:'forward'},
-  ] } } };
-  const [g] = app.qualityAnalytics();
-  assert.equal(g.attempts, 3);
-  assert.equal(g.aRate, 33);
-  assert.equal(g.missRate, 33);
-  assert.equal(g.c, 2);
-  assert.equal(g.misses, 1);
-});
-
-test('receiving override remains session-only and respects the slot', () => {
-  STATE.activeWorkout = { receivingOverrides:{}, loadOverrides:{hh_snatch:100} };
-  assert.equal(app.prescribedWeight({ id:'hh_snatch', baseLift:'snatch', pct:70 }), 100);
-  assert.equal(STATE.maxes.snatch, 155);
-});
-
-test('active-session TM snapshots and final miss overrides prevent load drift', () => {
-  STATE.activeWorkout = {
-    tmSnapshot:{snatch:150,cj:200,jerk:200,clean:250,bs:350,fs:270,bench:260},
-    receivingOverrides:{hh_clean:147.5}, loadOverrides:{},
+test('migration preserves all old data including unfinished work without repurposing old maxes', () => {
+  const old = {
+    schemaVersion: 3,
+    maxes: { snatch: 160, clean: 255, jerk: 205 },
+    program: { blockId: 7 },
+    log: { old: { foo: 1 } },
+    activeWorkout: { id: 'old-active', setsLogged: { a: [1] } },
   };
-  STATE.maxes.snatch = 200;
-  assert.equal(app.prescribedWeight({id:'snatch_floor',baseLift:'snatch',pct:70}), 105);
-  assert.equal(app.prescribedWeight({id:'hh_clean',recvKey:'hh_clean',loadMultiplier:0.95}), 147.5);
+  const out = M.migrate(old);
+  assert.deepEqual(out.legacy, old);
+  assert.equal(out.activeWorkout, null);
+  assert.equal(out.training.anchors.clean, null);
+  assert.equal(out.training.anchors.jerk, null);
+  assert.equal(out.training.anchors.snatch, 155);
+  assert.equal(out.records.length, 0);
+  assert.equal(out.training.week, 1);
 });
-
-test('test results are atomic and must all belong to the current cycle', () => {
-  for (const lift of Object.keys(PROGRAM.liftNames)) {
-    STATE.testResults = STATE.testResults || {};
-    STATE.testResults[lift] = {estimated1rm:200,sourceCycleId:1,attemptVerified:true};
-  }
-  assert.equal(app.testResultsReady(), true);
-  STATE.testResults.bench.sourceCycleId = 2;
-  assert.equal(app.testResultsReady(), false);
+test('Revision 6 roundtrip keeps active snapshots, logs, reviews and timestamps', () => {
+  const state = M.migrate({});
+  state.training.anchors.jerk = 210;
+  state.records = [{ id: 'one', session: { rows: [] }, sets: [] }];
+  state.activeWorkout = {
+    id: 'active',
+    session: { rows: [] },
+    omitted: [],
+    sets: [{ exerciseId: 'bench', at: 123 }],
+  };
+  state.restEnd = 123456;
+  assert.deepEqual(M.migrate(JSON.parse(JSON.stringify(state))), state);
 });
-
-test('heavy-double test results require a matching made double at the same RPE', () => {
-  const attempts = [
-    {weight:315,reps:1,rpe:8,outcome:'make'},
-    {weight:315,reps:2,rpe:9,outcome:'make'},
-    {weight:320,reps:2,rpe:8,outcome:'miss'},
+test('legacy snapshot cannot erase a newer saved Revision 6 copy', () => {
+  const a = app(),
+    state = M.migrate({});
+  state.records = [{ id: 'keep', session: { rows: [] }, sets: [] }];
+  state.training.week = 6;
+  a.store.set('oly_rev6_backup', JSON.stringify(state));
+  a.store.set('oly_state', JSON.stringify({ maxes: { clean: 255 }, log: {} }));
+  a.run('load()');
+  assert.equal(a.run('STATE.training.week'), 6);
+  assert.equal(a.run('STATE.records[0].id'), 'keep');
+});
+test('invalid/corrupt imports fail without turning arbitrary JSON into empty user data', () => {
+  assert.throws(() => M.migrate(null));
+  assert.throws(() => M.migrate([]));
+  assert.throws(() => M.migrate({ unrelated: true }));
+  const a = app();
+  a.store.set('oly_state', '{bad');
+  a.run('load();save()');
+  assert.equal(a.store.get('oly_state'), '{bad');
+});
+test('48-hour bench rule uses actual timestamps across week boundaries', () => {
+  const at = Date.UTC(2026, 8, 13, 20),
+    records = [{ sets: [{ exerciseId: 'bench', at }] }];
+  assert.equal(P.benchWindow(records, at + 47 * 3600000).ready, false);
+  assert.equal(P.benchWindow(records, at + 48 * 3600000).ready, true);
+  const old = M.migrate({
+    log: { old: { date: '2026-09-13', setsLogged: { a: [{ exId: 'bench', ts: at }] } } },
+  });
+  assert.equal(P.benchWindow(M.benchRecords(old), at + 47 * 3600000).ready, false);
+});
+test('a technique/pain stop cannot earn failure progression; latest poor exposure is not skipped', () => {
+  const ex = P.failure('incline', 3, 6, 10, 210);
+  const good = {
+    normal: true,
+    rows: Array.from({ length: 3 }, () => ({ weight: 100, reps: 10, endpoint: 'failure' })),
+  };
+  const bad = { normal: false, rows: [{ weight: 100, reps: 10, endpoint: 'tech' }] };
+  assert.equal(P.nextLoad(ex, [good]).action, 'increase');
+  assert.equal(P.nextLoad(ex, [good, bad]).action, 'hold');
+  assert.equal(P.nextLoad(ex, [{ ...good, rows: good.rows.slice(0, 2) }]).action, 'hold');
+});
+test('one-set and low-bench progression require two at-bound exposures; squat/low bench overshoot is corrected once', () => {
+  const ex = P.failure('bench', 1, 3, 5, 240, { key: 'bench_low' }),
+    atBound = { normal: true, rows: [{ weight: 245, reps: 5, endpoint: 'failure' }] };
+  assert.equal(P.nextLoad(ex, [atBound]).action, 'hold');
+  assert.equal(P.nextLoad(ex, [atBound, atBound]).action, 'increase');
+  assert.equal(
+    P.nextLoad(ex, [{ normal: true, rows: [{ weight: 245, reps: 6, endpoint: 'failure' }] }])
+      .action,
+    'increase',
+  );
+  assert.equal(
+    P.nextLoad(ex, [{ normal: true, rows: [{ weight: 245, reps: 2, endpoint: 'failure' }] }])
+      .action,
+    'reduce',
+  );
+  const different = { normal: true, rows: [{ weight: 240, reps: 5, endpoint: 'failure' }] };
+  assert.equal(P.nextLoad(ex, [different, atBound]).action, 'hold');
+});
+test('Olympic double logs account for each rep; misses consume budget and reduction protocol stops after another poor attempt', () => {
+  const ex = { kind: 'quality', sets: 3, reps: 2 };
+  const bad = { outcome: 'miss', grade: 'C', fault: 'forward', weight: 100 };
+  const good = { outcome: 'make', grade: 'A', weight: 92.5 };
+  assert.equal(M.qualityState(ex, [bad, bad]).planned, 6);
+  assert.equal(M.qualityState(ex, [bad, bad]).loadCap, 92.5);
+  assert.equal(M.qualityState(ex, [bad, bad, good, bad]).stop, true);
+  assert.equal(M.slotAt(ex, 0), 0);
+  assert.equal(M.slotAt(ex, 1), 0);
+  assert.equal(M.slotAt(ex, 2), 1);
+  const mixed = { ...ex, repSequence: [2, 2, 1] };
+  assert.equal(M.qualityState(mixed, []).planned, 5);
+});
+test('assessments stop at effort 8 or first error without retry', () => {
+  const ex = { sets: 5, reps: 1, assessment: true };
+  assert.ok(M.qualityState(ex, [{ outcome: 'make', grade: 'A', effort: 8 }]).done);
+  assert.ok(M.qualityState(ex, [{ outcome: 'miss', grade: 'C', effort: 6 }]).done);
+});
+test('week review repeats and advances without recycling session identity or repeating onboarding every cycle', () => {
+  const t = P.defaults();
+  const repeat = M.reviewAdvance(t, { action: 'repeat', green: false });
+  assert.equal(repeat.week, 1);
+  assert.equal(repeat.entryStage, 1);
+  assert.equal(repeat.exposure, 2);
+  const second = M.reviewAdvance(t, { action: 'advance', green: true });
+  assert.equal(second.week, 2);
+  assert.equal(second.entryStage, 2);
+  const next = M.reviewAdvance({ ...t, week: 13 }, { action: 'advance', green: true });
+  assert.equal(next.week, 1);
+  assert.equal(next.cycle, 2);
+  assert.equal(next.onboarding, false);
+});
+test('dose controls reject simultaneous additions, skipped stages and held-week increases', () => {
+  const a = app();
+  a.ctx.t = P.defaults();
+  a.ctx.n = structuredClone(a.ctx.t);
+  a.ctx.n.athletics.enabled = true;
+  assert.equal(a.run("validateDose({...t,week:5},n,true,'Two stable green weeks')"), '');
+  assert.match(a.run("validateDose({...t,week:8},n,true,'ready')"), /No new dose/);
+  a.ctx.n.cardio.enabled = true;
+  assert.match(a.run("validateDose({...t,week:5},n,true,'ready')"), /one module/);
+  a.ctx.n = structuredClone(a.ctx.t);
+  a.ctx.n.athletics.stage = 3;
+  assert.match(a.run("validateDose({...t,week:5},n,true,'ready')"), /one athletic step/);
+});
+test('consecutive misses reduce even when miss directions differ; pull triples retain all reps', () => {
+  const ex = { sets: 2, reps: 3, kind: 'quality' };
+  const rows = [
+    { outcome: 'miss', grade: 'C', fault: 'forward', weight: 100 },
+    { outcome: 'miss', grade: 'C', fault: 'backward', weight: 100 },
   ];
-  assert.equal(app.hasMatchingTestAttempt(attempts,315,2,8),false);
-  assert.equal(app.hasMatchingTestAttempt(attempts,315,2,9),true);
-  assert.equal(app.hasMatchingTestAttempt(attempts,320,2,8),false);
+  assert.equal(M.qualityState(ex, rows).loadCap, 92.5);
+  assert.equal(M.qualityState(ex, []).planned, 6);
+  assert.equal(M.slotAt(ex, 2), 0);
+  assert.equal(M.slotAt(ex, 3), 1);
 });
-
-test('readiness is daily and pickup context is program-week scoped', () => {
-  const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const todayKey = PROGRAM.dayKeys[now.getDay() === 0 ? 6 : now.getDay() - 1];
-  const otherKey = PROGRAM.dayKeys.find(d => d !== todayKey);
-  STATE.readiness = 'red';
-  STATE.readinessDate = date;
-  assert.equal(app.programContext(todayKey).readiness, 'red');
-  assert.equal(app.programContext(otherKey).readiness, 'green');
-
-  STATE.pickupDays = ['friday'];
-  STATE.pickupWeekKey = '1:1';
-  assert.deepEqual(app.activePickupDays(), ['friday']);
-  STATE.program.weekInBlock = 1;
-  assert.deepEqual(app.activePickupDays(), []);
+test('an unready entry week holds its dose and week position', () => {
+  const t = M.reviewAdvance(P.defaults(), { action: 'advance', green: false });
+  assert.equal(t.week, 1);
+  assert.equal(t.entryStage, 1);
 });
-
-test('durable import replacement does not retain fields missing from the backup', () => {
-  STATE.log = {stale:{setsLogged:{}}};
-  STATE.testResults = {stale:{estimated1rm:999}};
-  app.applyDurableData({maxes:{snatch:160},program:{blockId:1,weekInBlock:0},cycleId:2});
-  assert.equal(STATE.maxes.snatch,160);
-  assert.equal(STATE.maxes.cj,205);
-  assert.deepEqual(STATE.log,{});
-  assert.deepEqual(STATE.testResults,{});
-  assert.equal(STATE.cycleId,2);
+test('an older Revision 6 mirror also cannot overwrite the newer local backup', () => {
+  const a = app(),
+    state = M.migrate({});
+  state.ts = 200;
+  state.training.week = 8;
+  a.store.set('oly_rev6_backup', JSON.stringify(state));
+  state.ts = 100;
+  state.training.week = 3;
+  a.store.set('oly_state', JSON.stringify(state));
+  a.run('load()');
+  assert.equal(a.run('STATE.training.week'), 8);
 });
-
-test('active interval phase and timers survive a persistence round trip', () => {
-  STATE.activeWorkout = {startedAt:Date.now(),cycleId:1,programWeek:1,loadOverrides:{},receivingOverrides:{},stoppedExercises:{}};
-  STATE.sessionTimer = {active:true,start:Date.now()-1000,interval:null};
-  STATE.intervalTimer = {
-    active:true,config:{warmupSec:720,rounds:4,workSec:180,restSec:180,lastRest:false,cooldownSec:480},
-    phases:[{type:'warmup',sec:720,round:0}],phaseIdx:0,phaseEnd:Date.now()+600000,
-    paused:true,pauseRemaining:321000,interval:null,lastCue:-1,startedAt:Date.now()-5000,
-  };
-  app.save();
-  STATE.intervalTimer.active = false;
-  STATE.activeWorkout = null;
-  app.load();
-  assert.ok(STATE.activeWorkout);
-  assert.equal(STATE._restoreTimers.interval.paused,true);
-  assert.equal(STATE._restoreTimers.interval.pauseRemaining,321000);
-  assert.equal(STATE._restoreTimers.interval.config.rounds,4);
+test('a malformed Revision 6 session is rejected before importing it', () => {
+  assert.throws(
+    () => M.migrate({ revision: 6, training: P.defaults(), records: [{ id: 'bad' }] }),
+    /Invalid saved session/,
+  );
+});
+test('unfinished old workouts and separate cloud archives also preserve bench spacing', () => {
+  const at = Date.now(),
+    state = M.migrate({
+      maxes: { bench: 285 },
+      activeWorkout: { setsLogged: { b: [{ exId: 'bench', ts: at, weight: 245, reps: 4 }] } },
+    });
+  assert.equal(P.benchWindow(M.benchRecords(state), at + 1000).ready, false);
+  state.legacy = null;
+  state.legacyArchives = [{ log: { b: { setsLogged: { x: [{ exId: 'bench', ts: at }] } } } }];
+  assert.equal(P.benchWindow(M.benchRecords(state), at + 1000).ready, false);
 });

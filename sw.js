@@ -1,46 +1,62 @@
-// Network-first service worker.
-// Online: always fetch the latest (so pushed updates reach the device immediately),
-// and refresh the cache. Offline: fall back to the last cached copy.
-const CACHE = "oly-v34";
+'use strict';
+const CACHE = 'oly-revision6-v1';
 const ASSETS = [
   './index.html',
+  './styles.css',
   './manifest.json',
   './icon.svg',
   './js/program.js',
+  './js/model.js',
   './js/app.js',
-  './js/sync.js'
+  './js/sync.js',
 ];
-
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting()),
   );
-  self.clients.claim();
 });
-
-self.addEventListener('fetch', e => {
-  const req = e.request;
-  // Only handle same-origin GETs; let everything else pass through.
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-
-  e.respondWith(
-    fetch(req)
-      .then(res => {
-        // Cache a fresh copy for offline use.
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
-        return res;
-      })
-      .catch(() =>
-        // Offline: serve cache, falling back to the app shell for navigations.
-        caches.match(req).then(hit => hit || caches.match('./index.html'))
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith('oly-') && key !== CACHE)
+            .map((key) => caches.delete(key)),
+        ),
       )
+      .then(() => self.clients.claim()),
+  );
+});
+self.addEventListener('fetch', (event) => {
+  const req = event.request,
+    url = new URL(req.url),
+    scope = new URL(self.registration.scope);
+  if (
+    req.method !== 'GET' ||
+    url.origin !== scope.origin ||
+    !url.pathname.startsWith(scope.pathname)
+  )
+    return;
+  event.respondWith(
+    fetch(req)
+      .then(async (response) => {
+        if (response.ok) {
+          const cache = await caches.open(CACHE);
+          await cache.put(req, response.clone());
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cache = await caches.open(CACHE),
+          hit = await cache.match(req);
+        if (hit) return hit;
+        if (req.mode === 'navigate') return (await cache.match('./index.html')) || Response.error();
+        return Response.error();
+      }),
   );
 });
