@@ -39,7 +39,7 @@ test('service worker isolates caches, precaches runtime assets, and never return
   paths.forEach((path) => assert.ok(cached.includes('./' + path), path + ' is precached'));
   handlers.activate({ waitUntil: (p) => (pending = p) });
   await pending;
-  assert.deepEqual(deleted, ['oly-v34']);
+  assert.deepEqual(deleted, ['oly-v34', 'oly-revision6-v1']);
   let response;
   const request = (path, mode = 'cors') => ({
     request: { method: 'GET', url: 'https://example.com' + path, mode },

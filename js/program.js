@@ -35,17 +35,17 @@ const EX = {
   front_squat: [
     'Front squat',
     'failure',
-    'Full comfortable depth. Safeties set; stop at the last valid rep when another cannot be completed with the same form. No collapsed rep.',
+    'Full comfortable depth. Verify rack safeties just below the bottom with a light bar; stop at the last valid rep when another cannot be completed with the same form. No collapsed rep.',
   ],
   back_squat: [
     'High-bar back squat',
     'failure',
-    'Same high-bar setup and depth each time. Safeties set; strict-form 0 RIR, no collapsed rep.',
+    'Same high-bar setup and depth each time. Verify rack safeties just below the bottom with a light bar; strict-form 0 RIR, no collapsed rep.',
   ],
   bench: [
     'Flat barbell bench press',
     'failure',
-    'Brief pause on chest, no bounce. Safeties or competent spotter; last valid rep at strict-form 0 RIR.',
+    'Thumb-around grip, feet and upper back stable; brief chest pause, no bounce. Test safeties with the empty bar and use a competent spotter, especially for low reps. Last valid rep at strict-form 0 RIR; no forced reps.',
   ],
   incline: [
     'Incline machine press · 30–45°',
@@ -159,14 +159,16 @@ const ACCESSORIES = [
   ['crunch', 1, 10, 15, 150],
 ];
 const WARMUP =
-  '4–6 min easy cycle/walk (RPE 2–3). Ankle rocks 8/side; bodyweight squat 6; reverse lunge 4/side; thoracic rotation 5/side; wrist circles 10 each direction; wall slide 8; light band external rotation 10/side. All warm-ups submaximal.';
+  '4–6 min easy cycle/walk (RPE 2–3). Ankle rocks 8/side; bodyweight squat 6; reverse lunge 4/side; thoracic rotation 5/side; wrist circles 10 each direction; wall slide 8; light band external rotation 10/side. All warm-ups submaximal. If idle >15 min: 2 min easy movement and two brief ascending rehearsals. Before catches: three secure light overhead-squat, front-squat and split-catch rehearsals, pain-free; safe release instruction before challenging catches. Use a technique bar if the standard bar distorts positions.';
 const RAMPS = {
   snatch:
-    'Light bar: snatch RDL 5, muscle snatch 3, overhead squat 3 (2 s pause), high-hang snatch 3. Then 40% SN ×3, 50% ×2, 60% ×1; add 70% ×1 for work ≥75%, 80% ×1 for work ≥85%. Skip stages at/above work weight.',
-  cj: 'Light bar: clean RDL 5, tall clean 3, front squat 3, dip 3, footwork 3, light jerk 3. Then 40% CJ ×2 cleans + 2 jerks, 50% ×1+1, 60% ×1+1; add 70% ×1+1 for work ≥75%, 80% ×1+1 for work ≥85%. Skip stages at/above work weight.',
-  jerk: 'Light rack hold 10 s, dip 3, footwork 3. Then 40% of intended work weight ×3, 60% ×2, 80% ×1. Assessment uses its replacement ramp.',
-  squat: 'Empty bar ×5; 40% of work weight ×5, 60% ×3, 80% ×1, optional 90% ×1.',
-  bench: 'Empty bar ×10; 40% of work weight ×6, 60% ×3, 80% ×1; 90% ×1 on the low-rep day.',
+    'Light bar: snatch RDL 5, muscle snatch 3, overhead squat 3 (2 s pause), high-hang snatch 3. Then 40% SN ×3, 50% ×2, 60% ×1; add 70% ×1 for work ≥75%, 80% ×1 for work ≥85%. Skip stages at/above work weight. Early rests 45–90 s; late rests 120 s.',
+  cj: 'Light bar: clean RDL 5, tall clean 3, front squat 3, dip 3, footwork 3, light jerk 3. Then 40% CJ ×2 cleans + 2 jerks, 50% ×1+1, 60% ×1+1; add 70% ×1+1 for work ≥75%, 80% ×1+1 for work ≥85%. Skip stages at/above work weight. Early rests 60–120 s; late rests 120–180 s.',
+  jerk: 'Light rack hold 10 s, dip 3, footwork 3. Then 40% of intended work weight ×3, 60% ×2, 80% ×1. Early rests 60–120 s; late rests 120–180 s. Assessment uses its replacement ramp.',
+  squat:
+    'Empty bar ×5; 40% of work weight ×5, 60% ×3, 80% ×1, optional 90% ×1. Early rests 60–120 s; rest 180 s before work.',
+  bench:
+    'Empty bar ×10; 40% of work weight ×6, 60% ×3, 80% ×1; 90% ×1 on the low-rep day. Early rests 60–120 s; rest 180 s before work.',
   incline: '40% of work weight ×8, 65% ×4; rest 60–90 s. No failure warm-ups.',
   field:
     '4–5 min easy walk/jog. Ankle rocks and leg swings 8/side; marching 2×10 m; 3×20 m runs at 50%, 65%, 80%. Walk back; rest 90 s before work.',
@@ -203,6 +205,14 @@ function defaults() {
     tricepsFallback: false,
     calfFallback: false,
     legExtUpright: false,
+    incline: 'machine',
+    legCurl: 'seated',
+    crunch: 'machine',
+    supportedRow: 'chest',
+    technique: { snatch: 'none', clean: 'none', jerk: 'none' },
+    setupEpoch: {},
+    lowerDose: false,
+    omitLastLower: false,
     athletics: {
       enabled: false,
       stage: 0,
@@ -242,7 +252,7 @@ function oly(id, sets, reps, range, anchor, effort = 7, rest = 150, extra = {}) 
       (id === 'hang'
         ? RAMPS.snatch
         : id === 'pull'
-          ? 'Three controlled floor starts at 60% of intended pull weight.'
+          ? 'Three controlled floor starts at 60% of intended pull weight; another easy set if needed. Straps allowed for pulls, never for catches.'
           : ''),
     ...extra,
   };
@@ -274,7 +284,7 @@ function conventional(config, phase, day, oneEach = false) {
   const squatRange = phase === 'F' || phase === 'P' ? [4, 6] : [3, 5];
   const rows = [
     failure(low ? 'front_squat' : 'back_squat', 1, ...squatRange, 270),
-    failure('bench', 1, ...(low ? [3, 5] : [6, 8]), 240, {
+    failure('bench', 1, ...(low ? [3, 5] : [6, 8]), low ? 270 : 210, {
       key: low ? 'bench_low' : 'bench_moderate',
     }),
   ];
@@ -303,9 +313,29 @@ function conventional(config, phase, day, oneEach = false) {
         note: 'Back and pelvis supported, knee aligned with the machine axis. Full comfortable knee range. Use the secure upright setup because this machine cannot support the reclined option.',
       },
     );
+  const choices = {
+    incline: { smith: 'Incline Smith press · 30–45°', db: 'Incline DB press · 30–45°' },
+    leg_curl: { lying: 'Lying leg curl' },
+    crunch: { cable: 'Cable abdominal crunch' },
+    row: { machine: 'Supported machine row' },
+  };
+  for (const [id, choice] of Object.entries({
+    incline: config.incline,
+    leg_curl: config.legCurl,
+    crunch: config.crunch,
+    row: config.supportedRow,
+  })) {
+    const e = rows.find((e) => e.id === id),
+      name = choices[id][choice];
+    if (name) {
+      e.name = name;
+      e.note =
+        'Full comfortable range, stable supported setup, about 2 s lowering. Stop at strict-form failure without forced reps or collapse. New setup: establish a fresh conservative load.';
+    }
+  }
   const active = config.trial || {};
   const trials = [...(config.established || []), active].filter(
-    (t) => t.day === day && ['F', 'B', 'R'].includes(phase),
+    (t) => !t.paused && t.day === day && ['F', 'B', 'R'].includes(phase),
   );
   if (trials.some((t) => t.kind === 'press')) {
     rows.find((e) => e.id === 'incline').sets -= 1;
@@ -320,10 +350,17 @@ function conventional(config, phase, day, oneEach = false) {
     rows.splice(
       1,
       0,
-      failure(low ? 'front_squat' : 'back_squat', squats, 3, 5, 270, {
-        key: 'squat_support',
-        trial: active.kind === 'squat',
-      }),
+      failure(
+        trials.find((t) => t.kind === 'squat')?.squat || (low ? 'front_squat' : 'back_squat'),
+        squats,
+        3,
+        5,
+        270,
+        {
+          key: 'squat_support',
+          trial: active.kind === 'squat',
+        },
+      ),
     );
   if (!oneEach)
     trials
@@ -348,6 +385,30 @@ function conventional(config, phase, day, oneEach = false) {
         trial: active.kind === 'calf_partial',
       }),
     );
+  }
+  for (const e of rows) {
+    const trial = trials.find(
+      (t) =>
+        (t.kind === 'press' && e.id === 'press') ||
+        (t.kind === 'squat' && e.key === 'squat_support') ||
+        (t.kind === 'calf_partial' && e.key === 'calf_partial') ||
+        (t.kind === 'set' && e.id === t.exercise),
+    );
+    if (trial) {
+      e.assistance = true;
+      e.trialId = trial.startedAt;
+      e.holdLoad = [4, 8, 9, 10].includes(config.week);
+    }
+    if (config.lowerDose && ['leg_curl', 'calf'].includes(e.id)) e.sets = Math.min(e.sets, 1);
+    if (config.lowerDose && ['leg_ext', 'crunch'].includes(e.id)) e.sets = 0;
+    if (
+      config.omitLastLower &&
+      config.week === 11 &&
+      day === 'friday' &&
+      ['front_squat', 'back_squat', 'leg_curl', 'calf', 'leg_ext'].includes(e.id)
+    )
+      e.sets = 0;
+    if ([4, 8].includes(config.week)) e.checkpoint = true;
   }
   return rows.filter((e) => e.sets > 0);
 }
@@ -582,7 +643,9 @@ function normalOlympic(config, phase, day) {
     config.week !== 11 &&
     !config.reduceCJerk &&
     config.assessment !== 'jerk' &&
-    [...(config.established || []), config.trial].some((t) => t?.kind === 'pause_jerk') &&
+    [...(config.established || []), config.trial].some(
+      (t) => t?.kind === 'pause_jerk' && !t.paused,
+    ) &&
     day === 'thursday'
   ) {
     const i = row.findIndex((e) => e.id === 'jerk');
@@ -591,12 +654,20 @@ function normalOlympic(config, phase, day) {
       row.splice(
         i,
         0,
-        oly('pause_jerk', 2, 1, [60, 75], 'jerk', 7, 180, { warmup: RAMPS.jerk, trial: true }),
+        oly('pause_jerk', 2, 1, [60, 75], 'jerk', 7, 180, {
+          warmup: RAMPS.jerk,
+          trial: true,
+          assistance: true,
+          trialId: [...(config.established || []), config.trial].find(
+            (t) => t?.kind === 'pause_jerk' && !t.paused,
+          )?.startedAt,
+          holdLoad: [4, 8, 9, 10].includes(config.week),
+        }),
       );
     } else
-      row[i] = oly('pause_jerk', 3, 2, [40, 60], 'cj', 6, 150, {
-        note:
-          'Light technique regression, not the assessed-RJ assistance trial. ' + EX.pause_jerk[2],
+      row[i] = oly('pause_jerk', 3, 2, [40, 60], 'cj', 6, 90, {
+        regression: true,
+        note: 'Light dip-drift regression. Pause 1 s in the dip and hold the split 2 s. Return after two secure exposures. This is technique practice, never failure.',
         warmup: RAMPS.jerk,
       });
   }
@@ -608,10 +679,128 @@ function normalOlympic(config, phase, day) {
       if (e.sequence) e.sequence = e.sequence.slice(0, e.sets).map((r) => [r[0], r[0]]);
     });
   row.forEach((e) => {
+    if ([4, 8].includes(config.week)) e.checkpoint = true;
     if (e.sequence) e.sequence = e.sequence.slice(0, e.sets);
     if (e.repSequence) e.repSequence = e.repSequence.slice(0, e.sets);
   });
   return row.filter((e) => e.sets > 0);
+}
+function techniqueRows(rows, technique = {}, day, anchors) {
+  return rows
+    .flatMap((e) => {
+      const family = ['snatch', 'hang'].includes(e.id)
+        ? 'snatch'
+        : ['cj', 'clean'].includes(e.id)
+          ? 'clean'
+          : ['jerk', 'pause_jerk'].includes(e.id)
+            ? 'jerk'
+            : null;
+      const mode = technique?.[family];
+      if (!mode || mode === 'none') return [e];
+      const base = {
+        ...e,
+        sequence: null,
+        repSequence: null,
+        workingLoad: null,
+        test: false,
+        assessment: false,
+        finalEffort: null,
+        trial: false,
+        assistance: false,
+        regression: true,
+      };
+      const tech = (extra) => ({ ...base, ...extra });
+      if (mode === 'receive')
+        return [
+          tech({
+            key: e.key + '_receive',
+            name:
+              family === 'snatch'
+                ? 'Technique-bar overhead squat rehearsal'
+                : 'Technique-bar front squat rehearsal',
+            sets: 3,
+            reps: 3,
+            range: null,
+            anchor: null,
+            effort: 4,
+            rest: 90,
+            note: 'Pain-free secure position only; technique bar, 2 s pause. No failure. Resume catches only after three secure light warm-up reps and safe release.',
+            warmup:
+              'Qualified release instruction; use a light technique bar. Stop if the position is not secure.',
+          }),
+        ];
+      if (mode === 'return')
+        return [
+          tech({
+            sets: 4,
+            reps: e.id === 'cj' ? '1+1' : 1,
+            range: [40, 60],
+            effort: Math.min(6, e.effort),
+            rest: 120,
+            note: 'Return after three secure light receiving reps and safe release. Four secure singles at 40–60%; stop if positions deteriorate.',
+          }),
+        ];
+      if (
+        mode === 'turnover' &&
+        ((day === 'tuesday' && e.id === 'hang') || (day === 'monday' && e.id === 'cj'))
+      )
+        return [
+          tech({
+            name: e.id === 'hang' ? 'High-hang full snatch' : 'High-hang full clean + jerk',
+            sets: 3,
+            reps: e.id === 'hang' ? 2 : '1+1',
+            range: [40, 60],
+            effort: Math.min(6, e.effort),
+            note: 'Turnover regression. Return after two exposures with ≥90% secure reps. Keep floor practice where safe.',
+          }),
+        ];
+      if (mode === 'balance' && ['snatch', 'cj'].includes(e.id)) {
+        const n = Math.min(2, e.sets),
+          pause = tech({
+            key: e.key + '_knee_pause',
+            name: 'Knee-pause ' + e.name.toLowerCase(),
+            sets: n,
+            reps: e.id === 'cj' ? '1+1' : 1,
+            range: [50, 65],
+            rest: 120,
+            note: 'Pause 2 s at the knee. Replace the first two work sets. Remaining work uses a secure lower load. Return after two exposures with repeatable balance.',
+          });
+        return [
+          pause,
+          {
+            ...base,
+            sets: e.sets - n,
+            range: [e.range[0], e.range[0]],
+            note: e.note + ' Use a secure lower load after knee-pause work.',
+          },
+        ].filter((x) => x.sets);
+      }
+      if (family === 'jerk' && ['stance', 'dip'].includes(mode))
+        return [
+          tech({
+            id: 'pause_jerk',
+            key: 'jerk_regression',
+            name:
+              mode === 'stance'
+                ? 'Light-bar split jerk · 2 s split hold'
+                : 'Pause-dip split jerk · light regression',
+            sets: 3,
+            reps: 2,
+            range: mode === 'dip' ? [40, 60] : null,
+            anchor: mode === 'dip' ? (anchors.jerk ? 'jerk' : 'cj') : null,
+            effort: 6,
+            rest: 90,
+            note:
+              (mode === 'dip' ? 'Pause 1 s in the dip; ' : '') +
+              'hold the split 2 s. Front foot partway back, then rear foot forward. Return after two secure exposures.',
+            warmup: 'Unweighted footwork 2×3 first, then secure light bar rehearsals.',
+          }),
+        ];
+      return [e];
+    })
+    .filter(
+      (e, i, all) => e.key !== 'jerk_regression' || all.findIndex((x) => x.key === e.key) === i,
+    );
 }
 function session(id, title, rows, kind = 'lifting', note = '') {
   return {
@@ -654,6 +843,14 @@ function dayPlan(config, day, context = {}) {
     ...copy(config),
     anchors: { ...defaults().anchors, ...config.anchors },
   };
+  // Remove earned heavy/assessment additions before building a verification day.
+  if (context.event === 'verification') {
+    c.heavy = defaults().heavy;
+    c.assessment = 'none';
+    c.rackLoad = null;
+  }
+  if (c.recovery !== 'normal' || context.readiness === 'amber' || context.readiness === 'red')
+    c.assessment = 'none';
   const info = weekInfo(c.week),
     { week } = info;
   let phase = info.phase;
@@ -691,11 +888,15 @@ function dayPlan(config, day, context = {}) {
     ];
     if (taper) {
       const [n, l, h, e] = taper;
-      ol = [oly('snatch', n, 1, [l, h], 'snatch', e), oly('cj', n, '1+1', [l, h], 'cj', e)];
+      const rest = day === 'tuesday' ? 180 : day === 'thursday' ? 120 : 150;
+      ol = [
+        oly('snatch', n, 1, [l, h], 'snatch', e, rest),
+        oly('cj', n, '1+1', [l, h], 'cj', e, rest),
+      ];
     }
     if (day === 'monday' || day === 'saturday')
       conv = [
-        failure('bench', 1, ...(day === 'monday' ? [3, 5] : [6, 8]), 240, {
+        failure('bench', 1, ...(day === 'monday' ? [3, 5] : [6, 8]), day === 'monday' ? 270 : 210, {
           key: day === 'monday' ? 'bench_low' : 'bench_moderate',
         }),
       ];
@@ -712,6 +913,7 @@ function dayPlan(config, day, context = {}) {
           270,
           {
             test: true,
+            afterRest: id === 'snatch' ? 540 : null,
             technicalBenchmark: technical,
             note: technical
               ? 'Technical benchmark ≤85%; phase gate not met.'
@@ -737,6 +939,10 @@ function dayPlan(config, day, context = {}) {
     if (['tuesday', 'friday'].includes(day))
       conv = conventional(c, phase, day, week === 11 && day === 'friday');
   }
+  conv.forEach((e) => {
+    e.setupEpoch = c.setupEpoch?.[e.id] || 0;
+  });
+  ol = techniqueRows(ol, c.technique, day, c.anchors);
   if (ol.length || conv.length) {
     if (c.split && conv.some((e) => e.id === 'row')) {
       const split = conv.findIndex((e) => e.id === 'row');
@@ -767,9 +973,8 @@ function dayPlan(config, day, context = {}) {
     if (!(week === 11 && secondary)) {
       let d = secondary
         ? { jumpSets: 2, runs: a.secondary >= 2 ? 2 : 0, meters: 10, effort: '85–90%' }
-        : athleticDose(a.stage);
-      if (week === 11)
-        d = { ...d, jumpSets: Math.ceil(d.jumpSets / 2), runs: Math.ceil(d.runs / 2) };
+        : athleticDose(context.athleticReturn ? Math.max(0, a.stage - 1) : a.stage);
+
       const rows = [
         {
           id: 'jump',
@@ -794,7 +999,14 @@ function dayPlan(config, day, context = {}) {
           rest: 180,
           note: EX.sprint[2],
         });
-      if (!secondary && week !== 11 && a.variation !== 'none' && d.runs >= 4 && d.meters === 20) {
+      if (
+        !secondary &&
+        context.variationExposure !== false &&
+        !context.athleticReturn &&
+        a.variation !== 'none' &&
+        d.runs >= 4 &&
+        d.meters === 20
+      ) {
         rows[1].sets -= 2;
         const id = a.variation === 'fly' ? 'fly' : 'cut';
         rows.push({
@@ -809,11 +1021,20 @@ function dayPlan(config, day, context = {}) {
           note: EX[id][2],
         });
       }
+      if (week === 11) {
+        rows[0].sets = Math.ceil(rows[0].sets / 2);
+        let budget = Math.ceil(d.runs / 2);
+        rows.slice(1).forEach((e) => {
+          const n = Math.min(e.sets, budget);
+          e.sets = Math.min(n, Math.ceil(e.sets / 2));
+          budget -= e.sets;
+        });
+      }
       plan.sessions.push(
         session(
           'field',
           secondary ? 'Secondary athletic exposure' : 'Jumps & accelerations',
-          rows,
+          rows.filter((e) => e.sets > 0),
           'field',
           'After priority lifting, preferably ≥3 h later. If one visit: 5-min transition before the running warm-up.',
         ),
@@ -866,21 +1087,32 @@ function dayPlan(config, day, context = {}) {
     plan.notes.push(
       'Cutting: retain the current plan initially. Reduce set count only when recovery calls for it; failure endpoints stay the same.',
     );
-  return applyReadiness(plan, context, c.recovery);
+  if (context.athleticReturn)
+    plan.notes.push(
+      'More than 14 days away: one athletic step lower for two good exposures, then restore the prior dose.',
+    );
+  // Restore one set per row per successful exposure, never above the current phase's dose.
+  if (c.recovery === 'restore') {
+    for (const s of plan.sessions)
+      for (const e of s.rows) {
+        const cap = context.restoreCaps?.[s.id]?.[e.key];
+        if (e.sets) e.sets = Math.min(e.sets, cap ?? 1);
+        e.holdLoad = true;
+        e.reduced = true;
+        if (e.sequence) e.sequence = e.sequence.slice(0, e.sets);
+        if (e.repSequence) e.repSequence = e.repSequence.slice(0, e.sets);
+      }
+    plan.notes.push(
+      'Repeat the last successful phase week. Restore at most one set per row per successful exposure; hold other additions. Confirm subsequent recovery before restoring another set.',
+    );
+  }
+  return applyReadiness(plan, context, c.recovery === 'restore' ? 'normal' : c.recovery);
 }
 function applyReadiness(plan, context = {}, recovery = 'normal') {
   const p = copy(plan),
     level = context.readiness || 'green';
-  if (context.event === 'verification')
-    p.sessions
-      .filter((s) => s.kind === 'field')
-      .forEach((s) => {
-        s.skipped = true;
-        s.skipReason =
-          'Verification return: defer optional athletic work until the next normal exposure.';
-      });
   const red = level === 'red' || context.event === 'unsafe',
-    defer = context.event === 'game';
+    defer = ['game', 'fixed_game_defer'].includes(context.event);
   if (red || defer) {
     p.sessions.forEach((s) => {
       s.skipped = true;
@@ -893,6 +1125,28 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
         ? 'Red readiness: stop training. Do not use warm-ups to test sobriety.'
         : 'Keep the A–B–rest–C–D sequence when rolling whole sessions; no missed-volume debt.',
     );
+    if (
+      !red &&
+      context.event === 'game' &&
+      context.gameRehearsal &&
+      level === 'green' &&
+      !context.localIssue &&
+      recovery === 'normal'
+    ) {
+      const existing = plan.sessions
+        .flatMap((s) => s.rows)
+        .filter((e) => ['snatch', 'cj'].includes(e.id));
+      if (existing.length)
+        p.sessions.push(
+          session(
+            'rehearsal',
+            'Optional light rehearsal · whole workout remains deferred',
+            existing.map((e) =>
+              oly(e.id, Math.min(3, e.sets), e.id === 'cj' ? '1+1' : 1, [50, 60], e.id, 6, 120),
+            ),
+          ),
+        );
+    }
     return p;
   }
   const amber = level === 'amber',
@@ -915,7 +1169,16 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
     }
     s.rows = s.rows
       .filter((e) => {
-        if (amber && e.kind === 'failure') return false;
+        if (e.key === 'squat_support' && (verify || context.localIssue || recovery !== 'normal'))
+          return false;
+        if ((amber || context.event === 'fixed_game_ol') && e.kind === 'failure') return false;
+        if (
+          context.event === 'larger_later' &&
+          p.week === 12 &&
+          p.day === 'saturday' &&
+          e.id === 'bench'
+        )
+          return false;
         if (recovery === 'reset' && (e.id === 'pull' || (e.kind === 'failure' && e.id !== 'bench')))
           return false;
         if (recovery === 'targeted' && e.id === 'pull') return false;
@@ -938,6 +1201,7 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
             'curl',
             'triceps',
             'press',
+            'pull',
           ].includes(e.id)
         )
           return false;
@@ -967,16 +1231,24 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
       })
       .map((e) => {
         if (e.kind === 'quality' && (amber || recovery !== 'normal')) {
-          e.sets = Math.max(1, amber ? Math.floor((e.sets * 2) / 3) : Math.ceil(e.sets / 2));
+          e.sets = Math.max(
+            1,
+            Math.min(
+              amber ? Math.floor((e.sets * 2) / 3) : e.sets,
+              recovery !== 'normal' ? Math.ceil(e.sets / 2) : e.sets,
+            ),
+          );
+          e.reduced = true;
+          e.holdLoad = true;
           e.sequence = null;
           e.repSequence = null;
           e.finalEffort = null;
           e.test = false;
           e.assessment = false;
           if (amber && e.id === 'pull') e.effort = 7;
-          e.effort = recovery === 'reset' ? 6 : Math.min(7, e.effort);
-          if (recovery === 'reset') {
-            e.range = [50, 65];
+          e.effort = Math.min(recovery === 'reset' ? 6 : 7, e.effort);
+          if (recovery === 'reset' && !e.regression) {
+            e.range = e.range ? [Math.min(e.range[0], 50), Math.min(e.range[1], 65)] : [50, 65];
             if (!e.anchor) e.anchor = e.id === 'clean' ? 'cj' : e.id === 'jerk' ? 'cj' : 'snatch';
             e.workingLoad = null;
           } else if (e.range) {
@@ -985,12 +1257,16 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
               : [e.range[0], e.range[0]];
           }
           if (amber && e.workingLoad) e.workingLoad *= 0.925;
-          if (!e.range && !e.workingLoad) {
+          if (!e.range && !e.workingLoad && !e.regression) {
             e.range = [50, 60];
             e.anchor = 'cj';
           }
         }
         if (e.kind === 'quality' && verify) {
+          e.reduced = true;
+          e.holdLoad = true;
+          e.effort = Math.min(e.effort, 8);
+          if (e.test) e.range = [75, 85];
           if (e.range) e.range = [e.range[0], e.range[0]];
           e.sequence = null;
           e.finalEffort = null;
@@ -998,16 +1274,46 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
           e.assessment = false;
         }
         if (e.kind === 'failure' && (verify || context.localIssue)) e.sets = 1;
+        if (
+          e.kind === 'failure' &&
+          (verify ||
+            context.localIssue ||
+            recovery !== 'normal' ||
+            ['limited_later', 'larger_later'].includes(context.event))
+        )
+          e.holdLoad = true;
         if (e.kind === 'failure' && recovery === 'targeted')
           e.sets = Math.min(e.sets, ['incline', 'lateral'].includes(e.id) ? 2 : 1);
         return e;
       });
+    if (verify || context.localIssue || recovery === 'targeted') {
+      const partial = s.rows.find((e) => e.key === 'calf_partial');
+      if (partial) s.rows = s.rows.filter((e) => e.id !== 'calf' || e.key === 'calf_partial');
+    }
+    if (
+      s.kind === 'field' &&
+      (context.replaceAthletics ||
+        context.event === 'fixed_game_ol' ||
+        context.localIssue === 'lower')
+    ) {
+      s.skipped = true;
+      s.skipReason =
+        'Demanding game or residual leg impairment replaces overlapping athletic work.';
+    }
     if (!s.rows.length) {
       s.skipped = true;
       s.skipReason = 'No eligible work under today’s readiness.';
     }
     s.totalMin = estimate(s.rows, s.kind);
   });
+  if (['limited_later', 'larger_later'].includes(context.event))
+    p.notes.push(
+      'Sober and ready before the planned event: hold all new additions. Larger/unfamiliar event: keep the next day flexible; taper-week Saturday bench moves after the event.',
+    );
+  if (context.event === 'fixed_game_ol')
+    p.notes.push(
+      'Fixed demanding game later: priority Olympic work only while ready; failure work omitted. Rescue bench on a ready day without replaying completed Olympic work.',
+    );
   if (verify)
     p.notes.push(
       'Verification return: confirmed sober and recovered; low-end Olympic work, no PRs, at most 1 failure set per already prescribed row. No athletic progression.',
@@ -1020,6 +1326,7 @@ function applyReadiness(plan, context = {}, recovery = 'normal') {
 }
 function loadRange(ex, anchors, index = 0, increment = 2.5) {
   if (ex.test && !ex.technicalBenchmark && index > 0) return null;
+  if (!ex.reduced && ex.heldLoads?.[index]) return [ex.heldLoads[index], ex.heldLoads[index]];
   if (ex.workingLoad) return [ex.workingLoad, ex.workingLoad];
   const range = ex.sequence?.[index] || ex.range;
   const anchor = anchors[ex.anchor];
@@ -1047,6 +1354,12 @@ function nextLoad(ex, exposures) {
     };
   if (rows.some((r) => r.reps < min))
     return { action: 'reduce', weight: weight * 0.925, text: 'Below range: reduce about 5–10%.' };
+  if (ex.holdLoad)
+    return {
+      action: 'hold',
+      weight: ex.heldWeight || weight,
+      text: 'Hold the most recent secure load and dose; reductions remain allowed. Resume progression in an eligible normal exposure.',
+    };
   const allTop = rows.every((r) => r.reps >= max),
     same = rows.every((r) => Number(r.weight) === weight);
   const special = ['front_squat', 'back_squat'].includes(ex.id) || ex.key === 'bench_low';
@@ -1055,6 +1368,12 @@ function nextLoad(ex, exposures) {
       action: 'increase',
       weight: weight + 2.5,
       text: 'Above the rep window: +2.5–5 lb next eligible exposure, if recovery stayed normal.',
+    };
+  if (ex.checkpoint)
+    return {
+      action: 'hold',
+      weight,
+      text: 'Checkpoint: repeat the preceding load. Only a rep-window load correction is permitted.',
     };
   const two = ex.sets === 1 || special,
     prev = history.at(-2);

@@ -29,16 +29,16 @@ is never owed.
 
 ## Architecture
 
-| File | Purpose |
-| --- | --- |
-| `js/program.js` | Pure Revision 6 templates, phases, exercise menu, dose/recovery transforms, loading and failure progression. |
-| `js/model.js` | Migration, quality-attempt accounting, miss protocol, weekly review, legacy bench timestamps. |
-| `js/app.js` | Responsive UI, ordered workout execution, logging, persistence, timers, history, controls and guide. |
-| `js/sync.js` | Optional existing Google Drive synchronization, with revision/active-session guards. |
-| `styles.css` | Mobile-first app styles. |
-| `sw.js` | Scoped network-first caching and offline shell. |
-| `tests/*.test.js` | No-dependency domain, migration and sync policy tests. |
-| `tests/browser-smoke.cjs` | Optional Playwright integration smoke test. |
+| File                      | Purpose                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `js/program.js`           | Pure Revision 6 templates, phases, exercise menu, dose/recovery transforms, loading and failure progression. |
+| `js/model.js`             | Migration, quality-attempt accounting, miss protocol, weekly review, legacy bench timestamps.                |
+| `js/app.js`               | Responsive UI, ordered workout execution, logging, persistence, timers, history, controls and guide.         |
+| `js/sync.js`              | Optional existing Google Drive synchronization, with revision/active-session guards.                         |
+| `styles.css`              | Mobile-first app styles.                                                                                     |
+| `sw.js`                   | Scoped network-first caching and offline shell.                                                              |
+| `tests/*.test.js`         | No-dependency domain, migration and sync policy tests.                                                       |
+| `tests/browser-smoke.cjs` | Optional Playwright integration smoke test.                                                                  |
 
 `PROGRAM.dayPlan(training, dayKey, context)` is pure. A started workout stores a
 complete prescription snapshot and its own anchors, cycle/week/exposure, actual
@@ -104,6 +104,16 @@ cannot interrupt an active workout. Synchronization is still newest-state wins,
 not a conflict-free merge of simultaneously edited devices. Real Google account
 sync should be checked in the signed-in deployment; automated tests use fixtures.
 
+## Source-conformance follow-up
+
+See [PROGRAM-CONFORMANCE.md](PROGRAM-CONFORMANCE.md) for the source identity,
+clause-to-workflow mapping, literal-source tests and deliberate review inputs.
+The follow-up corrects taper rests and the inter-lift timer, adds all technique
+regressions as selectable replacements, holds actual assistance loads, preserves
+paused trial identity, adds gradual recovery restoration, and handles alternate
+athletic exposures/returns and distinct event paths. Machine/setup changes can
+start a fresh load comparison. Previous workout snapshots remain unchanged.
+
 ## Verification
 
 ```sh
@@ -120,6 +130,7 @@ With Playwright installed and Chrome available:
 
 ```sh
 node tests/browser-smoke.cjs
+node tests/browser-conformance.cjs
 ```
 
 Optional environment variables: `OLY_TEST_URL`, `OLY_BROWSER_CHANNEL`; `NODE_PATH`

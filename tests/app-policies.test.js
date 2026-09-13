@@ -168,7 +168,7 @@ test('week review repeats and advances without recycling session identity or rep
 });
 test('dose controls reject simultaneous additions, skipped stages and held-week increases', () => {
   const a = app();
-  a.ctx.t = P.defaults();
+  a.ctx.t = { ...P.defaults(), entryStage: 3 };
   a.ctx.n = structuredClone(a.ctx.t);
   a.ctx.n.athletics.enabled = true;
   assert.equal(a.run("validateDose({...t,week:5},n,true,'Two stable green weeks')"), '');

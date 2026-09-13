@@ -105,18 +105,11 @@ function readiness() {
 function plan(day, actual = false) {
   const r = readiness(),
     use = actual || day === PROGRAM.days[(new Date().getDay() + 6) % 7];
-  return PROGRAM.dayPlan(
-    STATE.training,
-    day,
-    use
-      ? {
-          readiness: r.level,
-          event: r.event,
-          localIssue: r.localIssue,
-          pivotResidual: r.pivotResidual,
-        }
-      : {},
-  );
+  const context = {
+    ...MODEL.historyContext(STATE.training, STATE.records, day),
+    ...(use ? { ...r, readiness: r.level } : {}),
+  };
+  return MODEL.withHistoricalLoads(PROGRAM.dayPlan(STATE.training, day, context), STATE.records);
 }
 function recordsFor(day, id) {
   return STATE.records.filter(
@@ -236,7 +229,14 @@ function setReadiness() {
     event: $('event').value,
     localIssue: $('local-issue').value,
     pivotResidual: $('pivot-residual').checked,
+    gameRehearsal: $('game-rehearsal').checked,
+    replaceAthletics: $('replace-athletics').checked,
+    eventNotes: $('event-notes').value,
   };
+  if (STATE.readiness.eventNotes || STATE.readiness.event !== 'normal') {
+    STATE.events = (STATE.events || []).filter((e) => e.date !== STATE.readiness.date);
+    STATE.events.push({ ...STATE.readiness, at: Date.now() });
+  }
   save();
   render();
 }
@@ -261,11 +261,25 @@ function startWorkout(day, id, rescueRange = null) {
       toast('This bench exposure has already been logged. Do not repeat it as a rescue.');
       return;
     }
-    const ex = PROGRAM.failure('bench', 1, ...(rescueRange === 'low' ? [3, 5] : [6, 8]), 240, {
-      key: 'bench_' + (rescueRange === 'low' ? 'low' : 'moderate'),
-    });
+    const ex = PROGRAM.failure(
+      'bench',
+      1,
+      ...(rescueRange === 'low' ? [3, 5] : [6, 8]),
+      rescueRange === 'low' ? 270 : 210,
+      {
+        key: 'bench_' + (rescueRange === 'low' ? 'low' : 'moderate'),
+        setupEpoch: STATE.training.setupEpoch?.bench || 0,
+      },
+    );
     s = PROGRAM.session('rescue_' + rescueRange, 'Deferred ' + rescueRange + '-rep bench', [ex]);
-    if (readiness().level !== 'green' || ['unsafe', 'game'].includes(readiness().event)) {
+    if (
+      readiness().level !== 'green' ||
+      ['unsafe', 'game', 'fixed_game_defer', 'fixed_game_ol'].includes(readiness().event) ||
+      readiness().localIssue === 'upper' ||
+      (STATE.training.week === 12 &&
+        new Date().getDay() === 6 &&
+        readiness().event === 'larger_later')
+    ) {
       toast('Defer bench until ready.');
       return;
     }
@@ -349,7 +363,7 @@ function begin(session, day, p) {
     trialSnapshot: { ...STATE.training.trial },
     sets: [],
     omitted: [],
-    notes: '',
+    notes: readiness().eventNotes || '',
     warmupDone: false,
   };
   STATE.restEnd = 0;
@@ -647,7 +661,12 @@ function submitSet(index) {
   const after = logged(ex).length,
     slot = MODEL.slotAt(ex, after - 1),
     nextSlot = MODEL.slotAt(ex, after);
-  const rest = q && slot === nextSlot && !status(ex).done ? 20 : ex.rest || 0;
+  const rest =
+    q && status(ex).done && ex.afterRest
+      ? ex.afterRest
+      : q && slot === nextSlot && !status(ex).done
+        ? 20
+        : ex.rest || 0;
   STATE.restEnd = rest ? Date.now() + rest * 1000 : 0;
   save();
   closeModal();
@@ -823,6 +842,14 @@ function renderHistory() {
       )
       .join('') +
     (!rows.length ? '<div class="empty">Your first logged session will appear here.</div>' : '') +
+    (STATE.events || [])
+      .slice()
+      .reverse()
+      .map(
+        (e) =>
+          `<details class="history-card"><summary>Pickup / event · ${esc(e.date)}</summary><p>${esc(e.event)} · ${esc(e.level)}</p><p>${esc(e.eventNotes || 'No additional notes.')}</p></details>`,
+      )
+      .join('') +
     (STATE.legacy
       ? `<details class="history-card"><summary>Previous program archive · preserved unchanged</summary><p>${Object.keys(STATE.legacy.log || {}).length} historical sessions. Old loads and any unfinished workout are included in this archive and full exports.</p>${button('Download previous program data', 'exportLegacy()', 'button')}<pre>${esc(JSON.stringify(STATE.legacy.log || {}, null, 2))}</pre></details>`
       : '') +
@@ -870,11 +897,13 @@ function openReview() {
       'review-recovery',
       [
         ['normal', 'Normal / held dose'],
+        ['restore', 'Gradual return · repeat week, +1 set per row per successful exposure'],
         ['targeted', 'Targeted reduction'],
         ['reset', 'Full reset'],
       ],
       'normal',
     )}
+    ${t.recovery === 'restore' ? checkbox('The prior tolerated dose is restored across the schedule and recovery remains normal', 'restore-complete') : ''}
     <label class="field">Review notes<textarea id="review-notes" placeholder="C→D rack-jerk cost? Squat support? Incline/delt/trap tolerance? One change to trial…"></textarea></label>
     <p id="review-error" class="error"></p>${button('Save review', 'submitReview()', 'primary wide')}`,
   );
@@ -894,6 +923,15 @@ function submitReview() {
     action: $('review-action').value,
     notes: $('review-notes').value,
   };
+  if (
+    $('review-recovery').value === 'restore' ||
+    (STATE.training.recovery !== 'normal' &&
+      $('review-recovery').value === 'normal' &&
+      !(STATE.training.recovery === 'restore' && $('restore-complete')?.checked && green))
+  ) {
+    review.action = 'repeat';
+    $('review-recovery').value = 'restore';
+  }
   STATE.training = MODEL.reviewAdvance(STATE.training, review);
   STATE.training.recovery = $('review-recovery').value;
   save();
@@ -931,7 +969,11 @@ function renderSettings() {
         'event',
         [
           ['normal', 'Normal / casual low-demand skills'],
-          ['game', 'Demanding pickup game · defer affected session'],
+          ['game', 'Completed demanding game · defer affected session'],
+          ['fixed_game_defer', 'Fixed demanding game later · defer whole session'],
+          ['fixed_game_ol', 'Fixed demanding game later · Olympic work only'],
+          ['limited_later', 'Known limited alcohol event later · sober and ready now'],
+          ['larger_later', 'Larger/unfamiliar alcohol event later · sober and ready now'],
           [
             'verification',
             'Sober and recovered after larger/uncertain exposure · verification return',
@@ -950,6 +992,9 @@ function renderSettings() {
         ],
         r.localIssue,
       )}
+      ${checkbox('Completed game: optional secure light rehearsal (whole lifting session stays deferred)', 'game-rehearsal', r.gameRehearsal)}
+      ${checkbox('Demanding game replaces today’s overlapping athletic module / residual leg impairment', 'replace-athletics', r.replaceAthletics)}
+      <label class="field">Pickup / event record<textarea id="event-notes" placeholder="Actual duration, effort, fast movements, contact, symptoms…">${esc(r.eventNotes || '')}</textarea></label>
       ${checkbox('Pivot has residual fatigue: one set per conventional exercise', 'pivot-residual', r.pivotResidual)}
       ${button('Apply to today', 'setReadiness()', 'button')}
     </section>
@@ -985,8 +1030,86 @@ function renderSettings() {
       ${checkbox('Leg-extension machine cannot support reclined position: use upright', 'extension-fallback', t.legExtUpright)}
       ${checkbox('A doubles impair B: hold Monday snatch at 4×2', 'reduce-monday', t.reduceMondaySnatch)}
       ${checkbox('C jerks impair D: one fewer C jerk set; suspend C assistance', 'reduce-jerk', t.reduceCJerk)}
+      ${select(
+        'Incline press · keep chosen setup consistent',
+        'incline-choice',
+        [
+          ['machine', 'Machine'],
+          ['smith', 'Smith'],
+          ['db', 'Dumbbells'],
+        ],
+        t.incline,
+      )}
+      ${select(
+        'Leg curl',
+        'legcurl-choice',
+        [
+          ['seated', 'Seated'],
+          ['lying', 'Lying fallback'],
+        ],
+        t.legCurl,
+      )}
+      ${select(
+        'Crunch',
+        'crunch-choice',
+        [
+          ['machine', 'Machine'],
+          ['cable', 'Cable'],
+        ],
+        t.crunch,
+      )}
+      ${select(
+        'Supported row',
+        'row-choice',
+        [
+          ['chest', 'Chest-supported'],
+          ['machine', 'Supported machine'],
+        ],
+        t.supportedRow,
+      )}
+      ${checkbox('Base lower accessories impair recovery: curl/calf 1 each; omit extension/crunch', 'lower-dose', t.lowerDose)}
+      ${checkbox('Known longer lower-body recovery: omit affected lower rows on week 11 Friday', 'last-lower', t.omitLastLower)}
       ${button('Save schedule & equipment', 'saveEquipment()', 'button')}
+      <details><summary>Changed machine or range of motion</summary><p>Choose the affected exercise to start a fresh load comparison with a conservative estimate.</p>${select(
+        'Exercise',
+        'new-setup-exercise',
+        Object.entries(PROGRAM.exercises)
+          .filter(([, v]) => v[1] === 'failure')
+          .map(([id, v]) => [id, v[0]]),
+        'incline',
+      )}${button('Start a fresh load comparison', 'resetSetupComparison()', 'button')}</details>
     </section>
+    <details class="settings-card"><summary><h2>Technique regressions</h2></summary>
+      <p class="muted">Select the observed limitation. These replace affected Olympic work and never use failure. Pain or globally abnormal readiness still overrides them.</p>
+      ${['snatch', 'clean']
+        .map((id) =>
+          select(
+            id === 'snatch' ? 'Snatch' : 'Clean / clean & jerk',
+            'technique-' + id,
+            [
+              ['none', 'Ordinary prescription'],
+              ['receive', 'Unsafe receiving position · technique-bar paused squat rehearsals'],
+              ['return', 'Receiving position restored · 4 singles at 40–60%'],
+              ['turnover', 'Slow turnover · high-hang replacement on A/B'],
+              ['balance', 'Floor balance fault · first two sets become knee-pause singles'],
+            ],
+            t.technique?.[id] || 'none',
+          ),
+        )
+        .join('')}
+      ${select(
+        'Rack jerk',
+        'technique-jerk',
+        [
+          ['none', 'Ordinary prescription'],
+          ['stance', 'Stance/recovery fault · light bar and 2 s split hold'],
+          ['dip', 'Dip drift · 40–60% RJ (CJ if unassessed), 1 s dip + 2 s split hold'],
+        ],
+        t.technique?.jerk || 'none',
+      )}
+      <p class="muted small">Receiving return requires three secure light warm-up reps and safe release. Turnover, balance and jerk regressions require two secure exposures before return. Film first and last sets; one fault and one cue. Persistent for two weeks: seek coaching.</p>
+      ${button('Save technique prescription', 'saveTechnique()', 'button')}
+    </details>
     <details class="settings-card"><summary><h2>Optional dose & assistance</h2></summary><p class="muted">Introduce in normal F/B after two stable green weeks, one dose change at a time. Checkpoints and Realization hold earned doses; taper omits them. Review assistance at 2 / 4 / 8 exposures.</p>
       ${select(
         'Athletic module',
@@ -1072,6 +1195,15 @@ function renderSettings() {
         t.trial.day,
       )}
       ${select(
+        'Relevant squat for support trial',
+        'trial-squat',
+        [
+          ['front_squat', 'Front squat'],
+          ['back_squat', 'High-bar back squat'],
+        ],
+        t.trial.squat || (t.trial.day === 'tuesday' ? 'front_squat' : 'back_squat'),
+      )}
+      ${select(
         'Accessory for extra-set trial',
         'trial-exercise',
         PROGRAM.accessories.map((x) => [x[0], PROGRAM.exercises[x[0]][0]]),
@@ -1082,6 +1214,7 @@ function renderSettings() {
       <label class="field">Reason for this one change<textarea id="dose-reason" placeholder="What the log showed; what to review next…"></textarea></label>
       <p id="dose-error" class="error"></p>${button('Save reviewed dose', 'saveDose()', 'button')}
       ${t.trial.kind !== 'none' ? button('Review current assistance trial', 'openTrialReview()', 'button') : ''}
+      ${[...(t.established || []), t.trial].some((x) => x.paused) ? button('Resume paused assistance after readiness review', 'resumeTrials()', 'button') : ''}
       ${(t.established || []).length ? '<h3 style="margin-top:20px">Established additions</h3>' : ''}
       ${(t.established || []).map((trial, i) => `<p class="muted">${esc(trialLabel(trial))} ${button('Remove', `removeEstablished(${i})`, 'text-button')}</p>`).join('')}
     </details>
@@ -1183,8 +1316,64 @@ function saveEquipment() {
   t.legExtUpright = $('extension-fallback').checked;
   t.reduceMondaySnatch = $('reduce-monday').checked;
   t.reduceCJerk = $('reduce-jerk').checked;
+  t.incline = $('incline-choice').value;
+  t.legCurl = $('legcurl-choice').value;
+  t.crunch = $('crunch-choice').value;
+  t.supportedRow = $('row-choice').value;
+  t.lowerDose = $('lower-dose').checked;
+  t.omitLastLower = $('last-lower').checked;
   save();
   toast('Schedule and equipment saved.');
+  render();
+}
+function resetSetupComparison() {
+  STATE.training.setupEpoch = {
+    ...STATE.training.setupEpoch,
+    [$('new-setup-exercise').value]: Date.now(),
+  };
+  save();
+  render();
+  toast('Fresh load comparison set. Previous work remains in History.');
+}
+function saveTechnique() {
+  STATE.training.technique = Object.fromEntries(
+    ['snatch', 'clean', 'jerk'].map((id) => [id, $('technique-' + id).value]),
+  );
+  save();
+  render();
+  toast('Technique replacements saved.');
+}
+function resumeTrials() {
+  const t = STATE.training;
+  if (
+    ![1, 2, 3].includes(t.week) ||
+    t.recovery !== 'normal' ||
+    readiness().level !== 'green' ||
+    readiness().event !== 'normal'
+  )
+    return toast('Resume only in a ready normal Foundation exposure.');
+  showModal(
+    'Resume paused assistance',
+    '<p>Keep the original baseline, hypothesis, dose and history. Confirm current tolerance again after two exposures; the 4/8-exposure benefit review keeps the original log.</p>' +
+      checkbox('Locally ready; the previous trial remains promising', 'resume-ready') +
+      button('Resume same trials', 'confirmResumeTrials()', 'primary'),
+  );
+}
+function confirmResumeTrials() {
+  if (!$('resume-ready').checked) return;
+  const t = STATE.training;
+  for (const trial of [...(t.established || []), t.trial])
+    if (trial.paused) {
+      trial.paused = false;
+      trial.resumedAt = Date.now();
+    }
+  t.review.push({
+    kind: 'trial-resume',
+    at: Date.now(),
+    notes: 'Original trials retained; renewed tolerance review after two exposures.',
+  });
+  save();
+  closeModal();
   render();
 }
 function athleticDescription(stage) {
@@ -1195,6 +1384,7 @@ function saveDose() {
   const t = STATE.training,
     next = {
       athletics: {
+        ...t.athletics,
         enabled: $('athletic-enabled').value === '1',
         stage: Number($('athletic-stage').value),
         day: $('athletic-day').value,
@@ -1211,6 +1401,7 @@ function saveDose() {
         kind: $('trial-kind').value,
         day: $('trial-day').value,
         exercise: $('trial-exercise').value,
+        ...($('trial-kind').value === 'squat' ? { squat: $('trial-squat').value } : {}),
       },
       omitPull: $('omit-pull').checked,
     };
@@ -1221,7 +1412,11 @@ function saveDose() {
     $('dose-error').textContent = error;
     return;
   }
-  if (JSON.stringify(t.trial) !== JSON.stringify(next.trial)) next.trial.startedAt = Date.now();
+  if (JSON.stringify(t.trial) !== JSON.stringify(next.trial)) {
+    next.trial.startedAt = Date.now();
+    next.trial.paused = false;
+    delete next.trial.resumedAt;
+  }
   t.review.push({
     at: Date.now(),
     week: t.week,
@@ -1259,10 +1454,14 @@ function validateDose(t, n, ready, reason) {
     (n.trial.kind !== 'none' && JSON.stringify(n.trial) !== JSON.stringify(t.trial)) ||
     (n.athletics.variation !== 'none' && n.athletics.variation !== t.athletics.variation) ||
     n.athletics.variationEffort > t.athletics.variationEffort;
+  if (increases && t.onboarding && t.cycle === 1 && t.entryStage < 3)
+    return 'Complete the entry ramp before introducing optional dose.';
   if (increases && PROGRAM.weekInfo(t.week).held)
     return 'No new dose in checkpoint, Realization, taper or pivot. Retain or reduce an earned dose.';
   if (increases && (!ready || !reason.trim()))
     return 'Record the eligibility review and a reason for the change.';
+  if (increases && readiness().event !== 'normal')
+    return 'Hold additions around today’s event / verification return.';
   if (increases && t.recovery !== 'normal') return 'Restore normal recovery before adding dose.';
   if (n.athletics.stage > t.athletics.stage + 1)
     return 'Advance only one athletic step after two productive exposures.';
@@ -1308,7 +1507,7 @@ function openTrialReview() {
   ).length;
   showModal(
     'Assistance trial review',
-    `<p>${esc(trialLabel(t))}</p><p>${exposures} logged trial exposures. Review tolerance at 2, direction at 4, benefit at 8; a promising trial may continue another 4. Stop for pain or interference.</p>${select(
+    `<p>${esc(trialLabel(t))}</p><p>${exposures} logged trial exposures.${t.paused ? ' Paused: identity and log retained for next Foundation.' : ''}${t.resumedAt ? ' Resumed: recheck tolerance after two new exposures.' : ''} Review tolerance at 2, direction at 4, benefit at 8; a promising trial may continue another 4. Stop for pain or interference.</p>${select(
       'Decision',
       'trial-decision',
       [
@@ -1355,7 +1554,8 @@ function saveHeavy() {
       extraCj: Number($('extra-cj').value),
     },
     assessment = $('assessment').value;
-  const cap = t.phaseGate === 'F' ? 90 : t.phaseGate === 'B' ? 92 : 95;
+  const phase = PROGRAM.dayPlan(t, 'friday').phase;
+  const cap = phase === 'F' ? 90 : phase === 'B' ? 92 : 95;
   const error = (msg) => {
     $('heavy-error').textContent = msg;
   };
@@ -1364,6 +1564,8 @@ function saveHeavy() {
   if ([h.extraSnatch, h.extraCj].some((n) => !Number.isInteger(n) || n < 0 || n > 12))
     return error('Enter a whole replacement count from 0–12.');
   const increases = Object.keys(h).some((k) => h[k] > t.heavy[k]);
+  if (increases && readiness().event !== 'normal')
+    return error('Hold heavy additions around today’s event.');
   if (increases && ([4, 8, 11, 12, 13].includes(t.week) || t.recovery !== 'normal'))
     return error('No added heavy exposure in checkpoints, week 11/12, pivot or reduced weeks.');
   // Final-D load can progress within Realization, but new weekly dose cannot.
@@ -1371,7 +1573,7 @@ function saveHeavy() {
     return error(
       'Add only one weekly replacement for one lift after two green weeks at the current dose.',
     );
-  if ((h.extraSnatch || h.extraCj) && t.phaseGate === 'F')
+  if ((h.extraSnatch || h.extraCj) && phase === 'F')
     return error('Additional >90% practice requires Build/Realization eligibility.');
   const snatchChanged = h.snatch !== t.heavy.snatch || h.extraSnatch !== t.heavy.extraSnatch,
     cjChanged = h.cj !== t.heavy.cj || h.extraCj !== t.heavy.extraCj;
@@ -1385,7 +1587,14 @@ function saveHeavy() {
     return error(
       'Resolve the C-to-D recovery issue before replacing reduced jerk work with an assessment.',
     );
-  if (assessment !== 'none' && (!['F', 'B'].includes(info().phase) || !$('heavy-ready').checked))
+  if (
+    assessment !== 'none' &&
+    (!['F', 'B'].includes(info().phase) ||
+      !$('heavy-ready').checked ||
+      t.recovery !== 'normal' ||
+      readiness().level !== 'green' ||
+      readiness().event !== 'normal')
+  )
     return error(
       'Component assessments require two secure weeks in F/B, including a green checkpoint.',
     );
@@ -1482,6 +1691,23 @@ async function importData(input) {
 }
 const GUIDE = [
   [
+    'Receiving, feedback and release',
+    'Before challenging catches, obtain qualified instruction in releasing the bar. Until then use a secure technique bar or light practice. Check three secure light overhead squats, front squats and split catches before loading. Recover the split with the front foot partway back, then rear foot forward; no chasing or press-out. Film the first and last work sets from a consistent angle. Rate the rep before watching; pick one fault and one cue. Persistent fault for two weeks: seek coaching.',
+  ],
+  [
+    'Technique replacements',
+    'Use Settings → Technique regressions for the exact replacement rows. Unsafe receive: technique-bar overhead/front squat 3×3 with 2 s pause, effort ≤4, 60–90 s rest. Return after three secure light warm-up reps and safe release: 4 singles at 40–60%, 2 min rest. Slow turnover: B hang snatch becomes high-hang full snatch 3×2 at 40–60% SN; A CJ becomes high-hang full clean + jerk 3 pairs at 40–60% CJ. Knee balance: first two work sets become knee-pause singles at 50–65%, 2 s pause, 2 min rest; remaining work at a secure lower load. Jerk stance: unweighted footwork 2×3, then light-bar split jerk 3×2 with 2 s split hold and 90 s rest. Dip drift: 3×2 at 40–60% RJ (CJ if unknown), 1 s dip pause and 2 s split hold, 90 s rest, effort ≤6. Return after two secure exposures.',
+  ],
+  [
+    'Pickup scheduling and warm-up',
+    'Demanding pickup replaces the nearest overlapping athletic session, secondary first. A possible later game does not cancel Monday in advance. If a later demanding game is optional, prioritize lifting and shorten or skip the game when needed. If fixed, select Olympic work only or whole-session deferral. After a completed demanding game, defer the affected whole workout; optional secure light rehearsal of up to three singles per lift at 50–60%, 2 min rest, does not complete it. Roll A–B–rest–C–D–rest–rest, normally no more than two consecutive Olympic days; add recovery days. Example: B Wednesday → C Friday → D Saturday. Completed Olympic work is not replayed to repay omitted failure work; bench alone is rescued. Contact: check neck, shoulders, rack and overhead positions. Two demanding games: remove the secondary athletic dose first. Avoid optional hard games in the final 5–7 days before testing; disrupted readiness defers max testing. Game warm-up: 3–5 min easy movement, ankle rocks/leg swings 8 per side, 2×3 landings, 2×10 m lateral shuffles, two sets of two planned 45° cuts per side at 60–75%, then 3×20 m at 60→85%; walk back and rest 60–90 s between landing/cut sets. Log actual duration, effort, fast movement, contact and symptoms.',
+  ],
+  [
+    'Progressive return after reduction',
+    'Repeat the last successful phase week and shift later dates. Choose Gradual return at weekly review. Restore multi-set rows by at most one set per row per successful exposure, capped by the current phase dose; confirm subsequent recovery in History before another increase. Keep other additions held. End the restoration mode only after the prior tolerated dose is again normal. If ordinary lower accessories are responsible, curl/calf become one set each and extension/crunch are omitted; retain the necessary squat only if its own quality and recovery remain normal. Remove a clearly implicated recent addition first.',
+  ],
+
+  [
     'The weekly prescription',
     'A Monday: snatch and CJ. B Tuesday: CJ, hang snatch, front squat, low-rep flat bench, accessories. C Thursday: snatch, rack jerk, provisional explosive snatch pulls. D Friday: snatch, CJ, high-bar squat, moderate flat bench, accessories. Split B/D after lateral raises if useful: 9 base failure sets in visit 1, 13 in visit 2 at least 3 h later. One visit is acceptable with full rest and normal execution.',
   ],
@@ -1523,11 +1749,11 @@ const GUIDE = [
   ],
   [
     'Squat / overhead assistance trials',
-    'After onboarding and two stable F/B weeks, explicitly review whether an extra relevant squat set could help clean stand-up or jerk drive; no plateau required. One extra 3–5 failure set after the base squat, before bench. Plausible fixation strength limitation can justify one Friday supported seated overhead press set 6–10 to failure, replacing an incline set. Paused dip assistance: 2 singles at 60–75% assessed RJ, 1 s pause, effort ≤7, replacing the first two C jerk sets. Without RJ use the distinct light 40–60% CJ regression. One trial at a time: tolerance at 2, direction at 4, benefit at 8 exposures; a promising trial may extend another 4. Stop for pain or interference.',
+    'After onboarding and two stable F/B weeks, explicitly review whether an extra relevant squat set could help clean stand-up or jerk drive; no plateau required. One extra 3–5 failure set after the base squat, before bench. Plausible fixation strength limitation can justify one Friday supported seated overhead press set 6–10 to failure, replacing an incline set. Paused dip assistance: 2 singles at 60–75% assessed RJ, 1 s pause, effort ≤7, replacing the first two C jerk sets. Without RJ use the distinct light 40–60% CJ regression: 3×2, 1 s dip pause and 2 s split hold, 90 s rest, effort ≤6. With assessed RJ the same technique regression uses 40–60% RJ; it is distinct from the 60–75% assistance trial. One trial at a time: tolerance at 2, direction at 4, benefit at 8 exposures; a promising trial may extend another 4. Stop for pain or interference.',
   ],
   [
     'Trial phase rules',
-    'Checkpoints and weeks 9–10 retain the earned dose/load. Week 11: no pause-dip trial; Tuesday conventional trial retained, Friday one set per prescribed exercise and no extra squat. A Friday press replaces its only incline set. Week 12: none. Week 13: base dose, hold conventional/jerk trials until next Foundation. At the next cycle explicitly review whether to restart a held trial.',
+    'Checkpoints and weeks 9–10 retain the earned dose/load. Week 11: no pause-dip trial; Tuesday conventional trial retained, Friday one set per prescribed exercise and no extra squat. A Friday press replaces its only incline set. Week 12: none. Week 13: base dose, hold conventional/jerk trials until next Foundation. At the next ready Foundation exposure, resume still-promising paused trials with their original identity and log; recheck tolerance after two exposures.',
   ],
   [
     'Component references and rack jerk',
@@ -1539,7 +1765,7 @@ const GUIDE = [
   ],
   [
     'Later athletic options and returns',
-    'After 4×20 m is tolerated, on alternate exposures replace the last two runs with 2 flying 10s (20 m run-in, 90%, then 95% after two successes, rest 3–4 min) OR two sets of a 45° cut/side (5 m in/out, 75–85% then 85–90%, rest 2 min). Toggle the replacement off on the intervening exposure. Review 24–36 jumps and 6–8 runs without treating those as ceilings. Checkpoint/R9–10 hold. Week 11: Monday only, half jump sets/run reps rounded up. Week 12: none. Pivot: recovered pre-taper dose, no additions. After >14 days away, step back once for two exposures. Games replace overlapping modules, secondary first.',
+    'After 4×20 m is tolerated, on alternate exposures replace the last two runs with 2 flying 10s (20 m run-in, 90%, then 95% after two successes, rest 3–4 min) OR two sets of a 45° cut/side (5 m in/out, 75–85% then 85–90%, rest 2 min). The app alternates the replacement using logged primary exposures; the intervening exposure uses ordinary accelerations. Review 24–36 jumps and 6–8 runs without treating those as ceilings. Checkpoint/R9–10 hold. Week 11: Monday only, half jump sets/run reps rounded up. Week 12: none. Pivot: recovered pre-taper dose, no additions. After >14 days away, step back once for two exposures. Games replace overlapping modules, secondary first.',
   ],
   [
     'Aerobics and mobility',
@@ -1551,7 +1777,7 @@ const GUIDE = [
   ],
   [
     'Dose review and physique priorities',
-    'Base per B/D: incline 3, lateral 4, row 2, pulldown 1, shrug 1, rear delt 1, curl 1, overhead triceps 1, seated leg curl 2, standing calf 2, reclined leg extension 1, crunch 1, plus one squat and one bench. One weekly set addition at a time after two stable normal F/B weeks; observe two weeks. Priority-1 support first, then incline/delts; early trap trial after the first successful cycle can move 2→4 weekly sets one at a time. No glute isolation; retain useful squats. Later first sets losing ≥2 reps repeatedly despite full rest: trial the split for two exposures, then remove the latest addition if impairment persists.',
+    'Base per B/D: incline 3, lateral 4, row 2, pulldown 1, shrug 1, rear delt 1, curl 1, overhead triceps 1, seated leg curl 2, standing calf 2, reclined leg extension 1, crunch 1, plus one squat and one bench. One weekly set addition at a time after two stable normal F/B weeks; observe two weeks. Priority-1 support first, then incline/delts; early trap trial during the first successful cycle can move 2→4 weekly sets one at a time. No glute isolation; retain useful squats. Later first sets losing ≥2 reps repeatedly despite full rest: trial the split for two exposures, then remove the latest addition if impairment persists.',
   ],
 ];
 function renderGuide() {

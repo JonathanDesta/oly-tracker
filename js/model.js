@@ -32,6 +32,7 @@ const MODEL = (() => {
           ...t,
           anchors: { ...base.anchors, ...t.anchors },
           heavy: { ...base.heavy, ...t.heavy },
+          technique: { ...base.technique, ...t.technique },
           athletics: { ...base.athletics, ...t.athletics },
           cardio: { ...base.cardio, ...t.cardio },
           trial: { ...base.trial, ...t.trial },
@@ -61,6 +62,7 @@ const MODEL = (() => {
       ts: data.ts || 0,
       training: P.defaults(),
       records: [],
+      events: [],
       pristine: Object.keys(data).length === 0,
       legacyArchives: [],
       activeWorkout: null,
@@ -71,7 +73,7 @@ const MODEL = (() => {
     };
   }
   function fingerprint(ex) {
-    return [ex.key, ex.name, ex.repRange?.join('-') || ex.reps].join('|');
+    return [ex.key, ex.name, ex.repRange?.join('-') || ex.reps, ex.setupEpoch || 0].join('|');
   }
   function qualityState(ex, rows) {
     let consecutive = 0,
@@ -139,7 +141,8 @@ const MODEL = (() => {
       t.week = 1;
       t.onboarding = false;
       t.entryStage = 3;
-      t.trial = { kind: 'none', day: 'friday', exercise: 'shrug' };
+      // Paused assistance retains its hypothesis, baseline, identity and exposure history.
+      // Resume explicitly after the next Foundation readiness review.
       t.recovery = 'normal';
     } else t.week++;
     if (t.onboarding && t.cycle === 1 && t.week <= 3 && review.green)
@@ -147,7 +150,109 @@ const MODEL = (() => {
     if (review.buildReady) t.phaseGate = 'B';
     if (review.realizationReady) t.phaseGate = 'R';
     t.assessment = 'none';
+    if (t.week === 12) {
+      for (const trial of [...(t.established || []), t.trial])
+        if (trial?.kind && trial.kind !== 'none') {
+          trial.paused = true;
+          trial.pausedAt = Date.now();
+        }
+    }
     return t;
+  }
+  function normalRecord(r) {
+    return (
+      r.context?.level === 'green' &&
+      r.recoveryNormal !== false &&
+      r.recoveryConfirmed === true &&
+      !r.context.localIssue &&
+      ['normal', undefined].includes(r.context.event)
+    );
+  }
+  function historyContext(training, records, day, now = Date.now()) {
+    const relevant = records.filter((r) => r.revision === 6 && r.day === day);
+    const restoreCaps = {};
+    if (training.recovery === 'restore') {
+      for (const id of ['main', 'accessories', 'field', 'cardio']) {
+        const last = relevant.filter((r) => r.session.id === id).at(-1);
+        restoreCaps[id] = {};
+        if (!last) continue;
+        const good = normalRecord(last);
+        for (const e of last.session.rows) {
+          const made = last.sets.filter((s) => s.exerciseKey === e.key);
+          const complete =
+            e.kind === 'quality'
+              ? qualityState(e, made).done &&
+                !qualityState(e, made).stop &&
+                made.filter(
+                  (s) =>
+                    s.outcome === 'make' &&
+                    s.grade !== 'C' &&
+                    s.effort <= (e.finalEffort || e.effort),
+                ).length /
+                  Math.max(1, made.length) >=
+                  0.9
+              : made.length >= e.sets && made.every((s) => s.endpoint === 'failure');
+          const prior = last.omitted?.includes(e.key) ? 0 : e.sets;
+          restoreCaps[id][e.key] = Math.max(1, prior + (good && complete ? 1 : 0));
+        }
+      }
+    }
+    const field = records
+      .filter((r) => r.session.kind === 'field' && r.session.id === 'field' && r.sets.length)
+      .sort((a, b) => a.startedAt - b.startedAt);
+    let returnStart = -1;
+    for (let i = 1; i < field.length; i++)
+      if (field[i].startedAt - field[i - 1].endedAt > 14 * 86400000) returnStart = i;
+    const gapNow = field.length && now - field.at(-1).endedAt > 14 * 86400000;
+    const goodReturns = returnStart >= 0 ? field.slice(returnStart).filter(normalRecord).length : 2;
+    const primary = field.filter((r) => r.session.title !== 'Secondary athletic exposure');
+    return {
+      restoreCaps,
+      athleticReturn: !!gapNow || goodReturns < 2,
+      variationExposure: primary.length % 2 === 0,
+    };
+  }
+  function withHistoricalLoads(plan, records) {
+    for (const session of plan.sessions)
+      for (const e of session.rows) {
+        if ((!e.holdLoad && !e.checkpoint) || (e.kind === 'quality' && e.reduced)) continue;
+        const prior = records
+          .filter((r) => r.day === plan.day && normalRecord(r))
+          .flatMap((r) => {
+            const row = r.session.rows.find(
+              (x) => fingerprint(x) === fingerprint(e) && (!e.trialId || x.trialId === e.trialId),
+            );
+            if (!row) return [];
+            const sets = r.sets.filter((x) => x.exerciseKey === row.key);
+            const secure =
+              sets.length &&
+              (e.kind === 'quality'
+                ? sets.length === qualityState(row, []).planned &&
+                  sets.every(
+                    (x) =>
+                      x.outcome === 'make' &&
+                      x.grade !== 'C' &&
+                      x.effort <= (row.finalEffort || row.effort),
+                  )
+                : sets.length === row.sets && sets.every((x) => x.endpoint === 'failure'));
+            return secure ? [{ row, sets }] : [];
+          })
+          .at(-1);
+        if (!prior) {
+          e.note += ' Repeat the most recent secure load if available; do not infer an increase.';
+          continue;
+        }
+        if (e.kind === 'failure') e.heldWeight = prior.sets.at(-1).weight;
+        else
+          e.heldLoads = Array.from(
+            { length: e.sets },
+            (_, slot) =>
+              prior.sets
+                .filter((_, i) => slotAt(prior.row, i) === Math.min(slot, prior.row.sets - 1))
+                .at(-1)?.weight,
+          );
+      }
+    return plan;
   }
   function benchRecords(state) {
     const rows = state.records.slice();
@@ -175,6 +280,16 @@ const MODEL = (() => {
     }
     return rows;
   }
-  return { migrate, fingerprint, qualityState, slotAt, reviewAdvance, benchRecords };
+  return {
+    migrate,
+    fingerprint,
+    qualityState,
+    slotAt,
+    reviewAdvance,
+    benchRecords,
+    historyContext,
+    withHistoricalLoads,
+    normalRecord,
+  };
 })();
 if (typeof module !== 'undefined') module.exports = { MODEL };

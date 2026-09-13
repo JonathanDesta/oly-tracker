@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'oly-revision6-v1';
+const CACHE = 'oly-revision6-v2';
 const ASSETS = [
   './index.html',
   './styles.css',

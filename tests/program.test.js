@@ -149,7 +149,11 @@ test('weeks 4/8 hold the preceding prescription, not automatic deloads', () => {
     [4, 3],
     [8, 7],
   ])
-    for (const d of P.days) assert.deepEqual(rows(config(held), d), rows(config(previous), d));
+    for (const d of P.days)
+      assert.deepEqual(
+        rows(config(held), d).map(({ checkpoint, ...e }) => e),
+        rows(config(previous), d),
+      );
 });
 test('uncleared phase gates hold the appropriate phase', () => {
   assert.equal(P.dayPlan(config(6, { phaseGate: 'F' }), 'monday').phase, 'F');

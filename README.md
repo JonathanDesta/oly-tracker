@@ -18,5 +18,6 @@ start at the Revision 6 entry dose; Settings can select an established position.
 Use weekly reviews to advance, hold or reduce the program. Optional athletics,
 aerobics and assistance begin only after their eligibility review.
 
-See [HANDOFF.md](HANDOFF.md) for program provenance, implementation details,
+See [PROGRAM-CONFORMANCE.md](PROGRAM-CONFORMANCE.md) for the source audit and
+which decisions require your review. See [HANDOFF.md](HANDOFF.md) for program provenance, implementation details,
 migration, browser testing and deployment.
