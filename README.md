@@ -41,6 +41,10 @@ Each exercise, session and scheduled day shows a planning range including prepar
 
 Selected mobility is a runnable session, including on days with no lifting: timed holds on both sides, rests and active-rep completion are saved to the journal. General, field and exercise-specific preparation have resumable stopwatches and separate completion logs; interruption re-warm-up is also available. An update banner activates a waiting version after the current workout is finished.
 
-Aerobic main sessions and additional walks have start/pause/resume clocks and actual-minute confirmation. Their easy start is included in moving time; pauses and equipment waits are excluded from moving dose. App 7.10 identifies the installed release in Settings and checks for updates when returning online or focusing the app.
+Aerobic main sessions and additional walks have start/pause/resume clocks and actual-minute confirmation. Their easy start is included in moving time; pauses and equipment waits are excluded from moving dose. App 7.11 identifies the installed release in Settings and checks for updates when returning online or focusing the app.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all 16 served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
+
+## Removing test sessions
+
+Open History → select a session → Delete session, then confirm. You can also use View log on the day tab. Deleting a saved test, partial, completed or omitted session removes its entries and progression credit and reopens its slot in the current week. Ordinary readiness, sequence and bench-spacing rules still apply to remaining work. Earlier-week deletion does not rewind the program. Finish any active workout before deleting saved history. Export a backup first if you may want the record later.

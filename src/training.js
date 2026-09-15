@@ -1116,12 +1116,14 @@ export function finishSession(s, notes = "", now = Date.now()) {
       continue;
     const best = eligible.reduce((a, b) => (a.weight > b.weight ? a : b));
     if (e.assessment || best.weight > (s.training.anchors[e.id] || 0)) {
+      const previousLoad = s.training.anchors[e.id];
       s.training.anchors[e.id] = best.weight;
       s.reviews.push({
         at: now,
         type: "Demonstrated reference",
         lift: e.id,
         load: best.weight,
+        previousLoad,
         date: w.date,
         effort: best.effort,
         video: best.video || "",
@@ -1135,6 +1137,81 @@ export function finishSession(s, notes = "", now = Date.now()) {
   s.active = null;
   s.restEnd = 0;
   if (w.session.rows.some((e) => e.assessment)) s.training.assessment = "none";
+}
+export function deleteSession(s, id) {
+  if (s.active)
+    throw Error("Finish the active session before deleting saved sessions.");
+  const record = s.records.find((r) => r.id === id);
+  if (!record) throw Error("This saved session no longer exists.");
+  const pending = [s],
+    seen = new Set();
+  while (pending.length) {
+    const journal = pending.pop();
+    if (!journal || typeof journal !== "object" || seen.has(journal)) continue;
+    seen.add(journal);
+    const removed =
+      (Array.isArray(journal.records)
+        ? journal.records.find((r) => r?.id === id)
+        : null) ||
+      (journal.active?.id === id ? journal.active : null) ||
+      (journal.activeWorkout?.id === id ? journal.activeWorkout : null) ||
+      Object.values(journal.log || {}).find((r) => r?.id === id);
+    if (removed) {
+      // References are a chain: removing an earlier test must not be resurrected
+      // if a later session is deleted afterwards. Later manual references win.
+      for (const lift of ["snatch", "cj", "clean", "jerk"]) {
+        const references = (
+          Array.isArray(journal.reviews) ? journal.reviews : []
+        ).filter(
+          (r) => r?.type === "Demonstrated reference" && r.lift === lift,
+        );
+        const removedReferences = references.filter((r) => r.sessionId === id);
+        if (!removedReferences.length) continue;
+        const first = removedReferences[0],
+          last = removedReferences.at(-1);
+        const previous = Object.hasOwn(first, "previousLoad")
+          ? first.previousLoad
+          : (removed.anchors?.[lift] ?? defaults().anchors[lift]);
+        const next = references
+          .slice(references.indexOf(last) + 1)
+          .find((r) => r.sessionId !== id);
+        if (next) next.previousLoad = previous;
+        else if (journal.training?.anchors?.[lift] === last.load)
+          journal.training.anchors[lift] = previous;
+      }
+      if (Array.isArray(journal.records))
+        journal.records = journal.records.filter((r) => r?.id !== id);
+      if (journal.active?.id === id) journal.active = null;
+      if (journal.activeWorkout?.id === id) journal.activeWorkout = null;
+      if (journal.log && typeof journal.log === "object")
+        for (const [key, value] of Object.entries(journal.log))
+          if (value?.id === id) delete journal.log[key];
+      if (Array.isArray(journal.reviews))
+        journal.reviews = journal.reviews.filter((r) => r?.sessionId !== id);
+      if (Array.isArray(journal.benchReservations))
+        journal.benchReservations = journal.benchReservations.filter(
+          (r) =>
+            r?.sessionId !== id &&
+            !(
+              r?.sessionId === undefined &&
+              r?.weekId === removed.weekId &&
+              removed.session?.id === "rescue-" + r?.slot &&
+              !(journal.records || []).some(
+                (other) =>
+                  other?.weekId === r.weekId &&
+                  other.session?.id === removed.session?.id,
+              )
+            ),
+        );
+    }
+    pending.push(
+      journal.legacy,
+      ...(Array.isArray(journal.legacyArchives) ? journal.legacyArchives : []),
+      ...(Array.isArray(journal.archives) ? journal.archives : []),
+    );
+  }
+  s.restEnd = 0;
+  return { day: record.day, currentWeek: record.weekId === s.weekId };
 }
 export function stopSession(s, reason, now = Date.now()) {
   if (!reason?.trim()) throw Error("Enter a reason.");

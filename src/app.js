@@ -32,6 +32,7 @@ import {
   logSet,
   omitRow,
   finishSession,
+  deleteSession,
   stopSession,
   benchmark,
   easyReturn,
@@ -67,7 +68,7 @@ import {
   finishPreparation,
 } from "./routines.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.10";
+const APP_BUILD = "7.11";
 const esc = (x) =>
   String(x ?? "").replace(
     /[&<>"']/g,
@@ -839,7 +840,7 @@ function openRecord(id) {
   if (!r) return;
   modal(
     r.session.title,
-    `<p>${stamp(r.startedAt)} · ${esc(r.status)} · Cycle ${r.cycle}, week ${r.week}</p>${preparationLog(r)}${partialMobilityLog(r)}${partialAerobicLog(r)}${r.session.rows
+    `<p>${stamp(r.startedAt)} · ${esc(r.status)} · Cycle ${r.cycle}, week ${r.week}</p>${btn("Delete session", "delete-session", `data-id="${r.id}"`, "button danger")}${preparationLog(r)}${partialMobilityLog(r)}${partialAerobicLog(r)}${r.session.rows
       .map(
         (e) =>
           `<details open><summary>${esc(e.name)} · ${esc(describe(e))}</summary><ol>${r.sets
@@ -878,6 +879,29 @@ async function action(el) {
   if (a === "review") return openReview();
   if (a === "change") return openChange();
   if (a === "record") return openRecord(id);
+  if (a === "delete-session") {
+    const r = state.records.find((r) => r.id === id);
+    if (!r) throw Error("This saved session no longer exists.");
+    return modal(
+      "Delete this session?",
+      `<h3>${esc(r.session.title)}</h3><p>${stamp(r.startedAt)} · Cycle ${r.cycle}, week ${r.week} · ${r.sets.length} saved entries</p><p>Delete this session’s entries, warm-ups, timers, notes and follow-up. It will no longer count toward history or progression.${r.weekId === state.weekId ? " Its slot in this week will be available to start again, subject to the usual schedule and readiness checks." : " Your current program week will stay unchanged."}</p><p>This cannot be undone in the app. Existing exported backups are unchanged.</p><div class="actions">${btn("Keep session", "record", `data-id="${id}"`)}${btn("Delete session permanently", "confirm-delete-session", `data-id="${id}"`, "button danger")}</div>`,
+    );
+  }
+  if (a === "confirm-delete-session") {
+    let result;
+    transact((s) => {
+      result = deleteSession(s, id);
+    });
+    close();
+    if (result.currentWeek) selected = result.day;
+    nav(result.currentWeek ? "week" : "history");
+    toast(
+      result.currentWeek
+        ? "Session deleted. Its slot is available again."
+        : "Session deleted from history.",
+    );
+    return;
+  }
   if (a === "source") {
     guidePage = Number(el.dataset.page);
     return nav("guide");
@@ -1221,7 +1245,6 @@ function handleForm(form) {
       if (!f.has("placement"))
         throw Error("Confirm priority placement before bench relocation.");
       const slot = f.get("slot");
-      s.benchReservations.push({ weekId: s.weekId, slot });
       startSession(
         s,
         slot === "bench_low" ? "tuesday" : "friday",
@@ -1229,6 +1252,11 @@ function handleForm(form) {
         Date.now(),
         { rescue: slot },
       );
+      s.benchReservations.push({
+        weekId: s.weekId,
+        slot,
+        sessionId: s.active.id,
+      });
     }
     if (type === "omit-row") omitRow(s, f.get("key"), f.get("reason"));
     if (type === "end-early") stopSession(s, f.get("reason"));
@@ -1337,6 +1365,7 @@ function handleForm(form) {
       if (!f.has("demonstrated")) throw Error("Use a demonstrated lift only.");
       if (s.active)
         throw Error("Finish the active session before changing its reference.");
+      const previousLoad = s.training.anchors[f.get("lift")];
       s.training.anchors[f.get("lift")] = f.num("load");
       if (f.get("lift") === "jerk") s.training.rackLoad = null;
       s.reviews.push({
@@ -1344,6 +1373,7 @@ function handleForm(form) {
         type: "Demonstrated reference",
         lift: f.get("lift"),
         load: f.num("load"),
+        previousLoad,
         date: f.get("date"),
         effort: f.num("effort"),
         notes: f.get("evidence"),

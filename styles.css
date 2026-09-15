@@ -525,6 +525,11 @@ p {
   color: #fff;
   border-color: var(--green);
 }
+.button.danger {
+  color: #8a2525;
+  border-color: #d6aaaa;
+  background: #fff4f2;
+}
 .quiet,
 .source-link {
   border: 0;

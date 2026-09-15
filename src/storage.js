@@ -246,6 +246,9 @@ export function validate(data) {
       (r) =>
         object(r) &&
         finite(r.at, 0, 1e15) &&
+        (r.previousLoad === undefined ||
+          r.previousLoad === null ||
+          finite(r.previousLoad, 1, 2000)) &&
         (r.type !== "change" ||
           (object(r.change) && typeof r.change.kind === "string")) &&
         (!r.afterAthletics ||
@@ -271,7 +274,8 @@ export function validate(data) {
       (r) =>
         object(r) &&
         typeof r.weekId === "string" &&
-        ["bench_low", "bench_moderate"].includes(r.slot),
+        ["bench_low", "bench_moderate"].includes(r.slot) &&
+        (r.sessionId === undefined || typeof r.sessionId === "string"),
     ),
     "bench reservations.",
   );
