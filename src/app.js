@@ -47,8 +47,6 @@ import {
 } from "./training.js";
 import { loadStore, saveStore, importData, KEY } from "./storage.js";
 import {
-  estimateDay,
-  estimateSession,
   minutesText,
   timeProfile,
   validTimeProfile,
@@ -67,8 +65,29 @@ import {
   pausePreparation,
   finishPreparation,
 } from "./routines.js";
+import {
+  fixedDay as estimateDay,
+  fixedSession as estimateSession,
+  targetSeconds,
+} from "./timeline.js";
+import {
+  createPacing,
+  syncPacing,
+  paceStage,
+  paceStatus,
+  paceSeconds,
+  paceElapsed,
+  paceMinimum,
+  startPaceStage,
+  pausePace,
+  extendPace,
+  endPaceSet,
+  completePaceStage,
+  takePaceBreak,
+  finishPaceBreak,
+} from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.11";
+const APP_BUILD = "7.12";
 const esc = (x) =>
   String(x ?? "").replace(
     /[&<>"']/g,
@@ -150,6 +169,13 @@ function transact(fn, message) {
   if (!state) throw Error("Recover your stored journal before making changes.");
   const next = copy(state);
   fn(next);
+  if (next.active?.pacing)
+    syncPacing(
+      next.active,
+      Object.fromEntries(
+        next.active.session.rows.map((e) => [e.key, rowStatus(next.active, e)]),
+      ),
+    );
   state = saveStore(localStorage, next, state.version);
   storageError = "";
   if (message) toast(message);
@@ -244,10 +270,10 @@ function timeParts(parts, labels) {
     .join("")}</dl>`;
 }
 function timingDetails(t) {
-  return `<details class="timing-details"><summary>How this time is estimated</summary><p>${t.rows.length && t.rows.every((r) => r.station === "mobility") ? "Includes both sides, setup, between-hold rests and five slow active reps." : `Planning range, including ${esc(t.profile.traffic)} gym traffic. Rests follow this prescription; allow more whenever readiness needs it. Exercise allowances include preparation and transitions.`}</p>${timeParts(t.overhead, { arrival: "Arrival, belongings & equipment check", general: "General / field warm-up", transition: "Transition to athletics", breaks: "Water, restroom & miscellaneous breaks", departure: "Final log, unloading & packing up" })}${t.rows.map((r) => `<details class="exercise-timing"><summary>${esc(r.name)} · ${minutesText(r.seconds)}</summary>${timeParts(r.parts, r.station === "mobility" ? { ...TIME_LABELS, setup: "Drill setup & side changes", rest: "Rest between holds", work: "Holds & five active reps" } : TIME_LABELS)}</details>`).join("")}<p class="fine-print">Loading, station changes, waiting and logging use recovery time where possible; only the extra time is added. Warm-up rests include plate changes. Rep speed is a planning assumption. Adjust setup, traffic and break allowances in Settings; these are not program doses. Rounded up; totals use unrounded values. Long interruptions, travel to/from training and optional unscheduled walks are outside this estimate. After more than 15 minutes idle, allow the prescribed re-warm-up. No additional cooldown is prescribed.</p></details>`;
+  return `<details class="timing-details"><summary>How this time is planned</summary><p>${t.rows.length && t.rows.every((r) => r.station === "mobility") ? "Includes both sides, setup, between-hold rests and five slow active reps." : `Fixed time targets, including ${esc(t.profile.traffic)} gym traffic. Rests follow this prescription; allow more whenever readiness needs it. Exercise allowances include preparation and transitions.`}</p>${timeParts(t.overhead, { arrival: "Arrival, belongings & equipment check", general: "General / field warm-up", transition: "Transition to athletics", breaks: "Water, restroom & miscellaneous breaks", departure: "Final log, unloading & packing up" })}${t.rows.map((r) => `<details class="exercise-timing"><summary>${esc(r.name)} · ${minutesText(r.seconds)}</summary>${timeParts(r.parts, r.station === "mobility" ? { ...TIME_LABELS, setup: "Drill setup & side changes", rest: "Rest between holds", work: "Holds & five active reps" } : TIME_LABELS)}</details>`).join("")}<p class="fine-print">Loading, station changes, waiting and logging use recovery time where possible; only the extra time is added. Warm-up rests include plate changes. Rep speed is a planning assumption. Adjust setup, traffic and break allowances in Settings; these are not program doses. The displayed targets and countdown steps use the same seconds. Long interruptions, travel to/from training and optional unscheduled walks are outside this estimate. After more than 15 minutes idle, allow the prescribed re-warm-up. No additional cooldown is prescribed.</p></details>`;
 }
 function dayTime(t) {
-  return `<section class="day-time" aria-label="Whole-day time estimate"><div><span class="eyebrow">WHOLE-DAY PLANNING BUDGET</span><strong>${minutesText(t.seconds)}</strong><p>Scheduled training${t.mobility[1] ? ` + ${minutesText(t.mobility)} targeted mobility / stretches` : ""}. Includes preparation, rest, transitions and breaks; this is the full plan, not time remaining.</p></div>${t.gapSeconds ? `<p class="visit-gap">${t.visits} visits · add at least ${t.gapSeconds / 3600} hours between visits. Earliest planned finish: ${minutesText(t.elapsed)} after starting, plus travel.</p>` : ""}${t.sessions.some((s) => s.profile && s.overhead.transition[1]) ? "<p>Athletics shares the visit: includes the 5-minute transition and full field warm-up.</p>" : ""}${t.sessions.some((s) => s.id === "cardio") ? "<p>Aerobics is budgeted after other scheduled training when present. Its range allows for walking or bike setup/waiting. Additional walks include their moving time; add travel for separate outings.</p>" : ""}<p class="fine-print">${esc(t.profile.traffic)} gym traffic · ${t.profile.breakMinutes} min breaks per gym/field visit · adjust in Settings → Time planning.</p></section>`;
+  return `<section class="day-time" aria-label="Whole-day time estimate"><div><span class="eyebrow">WHOLE-DAY PLANNING BUDGET</span><strong>${minutesText(t.seconds)}</strong><p>Scheduled training${t.mobility[1] ? ` + ${minutesText(t.mobility)} targeted mobility / stretches` : ""}. Includes preparation, rest, transitions and breaks; this is the full plan, not time remaining.</p></div>${t.gapSeconds ? `<p class="visit-gap">${t.visits} visits · add at least ${t.gapSeconds / 3600} hours between visits. Earliest planned finish: ${minutesText(t.elapsed)} after starting, plus travel.</p>` : ""}${t.sessions.some((s) => s.profile && s.overhead.transition[1]) ? "<p>Athletics shares the visit: includes the 5-minute transition and full field warm-up.</p>" : ""}${t.sessions.some((s) => s.id === "cardio") ? "<p>Aerobics is budgeted after other scheduled training when present. Its target includes moving time and setup/waiting. Additional walks include their moving time; add travel for separate outings.</p>" : ""}<p class="fine-print">${esc(t.profile.traffic)} gym traffic · ${t.profile.breakMinutes} min breaks per gym/field visit · adjust in Settings → Time planning.</p></section>`;
 }
 function mobilityCard(p, timing) {
   if (p.sessions.some((s) => s.kind === "mobility")) return "";
@@ -274,12 +300,16 @@ function preview(s, p, timing) {
 function preparationControls(key, budget, label) {
   const timer = state.active.preparationTimer,
     running = timer?.key === key;
-  return `<div class="preparation-run"><p>${key === "rewarm" ? "Additional interruption allowance" : "Preparation allowance"}: ${minutesText(budget)}${key === "rewarm" ? " beyond the starting budget" : " · included in the session budget"}.</p>${running ? `<p class="routine-clock">Elapsed <strong id="preparation-clock" role="timer">${time(preparationElapsed(timer))}</strong>${timer.pausedAt ? " · paused" : ""}</p>${btn(timer.pausedAt ? "Resume preparation" : "Pause preparation", "prep-pause")}` : btn(key === "general" ? "Run warm-up" : key === "rewarm" ? "Run re-warm-up" : "Run exercise preparation", "prep-start", `data-key="${key}"`, "primary button")} ${btn(label, key === "general" ? "warmup" : "prepare", `data-key="${key}"`, "button")}<p class="fine-print">Complete all the instructions above before recording completion. If already performed, completion is recorded as confirmed without an invented duration.</p></div>`;
+  return `<div class="preparation-run"><p>${key === "rewarm" ? "Additional interruption allowance" : "Preparation allowance"}: ${minutesText(budget)}${key === "rewarm" ? " beyond the starting budget" : " · included in the session budget"}.</p>${running ? `<p class="routine-clock">Remaining <strong id="preparation-clock" role="timer" data-target="${targetSeconds(budget)}">${countdownText(targetSeconds(budget) - preparationElapsed(timer))}</strong>${timer.pausedAt ? " · paused" : ""}</p>${btn(timer.pausedAt ? "Resume preparation" : "Pause preparation", "prep-pause")}` : btn(key === "general" ? "Run warm-up" : key === "rewarm" ? "Run re-warm-up" : "Run exercise preparation", "prep-start", `data-key="${key}"`, "primary button")} ${btn(label, key === "general" ? "warmup" : "prepare", `data-key="${key}"`, "button")}<p class="fine-print">Complete all the instructions above before recording completion. If already performed, completion is recorded as confirmed without an invented duration.</p></div>`;
 }
 function preparationLog(w) {
   return (w.preparationLog || []).length
     ? `<section class="panel preparation-ledger"><h2>Preparation log</h2><ol>${w.preparationLog.map((r) => `<li>${esc(r.name)} · ${r.seconds === null ? "completion confirmed" : time(r.seconds) + (r.method === "interrupted" ? " · interrupted" : " timed")}</li>`).join("")}</ol></section>`
     : "";
+}
+function pacingLog(w) {
+  if (!w.pacing) return "";
+  return `<details class="panel"><summary>Countdown record · target ${minutesText(w.pacing.plannedSeconds)}</summary><p>Elapsed session: ${time(((w.endedAt || Date.now()) - w.startedAt) / 1000)}. Untimed confirmations do not claim a measured duration.</p><ol>${w.pacing.completed.map((step) => `<li>${esc(step.label)} · ${step.seconds === null ? esc(step.method) : time(step.seconds) + " actual"} · target ${time(step.targetSeconds)}</li>`).join("")}</ol></details>`;
 }
 function partialMobilityLog(w) {
   return (w.mobilityPartials || []).length
@@ -294,12 +324,127 @@ function mobilityFocus(w, e) {
 function aerobicFocus(w, e, timing) {
   const timer = w.aerobicRun,
     moving = timer ? preparationElapsed(timer) : 0;
-  return `<section class="focus-card"><span class="pill">EASY AEROBICS / MOVING TIME</span><h2>${esc(e.name)}</h2><p class="prescription">${e.minutes} min moving</p><p class="exercise-duration">Full exercise allowance: ${minutesText(timing.seconds)} including setup and any equipment wait.</p><p>${esc(e.note)}</p><p>Start easy. The easy start is part of these moving minutes. Pause for traffic lights, water, restroom stops or any time you are not moving. No separate lifting warm-up or cooldown is prescribed.</p>${timer ? `<p class="routine-clock">Moving <strong id="aerobic-clock" role="timer">${time(moving)}</strong>${timer.pausedAt !== null ? " · paused" : ""}</p><p id="aerobic-target">${moving >= e.minutes * 60 ? "Target reached. Stop and confirm actual moving minutes." : `${time(e.minutes * 60 - moving)} to the planned target.`}</p>${btn(timer.pausedAt !== null ? "Resume moving time" : "Pause moving time", "aerobic-pause")}${btn("Stop & review moving time", "aerobic-review", "", "primary button")}` : `${btn("Start moving time", "aerobic-start", "", "primary button")}${btn("Log already completed minutes", "aerobic-review", "", "quiet")}`}<p class="fine-print">The clock is a record of unpaused time; confirm actual movement before saving. Setup and breaks count in the session budget, not the aerobic dose. Stop when the target is reached. A shorter bout is saved as partial work.</p><div class="focus-actions">${btn("End session early", "end-early", "", "quiet")}${btn("Omit this exercise", "omit-row", `data-key="${e.key}"`, "quiet")}</div>${sourceLink(22)}</section>`;
+  return `<section class="focus-card"><span class="pill">EASY AEROBICS / MOVING TIME</span><h2>${esc(e.name)}</h2><p class="prescription">${e.minutes} min moving</p><p class="exercise-duration">Full exercise allowance: ${minutesText(timing.seconds)} including setup and any equipment wait.</p><p>${esc(e.note)}</p><p>Start easy. The easy start is part of these moving minutes. Pause for traffic lights, water, restroom stops or any time you are not moving. No separate lifting warm-up or cooldown is prescribed.</p>${timer ? `<p class="routine-clock">Remaining <strong id="aerobic-clock" role="timer">${countdownText(e.minutes * 60 - moving)}</strong>${timer.pausedAt !== null ? " · paused" : ""}</p><p id="aerobic-target">${moving >= e.minutes * 60 ? "Target reached. Stop and confirm actual moving minutes." : `${time(e.minutes * 60 - moving)} to the planned target.`}</p>${btn(timer.pausedAt !== null ? "Resume moving time" : "Pause moving time", "aerobic-pause")}${btn("Stop & review moving time", "aerobic-review", "", "primary button")}` : `${btn("Start moving time", "aerobic-start", "", "primary button")}${btn("Log already completed minutes", "aerobic-review", "", "quiet")}`}<p class="fine-print">The clock is a record of unpaused time; confirm actual movement before saving. Setup and breaks count in the session budget, not the aerobic dose. Stop when the target is reached. A shorter bout is saved as partial work.</p><div class="focus-actions">${btn("End session early", "end-early", "", "quiet")}${btn("Omit this exercise", "omit-row", `data-key="${e.key}"`, "quiet")}</div>${sourceLink(22)}</section>`;
 }
 function partialAerobicLog(w) {
   return (w.aerobicPartials || []).length
     ? `<section class="panel"><h2>Interrupted aerobics</h2>${w.aerobicPartials.map((r) => `<p>${esc(w.session.rows.find((e) => e.key === r.key).name)} · ${time(r.movingSeconds)} unpaused time before stopping; actual moving dose unconfirmed. ${esc(r.reason)}</p>`).join("")}</section>`
     : "";
+}
+function paceDisplay(w) {
+  const info = paceStatus(w),
+    p = w.pacing;
+  if (p?.breakRun)
+    return { label: "Water / restroom break", seconds: info.breakLeft, info };
+  if (p?.workEndedAt) {
+    const i = p.plan.findIndex((s) => s.id === p.currentId),
+      next = p.plan[i + 1];
+    if (next?.role === "rest")
+      return {
+        label: "Recovery while you record the result",
+        seconds: paceSeconds(w, next) - (Date.now() - p.workEndedAt) / 1000,
+        info,
+      };
+    return {
+      label: "Set ended · record the actual result below",
+      seconds: 0,
+      info,
+    };
+  }
+  return {
+    label: info?.stage?.label || "Timed plan complete",
+    seconds: info?.phaseRemaining || 0,
+    info,
+  };
+}
+const countdownText = (seconds) =>
+  seconds < 0 ? `${time(-seconds)} over` : time(Math.ceil(seconds));
+function pacingCard(w) {
+  if (!w.pacing)
+    return `<section class="pace-card">${btn("Enable guided countdown", "pace-enable", "", "primary button")}<p>Start a countdown for the remaining work in this saved session.</p></section>`;
+  const p = w.pacing,
+    display = paceDisplay(w),
+    stage = display.info.stage;
+  let controls = "";
+  if (p.breakRun)
+    controls = btn(
+      "Finish break · resume",
+      "pace-break-end",
+      "",
+      "primary button",
+    );
+  else if (stage) {
+    if (
+      !p.timer &&
+      ["work", "work-part", "mobility", "aerobic"].includes(stage.role)
+    )
+      controls += btn(
+        stage.role === "work" ? "Start timed set" : "Start timed step",
+        "pace-start",
+        "",
+        "primary button",
+      );
+    else if (stage.role === "work")
+      controls += p.workEndedAt
+        ? "<p>Save the actual attempt/set outcome below to advance. Recovery is already counting.</p>"
+        : btn(
+            "Set finished · record result",
+            "pace-set-end",
+            "",
+            "primary button",
+          );
+    else if (stage.role === "aerobic")
+      controls += btn(
+        "Stop & confirm moving minutes",
+        "aerobic-review",
+        "",
+        "primary button",
+      );
+    else
+      controls += btn(
+        stage.role === "general-check"
+          ? "Confirm general preparation"
+          : stage.role === "prepare-check"
+            ? "Confirm exercise preparation"
+            : stage.role === "mobility" && stage.step === 7
+              ? "Active reps complete · save timed drill"
+              : "Continue timer",
+        "pace-next",
+        `id="pace-next" ${paceElapsed(p.timer) < paceMinimum(w, stage) ? "disabled" : ""}`,
+        "primary button",
+      );
+    if (p.timer && !p.workEndedAt && stage.role !== "mobility")
+      controls += btn(
+        p.timer.pausedAt === null ? "Pause countdown" : "Resume countdown",
+        "pace-pause",
+      );
+    if (
+      !stage.role.endsWith("check") &&
+      stage.role !== "mobility" &&
+      !p.workEndedAt
+    )
+      controls += btn("Add 1 minute", "pace-add", "", "quiet");
+    if (["ramp", "waiting", "break-pool"].includes(stage.role))
+      controls += btn(
+        stage.role === "ramp"
+          ? "Ramp not needed at this load"
+          : stage.role === "waiting"
+            ? "Equipment available"
+            : "Release unused break allowance",
+        "pace-skip",
+        "",
+        "quiet",
+      );
+    if (stage.role !== "break-pool")
+      controls += btn("Take a 2-minute break", "pace-break", "", "quiet");
+  }
+  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(p.sound ? "Timer sound on" : "Enable timer sound", "pace-sound", "", "quiet")}</div><p class="fine-print">Zero is a cue, not a completed set. Finish at the prescribed reps, quality limit or strict-form failure; record the real outcome. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; skip only unnecessary ramps or unused waiting/break time.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
+    .filter((step) => !p.completed.some((x) => x.id === step.id))
+    .map(
+      (step) =>
+        `<li>${esc(step.exercise ? step.exercise + " · " : "")}${esc(step.label)} <strong>${time(paceSeconds(w, step))}</strong></li>`,
+    )
+    .join("")}</ol></details></section>`;
 }
 function workoutView() {
   const w = state.active;
@@ -330,7 +475,7 @@ function workoutView() {
       w.session.title,
       `${dateLabel(w.date)} · Started ${stamp(w.startedAt)}`,
     ) +
-    `<div class="progress-line"><span style="width:${(done / w.session.rows.length) * 100}%"></span></div><p class="muted">${done} of ${w.session.rows.length} ${w.session.kind === "mobility" ? "mobility drills" : "exercises"} resolved. ${w.session.kind === "mobility" ? "Complete the scheduled holds, rests and active reps, or record an early stop." : "Log actual outcomes, including misses and safety stops."}</p><p class="session-budget">Starting session budget: <strong>${minutesText(originalTiming.seconds)}</strong> · includes prep, rest and breaks; not a countdown.</p>${timingDetails(originalTiming)}`;
+    `<div class="progress-line"><span style="width:${(done / w.session.rows.length) * 100}%"></span></div><p class="muted">${done} of ${w.session.rows.length} ${w.session.kind === "mobility" ? "mobility drills" : "exercises"} resolved. ${w.session.kind === "mobility" ? "Complete the scheduled holds, rests and active reps, or record an early stop." : "Log actual outcomes, including misses and safety stops."}</p><p class="session-budget">Starting session budget: <strong>${minutesText(originalTiming.seconds)}</strong> · includes prep, rest and breaks; fixed targets.</p>${pacingCard(w)}${timingDetails(originalTiming)}`;
   if (w.warmup && w.session.kind === "lifting" && e)
     body += `<details ${w.preparationTimer?.key === "rewarm" ? "open" : ""}><summary>Preparation after an interruption</summary><p>If idle more than 15 minutes: 2 minutes easy movement, then two brief ascending rehearsals before resuming.</p>${preparationControls("rewarm", [180, 300], "Re-warm-up complete")}</details>`;
   if (!w.warmup && w.session.kind !== "cardio")
@@ -653,7 +798,7 @@ function settingsView() {
     ) +
     `<section class="panel"><h2>App & offline updates</h2><p>App ${APP_BUILD} · complete session timing. Each browser/device keeps its own journal and offline copy.</p>${btn("Check for updates", "check-update", "", "quiet")}<p>Updates preserve saved records. Save form changes and finish any active session before using the update banner.</p></section>` +
     `<section class="panel"><h2>Schedule & equipment</h2><form data-form="equipment"><div class="input-grid">${select("Visits on B/D", "split", { single: "Single visit", split: "Split after incline + laterals (≥3 h)" }, t.split ? "split" : "single")}${select("Smallest barbell increment · lb", "increment", { 2.5: "2.5 lb", 5: "5 lb" }, t.increment)}${select("Incline press", "incline", { default: "Machine · 30–45°", smith: "Smith · safeties", db: "Dumbbells · safe endpoint" }, t.equipment.incline || "default")}${select("Lateral raise", "lateral", { default: "Cable", db: "Dumbbell" }, t.equipment.lateral || "default")}${select("Supported row", "row", { default: "Chest-supported row", machine: "Supported machine row" }, t.equipment.row || "default")}${select("Leg curl", "leg_curl", { default: "Seated leg curl", lying: "Lying leg curl" }, t.equipment.leg_curl || "default")}${select("Calves", "calf", { default: "Standing, knees extended", press: "Supported knee-extended press", seated: "Seated · individualized fallback" }, t.equipment.calf || "default")}${select("Leg extension", "leg_ext", { default: "Supported reclined · ~40° hip flexion", upright: "Upright · equipment fallback" }, t.equipment.leg_ext || "default")}${select("Abdominals", "crunch", { default: "Machine crunch", cable: "Cable crunch" }, t.equipment.crunch || "default")}${select("Triceps", "triceps", { default: "Overhead cable extension", pressdown: "Pressdown · intolerance/interference" }, t.equipment.triceps || "default")}</div><p class="muted">Substitutions retain sets, reps and endpoint. Bench requires a flat barbell, safeties and competent spotting. No glute isolation.</p><p class="form-error" role="alert"></p>${submit("Save schedule & equipment")}</form></section>` +
-    `<section class="panel"><h2>Time planning</h2><p>These allowances change the displayed budget. Training doses and rest timers still follow the program.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 0–1 min", moderate: "Moderate · 1–3 min", busy: "Busy · 3–5 min" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use a range of two-thirds to four-thirds of your typical time. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
+    `<section class="panel"><h2>Time planning</h2><p>These allowances set the displayed times and guided countdowns. Training doses stay the same; extra recovery extends the prescribed rest.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 30 seconds", moderate: "Moderate · 2 minutes", busy: "Busy · 4 minutes" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use your selected times. Countdown targets include prescribed rest plus your extra recovery allowance. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
     `<section class="panel"><h2>Technical references</h2><p>SN ${t.anchors.snatch} lb · CJ ${t.anchors.cj} lb · CL ${t.anchors.clean || "unassessed"} · RJ ${t.anchors.jerk || "unassessed"}. Power clean never loads full CJ.</p>${btn("Record a demonstrated reference", "anchor")}${sourceLink(27)}</section>` +
     `<section class="panel"><h2>Technique & interference</h2><form data-form="technique"><div class="input-grid">${["snatch", "clean", "jerk"].map((k) => select(pretty(k), k, k === "jerk" ? { none: "Ordinary prescription", stance: "Light split stance/recovery", dip: "Light pause-dip regression" } : { none: "Ordinary prescription", receive: "Unsafe receiving · technique-bar rehearsal", return: "Secure return · 4 singles at 40–60%", turnover: "High-hang turnover replacement", balance: "First two sets knee-pause" }, t.technique[k])).join("")}</div>${check("Reduce A snatch doubles to 4 × 2: repeated Tuesday cost", "reduceA", t.reduceA)}${check("One fewer C jerk set for two exposures; suspend C assistance", "reduceJerk", t.reduceJerk)}${check("Lower-block fatigue: curls/calves 1; omit extensions/crunch", "lowerDose", t.lowerDose)}${check("Omit week-11 Friday affected lower work for slow recovery", "omitLastLower", t.omitLastLower)}${check("Omit provisional C pulls after target/cost review", "omitPull", t.omitPull)}${textarea("Observed issue / target and return review", "reason", "", "required")}<p class="form-error" role="alert"></p>${submit("Save technical prescription")}</form>${sourceLink(16)}${sourceLink(34)}</section>` +
     `<section class="panel"><h2>Optional work & controlled trials</h2><p>Athletics: ${t.athletics.enabled ? `stage ${t.athletics.stage}, ${t.athletics.secondary ? "two slots" : "one slot"}` : "not introduced"}. Aerobics: ${t.cardio.enabled ? t.cardio.minutes + " min/week" : "not introduced"}.</p>${btn("Review one program change", "change", "", "primary button")}${btn("Reduce or suspend optional work", "reduce-optional", "", "quiet")}${t.trials.map((trial) => `<div class="trial-row"><div><strong>${esc(trial.kind.replaceAll("_", " "))} · ${pretty(trial.day)}</strong><p>${esc(trial.reason)}</p><small>${trialExposures(state, trial).length} comparable exposures · ${trial.paused ? "paused" : trial.status} · review ${trial.reviewAt || "2 / 4 / 8"}</small></div>${btn("Review", "trial", `data-id="${trial.id}"`)}</div>`).join("")}</section>` +
@@ -840,7 +985,7 @@ function openRecord(id) {
   if (!r) return;
   modal(
     r.session.title,
-    `<p>${stamp(r.startedAt)} · ${esc(r.status)} · Cycle ${r.cycle}, week ${r.week}</p>${btn("Delete session", "delete-session", `data-id="${r.id}"`, "button danger")}${preparationLog(r)}${partialMobilityLog(r)}${partialAerobicLog(r)}${r.session.rows
+    `<p>${stamp(r.startedAt)} · ${esc(r.status)} · Cycle ${r.cycle}, week ${r.week}</p>${btn("Delete session", "delete-session", `data-id="${r.id}"`, "button danger")}${pacingLog(r)}${preparationLog(r)}${partialMobilityLog(r)}${partialAerobicLog(r)}${r.session.rows
       .map(
         (e) =>
           `<details open><summary>${esc(e.name)} · ${esc(describe(e))}</summary><ol>${r.sets
@@ -977,7 +1122,118 @@ async function action(el) {
     }, "Primary athletics moved to Thursday; no extra module.");
     return;
   }
-  if (a === "prep-start") return transact((s) => startPreparation(s, key));
+  if (a === "pace-show") {
+    nav("workout");
+    document.querySelector(".pace-card")?.scrollIntoView({ block: "start" });
+    return;
+  }
+  if (a === "pace-enable")
+    return transact((s) => {
+      s.active.timeConfig ||= {
+        ...copy(s.training),
+        anchors: copy(s.active.anchors),
+        increment: s.active.increment,
+      };
+      createPacing(s.active);
+      syncPacing(
+        s.active,
+        Object.fromEntries(
+          s.active.session.rows.map((e) => [e.key, rowStatus(s.active, e)]),
+        ),
+      );
+      s.active.pacing.plannedSeconds = paceStatus(s.active).remaining;
+    });
+  if (a === "pace-sound") {
+    primeTimerSound();
+    return transact((s) => {
+      s.active.pacing.sound = !s.active.pacing.sound;
+    });
+  }
+  if (a === "pace-start") {
+    if (state.active.pacing.sound) primeTimerSound();
+    return transact((s) => {
+      const w = s.active,
+        stage = paceStage(w);
+      startPaceStage(w);
+      if (stage.role === "mobility" && !w.mobilityRun) startMobility(s);
+      if (stage.role === "aerobic") startAerobic(s);
+    });
+  }
+  if (a === "pace-set-end") {
+    transact((s) => endPaceSet(s.active));
+    document
+      .querySelector('[data-form="set"]')
+      ?.scrollIntoView({ block: "center" });
+    return;
+  }
+  if (a === "pace-pause")
+    return transact((s) => {
+      pausePace(s.active);
+      if (paceStage(s.active).role === "aerobic" && s.active.aerobicRun)
+        pauseAerobic(s);
+      if (s.active.preparationTimer) pausePreparation(s);
+    });
+  if (a === "pace-add") return transact((s) => extendPace(s.active));
+  if (a === "pace-break") return transact((s) => takePaceBreak(s.active));
+  if (a === "pace-break-end") return transact((s) => finishPaceBreak(s.active));
+  if (["pace-next", "pace-skip"].includes(a))
+    return transact((s) => {
+      const w = s.active,
+        stage = paceStage(w),
+        now = Date.now();
+      if (stage.role === "mobility") {
+        if (!w.mobilityRun) throw Error("Start the timed drill first.");
+        completeMobilityStep(s, now);
+        return;
+      }
+      if (stage.role === "general" && !w.preparationTimer)
+        startPreparation(s, "general", w.pacing.timer?.startedAt ?? now);
+      if (
+        stage.key &&
+        ["setup", "waiting", "recovery", "ramp", "ramp-rest"].includes(
+          stage.role,
+        ) &&
+        !w.preparationTimer &&
+        !w.preparations.includes(stage.key) &&
+        ["quality", "failure", "speed"].includes(
+          w.session.rows.find((e) => e.key === stage.key)?.kind,
+        )
+      )
+        startPreparation(s, stage.key, w.pacing.timer?.startedAt ?? now);
+      if (stage.role === "general-check") finishPreparation(s, "general", now);
+      if (stage.role === "prepare-check") finishPreparation(s, stage.key, now);
+      completePaceStage(w, now, a === "pace-skip");
+      if (a === "pace-skip" && stage.role === "ramp") {
+        const next =
+          w.pacing.plan[w.pacing.plan.findIndex((x) => x.id === stage.id) + 1];
+        if (next?.role === "ramp-rest")
+          w.pacing.completed.push({
+            id: next.id,
+            label: next.label,
+            key: next.key,
+            role: next.role,
+            targetSeconds: next.seconds,
+            startedAt: null,
+            endedAt: now,
+            seconds: null,
+            method: "not-needed",
+          });
+      }
+    });
+  if (a === "prep-start")
+    return transact((s) => {
+      const p = s.active.pacing;
+      if (
+        key === "rewarm" &&
+        p?.timer &&
+        p.timer.pausedAt === null &&
+        !p.workEndedAt
+      ) {
+        pausePace(s.active);
+        p.rewarmResume = true;
+      }
+      startPreparation(s, key);
+    });
   if (a === "check-update") return $("check-update").click();
   if (a === "prep-pause") return transact((s) => pausePreparation(s));
   if (a === "mobility-start") return transact((s) => startMobility(s));
@@ -997,7 +1253,14 @@ async function action(el) {
     );
   }
   if (a === "warmup") return transact((s) => finishPreparation(s, "general"));
-  if (a === "prepare") return transact((s) => finishPreparation(s, key));
+  if (a === "prepare")
+    return transact((s) => {
+      finishPreparation(s, key);
+      if (key === "rewarm" && s.active.pacing?.rewarmResume) {
+        pausePace(s.active);
+        s.active.pacing.rewarmResume = false;
+      }
+    });
   if (a === "omit-row")
     return formModal(
       "Omit exercise",
@@ -1054,6 +1317,24 @@ async function action(el) {
               o.reason.includes("Athletic quality"))
           ),
       );
+      if (w.pacing) {
+        const index = w.pacing.plan.findIndex(
+          (step) =>
+            step.key === last.key &&
+            ["work", "aerobic", "mobility"].includes(step.role) &&
+            (step.attempt === w.sets.filter((x) => x.key === last.key).length ||
+              step.role === "mobility"),
+        );
+        const redo = new Set(
+          w.pacing.plan.slice(Math.max(0, index)).map((step) => step.id),
+        );
+        w.pacing.completed = w.pacing.completed.filter(
+          (step) => !redo.has(step.id),
+        );
+        w.pacing.currentId = null;
+        w.pacing.timer = null;
+        w.pacing.workEndedAt = null;
+      }
       s.restEnd = 0;
     }, "Most recent entry removed.");
   if (a === "rest-add")
@@ -1197,10 +1478,12 @@ function handleForm(form) {
     if (e.kind === "aerobic") data.minutes = f.num("minutes");
     let savedSet;
     transact((s) => {
-      savedSet = logSet(s, data);
+      savedSet = logSet(s, data, s.active.pacing?.workEndedAt ?? Date.now());
     });
     if (savedSet.reviewFlag) toast(savedSet.reviewFlag);
-    document.querySelector(".focus-card")?.scrollIntoView({ block: "start" });
+    document
+      .querySelector(".pace-card, .focus-card")
+      ?.scrollIntoView({ block: "start" });
     return;
   }
   transact((s) => {
@@ -1549,21 +1832,64 @@ document.addEventListener("input", (e) => {
       : "";
   }
 });
+let timerAudio, lastTimerCue;
+function primeTimerSound() {
+  try {
+    timerAudio ||= new (window.AudioContext || window.webkitAudioContext)();
+    timerAudio.resume();
+  } catch {
+    toast("Timer sound is unavailable here; the countdown remains visible.");
+  }
+}
 function tick() {
   if (!state) return;
+  if (state.active?.pacing && $("pace-clock")) {
+    const w = state.active,
+      p = w.pacing,
+      display = paceDisplay(w);
+    $("pace-clock").textContent = countdownText(display.seconds);
+    $("pace-label").textContent = display.label;
+    $("pace-budget").textContent = countdownText(display.info.budgetRemaining);
+    $("pace-forecast").textContent =
+      `${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    if ($("pace-next"))
+      $("pace-next").disabled =
+        paceElapsed(p.timer) < paceMinimum(w, display.info.stage);
+    const cue = `${w.id}:${p.currentId}:${p.timer?.startedAt}:${p.additions[p.currentId] || 0}:${p.breakRun?.startedAt || ""}`;
+    if (
+      (p.timer || p.breakRun) &&
+      display.seconds <= 0 &&
+      lastTimerCue !== cue
+    ) {
+      lastTimerCue = cue;
+      if (p.sound && timerAudio?.state === "running") {
+        const tone = timerAudio.createOscillator(),
+          gain = timerAudio.createGain();
+        tone.frequency.value = 660;
+        gain.gain.value = 0.15;
+        tone.connect(gain);
+        gain.connect(timerAudio.destination);
+        tone.start();
+        tone.stop(timerAudio.currentTime + 0.25);
+        navigator.vibrate?.(150);
+      }
+    }
+  }
   const prep = state.active?.preparationTimer;
   const aerobic = state.active?.aerobicRun;
   if (aerobic && $("aerobic-clock")) {
     const moving = preparationElapsed(aerobic),
       target = nextRow(state.active).minutes * 60;
-    $("aerobic-clock").textContent = time(moving);
+    $("aerobic-clock").textContent = countdownText(target - moving);
     $("aerobic-target").textContent =
       moving >= target
         ? "Target reached. Stop and confirm actual moving minutes."
         : `${time(target - moving)} to the planned target.`;
   }
   if (prep && $("preparation-clock"))
-    $("preparation-clock").textContent = time(preparationElapsed(prep));
+    $("preparation-clock").textContent = countdownText(
+      Number($("preparation-clock").dataset.target) - preparationElapsed(prep),
+    );
   const run = state.active?.mobilityRun,
     row = state.active && nextRow(state.active);
   if (run && row?.kind === "mobility" && $("mobility-clock")) {
@@ -1575,8 +1901,30 @@ function tick() {
     $("mobility-next").disabled = remaining > 0;
   }
   const remaining = Math.ceil((state.restEnd - Date.now()) / 1000);
-  $("timer").hidden = !(remaining > 0);
-  $("timer-count").textContent = time(remaining);
+  const w = state.active,
+    paced = w?.pacing && (paceStage(w) || w.pacing.breakRun);
+  const buttons = $("timer").querySelectorAll("button");
+  $("timer").hidden = paced ? false : !(remaining > 0);
+  $("timer").setAttribute(
+    "aria-label",
+    paced ? "Session countdown" : "Rest timer",
+  );
+  $("timer").querySelector("small").textContent = paced
+    ? paceDisplay(w).label
+    : "REST · TAKE LONGER IF NEEDED";
+  $("timer-count").textContent = paced
+    ? countdownText(paceDisplay(w).seconds)
+    : time(remaining);
+  buttons[0].dataset.action = paced ? "pace-add" : "rest-add";
+  buttons[0].textContent = paced ? "+1 min" : "+30 s";
+  buttons[0].hidden = !!(
+    paced &&
+    (w.pacing.workEndedAt ||
+      w.pacing.breakRun ||
+      paceStage(w)?.role === "mobility")
+  );
+  buttons[1].dataset.action = paced ? "pace-show" : "rest-end";
+  buttons[1].textContent = paced ? "Timer" : "Done";
 }
 setInterval(tick, 1000);
 window.addEventListener("storage", (e) => {

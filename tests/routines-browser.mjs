@@ -40,7 +40,10 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await seed("2026-09-16");
   await page.locator('[data-action="day"][data-day="wednesday"]').click();
-  assert.equal(await page.locator(".day-time strong").innerText(), "4–5 min");
+  assert.equal(
+    await page.locator(".day-time strong").innerText(),
+    "3 min 50 s",
+  );
   assert.equal(await page.locator(".session-card").count(), 1);
   await click("Start session →");
   assert.equal(
@@ -97,9 +100,9 @@ try {
   await page.clock.fastForward(120000);
   await click("Pause preparation");
   await page.clock.fastForward(60000);
-  assert.equal(await page.locator("#preparation-clock").innerText(), "2:00");
+  assert.equal(await page.locator("#preparation-clock").innerText(), "9:15");
   await page.reload();
-  assert.equal(await page.locator("#preparation-clock").innerText(), "2:00");
+  assert.equal(await page.locator("#preparation-clock").innerText(), "9:15");
   await click("Resume preparation");
   await page.clock.fastForward(300000);
   await click("General warm-up complete");
@@ -169,10 +172,10 @@ try {
   await page.clock.fastForward(600000);
   await click("Pause moving time");
   await page.clock.fastForward(120000);
-  assert.equal(await page.locator("#aerobic-clock").innerText(), "10:00");
+  assert.equal(await page.locator("#aerobic-clock").innerText(), "20:00");
   await context.setOffline(true);
   await page.reload();
-  assert.equal(await page.locator("#aerobic-clock").innerText(), "10:00");
+  assert.equal(await page.locator("#aerobic-clock").innerText(), "20:00");
   await click("Resume moving time");
   await page.screenshot({
     path: "test-results/aerobic-run-mobile.png",

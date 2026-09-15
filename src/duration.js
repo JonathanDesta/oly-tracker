@@ -47,10 +47,11 @@ export function validTimeProfile(t) {
   );
 }
 export function minutesText(seconds) {
-  const [lo, hi] = pair(seconds).map((v) => Math.ceil(v / 60));
-  return `${lo === hi ? lo : `${lo}–${hi}`} min`;
+  const values = pair(seconds),
+    value = Math.round((values[0] + values[1]) / 2);
+  return `${Math.floor(value / 60)} min${value % 60 ? ` ${value % 60} s` : ""}`;
 }
-function family(e) {
+export function family(e) {
   if (["snatch", "hang"].includes(e.id)) return "snatch";
   if (["cj", "clean"].includes(e.id)) return "cj";
   if (["jerk", "pause_jerk"].includes(e.id)) return "jerk";
@@ -72,7 +73,7 @@ function station(e, c) {
     return "cable";
   return e.id;
 }
-function workSet(e, slot, p, c) {
+export function workSet(e, slot, p, c) {
   if (e.kind === "mobility")
     return [4 * e.holdSeconds + 15, 4 * e.holdSeconds + 25];
   if (e.kind === "aerobic") return pair(e.minutes * 60);

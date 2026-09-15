@@ -1,84 +1,44 @@
-# Time planning
+# Fixed time targets and guided countdowns
 
-The app now estimates each exercise, each session and the complete scheduled day. These are planning ranges, not measured workout durations or additional training prescriptions. They cover the configured dose, including readiness restrictions. Actual completion time depends on load, rep outcome, gym conditions and interruptions.
+App 7.12 replaces the displayed time ranges with one target per exercise, session and day. These are planned durations, not measurements or a guarantee of completion time. Actual set endpoints still follow the program. All displayed totals use the same whole-second timeline as the countdown.
 
-## Default assumptions
+## Included time
 
-- Moderate gym traffic: 1–3 minutes waiting when acquiring a station. Consecutive exercises at the same station keep it.
-- A typical 45-second plate/stack change and 90-second station move/setup, each modelled from two-thirds to four-thirds of that time. Includes walking, adjusting supports/safeties and loading the first work area.
-- Ten minutes per visit for water, restroom and other interruptions, plus 3–5 minutes arriving and 2–4 minutes unloading, logging the last set and packing up. Standalone aerobic visits use 1–2 minutes each for arrival/departure.
-- Conventional reps: 3–4 seconds including the roughly two-second eccentric; bench, squats and calves 4–5 seconds including their pauses. Add handling/unrack/rerack time. Low/high bounds use the prescribed rep window. One-arm cable lateral raises count both sides by default; choose both-arm timing in Settings, or select dumbbells.
-- Olympic execution: snatch/clean 12–20 seconds per rep, CJ pair 25–40 seconds, jerk 10–18 seconds, pull 4–7 seconds. Doubles include resets; rack-jerk upper estimates allow the permitted 30-second split. Pause variations receive additional execution allowance.
-- Jump sets include two ten-second resets. Flies include the 20 m run-in. Cuts include both sides and the 20–30 second reset. Walking back and logging fit inside the prescribed long field rests.
+`src/timeline.js` builds the timed steps from the current prescription and frozen timing settings. The sequence covers arrival; general/field warm-up drills; equipment setup and waits; specific warm-up sets and ramp rests; work sets and individual Olympic attempts; within-set resets; between-set recovery; loading/logging beyond recovery; miscellaneous breaks; and final unloading/logging/packing. Mobility has setup, four holds, three 15-second rests and a 20-second planning target for the five active reps. Aerobic moving time stays separate from setup and breaks. No additional cooldown is prescribed by the source.
 
-## What comes from the program
+Default gym waiting targets are 30 seconds for quiet, two minutes for moderate and four minutes for busy conditions. Setup and loading use the selected typical times, with short transitions between related rows. Recovery overlaps transitions and loading where possible. Work-rep planning uses the midpoint of the documented exercise-specific tempo/rep-window allowances; Olympic attempts, CJ pairs, unilateral raises, jumps and cuts have distinct targets. These execution targets never create reps or change the failure endpoint.
 
-Pages 8–9 supply the general warm-up, specific ramps, skipped light stages, 75/85% thresholds, work-set rests and the second-visit re-warm-up. General lifting preparation is budgeted at 10–15 minutes; the second visit uses the prescribed 3–5 minutes plus each local ramp. Field preparation on page 21 is budgeted at 9–13 minutes, including the easy walk/jog, drills, build-up runs, walk-backs and 90-second final rest.
+General lifting preparation specifies the page-8 movements individually. Specific ramps follow pages 8–9 and the page-27 assessment replacement. Olympic ramps use the first suggested work load, normally the lower end of its band, and omit stages reaching that load. Check the original warm-up instructions against the actual selected work load: a heavier target can need additional 70/80% stages, and optional squat/pull rehearsals are used when needed. Extend the preparation allowance for additional rehearsals. A ramp that reaches the actual work weight can be marked unnecessary with its paired ramp rest. All preparation remains submaximal.
 
-Each exercise includes its warm-up execution and ramp rests, work execution, within-set resets, between-set rests, equipment transition, and waiting. There are n−1 rests between n work sets. A full final-set rest is not automatically added before another exercise’s warm-up. Continuation rows retain recovery but do not repeat an entire ramp; a heavier continuation allows a brief rehearsal. Loading/logging and equipment changes share recovery when possible; only time beyond the available recovery is added. Optional final squat/pull ramps appear in the upper allowance.
+The mock-meet inter-lift allowance is nine minutes before the CJ ramp. Split visits retain their separate overhead and at least three hours between visits outside training time. Same-visit athletics includes the five-minute transition plus the full field warm-up. Daily totals count scheduled mobility and aerobic work once. Travel and unscheduled work are outside the starting target.
 
-Page 19’s mock meet includes the 8–10 minute inter-lift interval **before** the CJ ramp. Page 4’s split visits add at least three hours outside training time. Athletics defaults to a separate visit with the same preferred gap; same-visit planning adds the page-21 five-minute transition and full field warm-up, sharing the visit overhead.
+## Using the timer
 
-Aerobic prescriptions remain actual moving minutes. Arrival, setup and breaks affect the planning total only. The main aerobic range covers a walk with no equipment queue through a bike setup/queue at the chosen gym traffic; additional prescribed walks have no machine queue. Aerobics is assumed to follow other training when present. Additional walks retain their separate moving dose; add travel for separate outings. Selected mobility/stretches are counted on their scheduled days: four unilateral holds per restriction, three 15-second rests, five slow active reps, setup and side changes. No mobility is invented for unselected restrictions. The source prescribes no separate cooldown.
+Starting a session begins the arrival/setup countdown. Confirm each preparation step using **Continue timer**; explicit checks finish general and local preparation. **Start timed set** begins the execution target. Tap **Set finished · record result** at the actual end, then save the real result. The next reset/rest starts from that recorded end time, so typing does not add recovery. Without that button, the log timestamp remains the best available end time.
 
-## Reading and adjusting the app
+At zero, the clock shows overtime and can sound a cue if sound is enabled. Work is never auto-logged and failure work is never terminated by a clock. The guide prevents advancing a programmed rest before its time is complete. Add time when needed. A small countdown remains visible when scrolling to the outcome form; the Timer button returns to the full controls.
 
-Each day has a whole-day budget, each session has a range, and every exercise shows its allowance including preparation, transitions and rest. Open “How this time is estimated” for the itemized breakdown. Totals use unrounded seconds, so separately rounded labels can differ by a few minutes. These are broad low/high planning bounds, not confidence intervals or guarantees.
+Pause/resume preserves the step target. The session deadline continues to reflect wall time, and the projected finish follows the remaining steps. Timestamps survive reload and offline use. Sound requires an enabled browser audio session; the visible clock and stored timestamps remain the timing record.
 
-Settings → Time planning changes traffic, breaks, typical load changes, station setup, extra recovery, athletics visit arrangement and one-arm lateral timing. These settings do not change training dose, rest timers, progression eligibility or comparison setup. Existing workouts retain their starting assumptions; the active exercise allowance describes the complete exercise, not time remaining.
+**Take a 2-minute break** uses the ten-minute miscellaneous pool, with actual elapsed break time deducted when the break ends. Recovery continues if the break overlaps an existing rest. Longer breaks can use more of the pool; overruns remain visible against the original session target. The remaining pool appears near the end and can be released if unused. Equipment waits can likewise end when equipment becomes available. Paused preparation and interrupted work retain their timing traces; timed steps do not claim unmeasured confirmations.
 
-Travel to/from training and unscheduled optional walking are additional. An unusually long interruption can exceed the buffer; after more than 15 minutes idle, use the source re-warm-up. Actual failure reps outside their expected window, early stops and additional recovery can move elapsed time outside the estimate.
+After more than 15 minutes idle, the source's re-warm-up control provides a four-minute target for two minutes of easy movement and two ascending rehearsals. It pauses/resumes a running guide step and contributes its remaining time to the finish forecast. Actual safety and readiness govern resumption.
 
-## Example: first-cycle Foundation, week 3, full entry dose
+Saved timing logs retain measured steps; completed sessions drop their executable queue and unmeasured placeholders to avoid unnecessary journal growth. Session deletion removes the timing record along with its workout. Existing sessions without a guide can enable it for their remaining work.
 
-Default moderate traffic, one-arm cable laterals, single B/D visit, ten minutes miscellaneous time; optional athletics, aerobics and mobility disabled. Different phases and your actual settings produce different totals.
+## Example at the default full Foundation dose
 
-| Day      | Full session budget |
-| -------- | ------------------- |
-| monday   | 64–94 min           |
-| tuesday  | 173–289 min         |
-| thursday | 71–108 min          |
-| friday   | 180–296 min         |
+Cycle 1, week 3, full entry dose, one-arm cable laterals, single B/D visit, moderate traffic, ten minutes of miscellaneous time per visit, optional modules disabled:
 
-The B/D bounds are wide because many separate exercises each have a warm-up, equipment transition and possible wait. The upper bound assumes all of those take the longer end simultaneously; it is not a claim that every visit will last that long.
+| Day      | Planned time |
+| -------- | ------------ |
+| Monday   | 75 min 16 s  |
+| Tuesday  | 226 min 8 s  |
+| Thursday | 86 min 11 s  |
+| Friday   | 232 min 52 s |
 
-### Tuesday detail
-
-| Exercise / visit overhead        | Allowance |
-| -------------------------------- | --------- |
-| Full clean & jerk                | 26–40 min |
-| Above-knee hang full snatch      | 13–20 min |
-| Front squat                      | 11–21 min |
-| Flat barbell bench press         | 13–21 min |
-| Incline machine press · 30–45°   | 14–21 min |
-| Cable lateral raise              | 18–30 min |
-| Chest-supported row              | 9–14 min  |
-| Lat pulldown                     | 5–10 min  |
-| Supported machine or DB shrug    | 5–10 min  |
-| Reverse pec deck                 | 5–11 min  |
-| Cable curl · arms beside torso   | 5–10 min  |
-| Overhead cable triceps extension | 3–6 min   |
-| Seated leg curl                  | 8–14 min  |
-| Standing calf raise              | 9–14 min  |
-| Supported reclined leg extension | 5–10 min  |
-| Machine abdominal crunch         | 5–10 min  |
-| arrival                          | 3–5 min   |
-| general                          | 10–15 min |
-| breaks                           | 10 min    |
-| departure                        | 2–4 min   |
+A single selected 30-second stretch restriction takes a planned 3 min 50 s on each scheduled mobility day. Other weeks, readiness restrictions, equipment and optional doses produce different totals automatically. Adjust timing settings after observing actual sessions; the defaults have not been calibrated to personal measured durations.
 
 ## Verification
 
-Regression tests cover rep windows, unilateral timing, Olympic resets, ramp thresholds, loading/rest overlap, repeated rows, meet intervals, split visits, field work, aerobic totals, mobility, all phase/restriction combinations, backup validation and frozen session assumptions. The browser suite checks all seven days, settings persistence, active budgets, split/athletic placement, 320/390/768/1440 px layouts and cold offline reload. The existing prescription and full-year audit remain part of `npm run audit`.
-
-## Executable preparation and stretch-only days
-
-Selected mobility now appears as a real session with Start, timed left/right holds, 15-second rests, active-rep completion, early stop and a saved journal. It runs without a lifting session or invented lifting warm-up. The day budget includes that session once. General/field warm-ups and local ramps have resumable stopwatches, exact source instructions and completion records. A separately performed warm-up can be confirmed, with its duration left unknown. The interruption re-warm-up is available with its additional 3–5 minute planning allowance. Paused timer time is excluded from timed preparation; the overall session timestamps retain elapsed wall time.
-
-Additional checks execute 156 cycle/week/mobility-day combinations and run stretch-only sessions through a cold offline reload, completion and early stop. Browser tests also cover warm-up pause/resume and activating a cached app update while preserving the journal. The update action is blocked during an active workout.
-
-## Executable aerobics
-
-Both main aerobic sessions and additional prescribed walks have start/pause/resume clocks. The easy start belongs to the prescribed moving dose, so cardio does not get a separate zero-minute lifting warm-up screen. Stop at the target and confirm actual moving minutes; the timer measures unpaused time, not physical movement. Setup, waiting and breaks remain in the planning total but are excluded from moving dose. Shorter bouts save as partial work. Ending without confirmation retains the interrupted clock trace separately from confirmed minutes. Timers, targets and paused time survive offline reload.
-
-App 7.10 exposes its installed build and an update check in Settings, including on mobile. The update banner preserves the journal and blocks activation while any saved session is active, including in another tab.
+Nine pacing regression tests cover fixed totals over 189 phase/readiness/day configurations, source set/rest counts, actual set-end timestamps, no automatic outcomes, persistent pauses, break accounting, readiness reductions, saved-trace compaction and invalid timer rejection. The guided browser suite runs complete preparation, Olympic doubles, recovery during logging, overtime, undo, offline reload, an entire stretch-only session and aerobic moving-time confirmation, with 320/390/768/1440 px layout checks. The prior program, journal, annual execution, migration and deployment suites remain part of the full audit.

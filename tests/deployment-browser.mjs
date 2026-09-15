@@ -65,7 +65,7 @@ try {
   );
   await page.reload();
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.11/);
+  assert.match(await page.locator("main").innerText(), /App 7\.12/);
   assert.equal(
     await page
       .getByLabel("Ankle · bent-knee calf stretch, heel down", { exact: true })
@@ -96,7 +96,10 @@ try {
   await click("Week");
   for (const day of ["wednesday", "saturday", "sunday"]) {
     await page.locator(`[data-action="day"][data-day="${day}"]`).click();
-    assert.equal(await page.locator(".day-time strong").innerText(), "4–5 min");
+    assert.equal(
+      await page.locator(".day-time strong").innerText(),
+      "3 min 50 s",
+    );
     assert.equal(
       await page.locator('[data-action="start"][data-id="mobility"]').count(),
       1,

@@ -11,6 +11,7 @@ import {
   sportEvent,
 } from "./prescription.js";
 import { timeProfile } from "./duration.js";
+import { createPacing, closePacing } from "./pacing.js";
 import {
   mobilitySteps,
   validMobilityTrace,
@@ -770,6 +771,7 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
     notes: "",
     warmup: ["mobility", "cardio"].includes(se.kind),
   };
+  createPacing(s.active, now);
   s.restEnd = 0;
 }
 export function omitRow(s, key, reason, now = Date.now()) {
@@ -1075,6 +1077,7 @@ export function finishSession(s, notes = "", now = Date.now()) {
     throw Error(
       "Resolve remaining rows, or end early with an omission reason.",
     );
+  closePacing(w, now);
   w.notes = notes;
   w.endedAt = now;
   w.status =

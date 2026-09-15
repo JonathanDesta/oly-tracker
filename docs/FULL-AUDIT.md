@@ -98,7 +98,7 @@ The previous audit did not verify that mobility could run as a session; it was d
 
 Aerobics previously had manual logging without an executable moving-time clock. It now provides start, pause, resume and actual-minute confirmation for both main sessions and additional walks. Pauses are excluded, targets remain frozen, shorter bouts are partial, and stopped unconfirmed timers retain their trace. The easy start is part of moving time; no separate lifting warm-up is invented. Tests execute cardio and mobility on the same non-lifting day through offline reload. Three additional unit regressions cover timing, shortened/stopped work and readiness/import validation. The browser suite also verifies saved mobility creates Start buttons and nonzero budgets on Wednesday, Saturday and Sunday.
 
-App 7.11 shows its installed build in Settings and on desktop, checks for updates on focus/reconnection, and offers an explicit update check. Activation checks the saved active session as well as the local tab, so a stale tab cannot activate an update over another tab’s workout. Tests preserve the journal through activation.
+App 7.12 shows its installed build in Settings and on desktop, checks for updates on focus/reconnection, and offers an explicit update check. Activation checks the saved active session as well as the local tab, so a stale tab cannot activate an update over another tab’s workout. Tests preserve the journal through activation.
 
 ## Published deployment correction
 
@@ -110,12 +110,16 @@ The release adds `npm run check:deployment`, which compares every cached asset a
 
 History and day-tab logs now provide confirmed deletion of saved sessions. Current-week test runs can be removed and started again; earlier-week deletion preserves the current schedule. Deletion removes progression/trial credit, actual bench-spacing contributions, same-ID archived copies, linked bench reservations and demonstrated-reference events. Reference chains preserve later valid/manual references and cannot resurrect a previously deleted load. Eight regression tests cover empty, omitted, mobility, aerobic, partial and reference-bearing records, persistence, derived history, deletion ordering and active-workout guards. An eighth browser suite verifies confirmation/cancel, five-second test deletion, offline reload and restart, unrelated records, older-week deletion, mobile layout and active-session protection. It can run against the public URL with an isolated synthetic journal.
 
+## Fixed targets and guided pacing revision
+
+App 7.12 replaces displayed ranges with a shared fixed-second timeline and a persistent stage runner. It covers preparation, every prescribed set/attempt/reset/rest, station changes, waits, a reusable miscellaneous pool, packing up, aerobic moving time and timed mobility. Actual set-end timestamps start recovery while results are entered. Zero never invents an outcome or ends failure work. Delays, pauses and overtime remain visible against the original target; modified readiness updates remaining steps. Measured traces survive finishing, deletion, backup validation and offline reload. Nine new unit tests and a ninth browser suite cover these paths. [TIME-ESTIMATES.md](TIME-ESTIMATES.md) documents the planning assumptions and operating controls. Earlier sections describe historical revisions; their displayed ranges are superseded by these fixed targets.
+
 ## Executed verification
 
 Final `npm run audit` exited **0** on the audited files:
 
-- **96 tests passed, 0 failed, 0 skipped.**
-- **Eight browser suites passed**, with no uncaught JavaScript errors.
+- **105 tests passed, 0 failed, 0 skipped.**
+- **Nine browser suites passed**, with no uncaught JavaScript errors.
 - **52-week execution:** 212 scheduled lifting sessions, 2,064 valid conventional sets, termination at cycle 4/week 13. Independently checked cycle totals: 498, 522, 522, 522.
 - **24,528 generated configuration cases:** 19,656 phase/readiness cases, 4,368 trials/heavy/split/recovery cases, and 504 simultaneous sport/alcohol cases. These are invariant checks in addition to the specific behavioral regressions, not a substitute for them.
 - **43-page source comparison:** zero differences after whitespace normalization; original and bundled PDF hashes match.
@@ -130,4 +134,4 @@ The source extraction comparison is an additional audit step: `pdftotext -layout
 
 ## Reproduction
 
-Run `npm ci`, then `npm run audit`. Chrome is used by default; `OLY_BROWSER_CHANNEL=chromium` selects an installed Playwright Chromium. Browser artifacts are written to ignored `test-results/`. The new service-worker cache is `oly-groundup-v7-11`; an existing workout is not replaced mid-session. Use Settings → Check for updates and the update banner after saving form changes and finishing active work. A version predating the banner must close all app tabs before reopening; a normal reload may retain the previous offline worker.
+Run `npm ci`, then `npm run audit`. Chrome is used by default; `OLY_BROWSER_CHANNEL=chromium` selects an installed Playwright Chromium. Browser artifacts are written to ignored `test-results/`. The new service-worker cache is `oly-groundup-v7-12`; an existing workout is not replaced mid-session. Use Settings → Check for updates and the update banner after saving form changes and finishing active work. A version predating the banner must close all app tabs before reopening; a normal reload may retain the previous offline worker.

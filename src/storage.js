@@ -2,6 +2,7 @@ import { fresh, SCHEMA } from "./training.js";
 import { defaults, DAYS } from "./prescription.js";
 import { EXERCISES } from "./catalog.js";
 import { TIME_DEFAULTS, validTimeProfile } from "./duration.js";
+import { validPacing } from "./pacing.js";
 import { validMobilityTrace, preparationElapsed } from "./routines.js";
 export const KEY = "oly_program_v7",
   BACKUP = "oly_program_v7_backup";
@@ -320,6 +321,8 @@ export function validate(data) {
         Array.isArray(r.omissions),
       "session.",
     );
+    if (r.pacing !== undefined)
+      assert(validPacing(r.pacing), "session pacing timer.");
     if (r.context) context(r.context);
     if (r.timeConfig !== undefined) {
       const c = r.timeConfig;

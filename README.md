@@ -37,13 +37,13 @@ See [the full audit and source checklist](docs/FULL-AUDIT.md), [the historical r
 
 ## Time planning
 
-Each exercise, session and scheduled day shows a planning range including preparation, rest, equipment changes, waiting and breaks. Settings → Time planning defaults to moderate traffic (1–3 minutes per station) and ten minutes miscellaneous time per visit. Split-visit gaps are shown separately. See [the timing assumptions and example breakdown](docs/TIME-ESTIMATES.md). Training prescriptions and timers are unchanged by these settings.
+Each exercise, session and day shows a fixed planned time. Starting a session opens a guided countdown for arrival, general preparation, local ramps, every work set/attempt, within-set resets, prescribed rests, equipment transitions, waiting, breaks and packing up. Mobility and aerobic-only days have their own timed steps. The displayed totals sum the same steps used by the runner. See [timing assumptions](docs/TIME-ESTIMATES.md).
 
-Selected mobility is a runnable session, including on days with no lifting: timed holds on both sides, rests and active-rep completion are saved to the journal. General, field and exercise-specific preparation have resumable stopwatches and separate completion logs; interruption re-warm-up is also available. An update banner activates a waiting version after the current workout is finished.
+Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Aerobic main sessions and additional walks have start/pause/resume clocks and actual-minute confirmation. Their easy start is included in moving time; pauses and equipment waits are excluded from moving dose. App 7.11 identifies the installed release in Settings and checks for updates when returning online or focusing the app.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.12 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
-GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all 16 served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
+GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all 18 served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
 ## Removing test sessions
 

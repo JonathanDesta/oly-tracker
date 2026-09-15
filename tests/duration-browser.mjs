@@ -58,16 +58,17 @@ try {
       assert.equal(await page.locator(".mobility-row").count(), 2);
       assert.equal(
         await page.locator(".mobility-row strong").first().innerText(),
-        "4–5 min per restriction",
+        "3 min 50 s per restriction",
       );
       assert.match(
         await page.locator(".mobility-card .duration").innerText(),
-        /7–9 min/,
+        /7 min 40 s/,
       );
     }
     const expected = await page.evaluate(async (day) => {
       const { planFor } = await import("./src/training.js");
-      const { estimateDay, minutesText } = await import("./src/duration.js");
+      const { minutesText } = await import("./src/duration.js");
+      const { fixedDay: estimateDay } = await import("./src/timeline.js");
       const s = JSON.parse(localStorage.getItem("oly_program_v7"));
       const p = planFor(s, day, false),
         t = estimateDay(p, s.training);
@@ -97,10 +98,10 @@ try {
   const form = page.locator('[data-form="timing"]');
   assert.equal(await form.locator('[name="traffic"]').inputValue(), "moderate");
   await form.locator('[name="traffic"]').selectOption("busy");
-  await form.locator('[name="breakMinutes"]').fill("20");
+  await form.locator('[name="breakMinutes"]').fill("25");
   await form.locator('[name="athleticsVisit"]').selectOption("same");
   await click("Save time planning");
-  assert.equal((await read()).training.timing.breakMinutes, 20);
+  assert.equal((await read()).training.timing.breakMinutes, 25);
   await page.reload();
   await click("Week");
   assert.notEqual(await page.locator(".day-time strong").innerText(), before);
@@ -187,14 +188,20 @@ try {
   await click("Week");
   for (const day of ["wednesday", "saturday", "sunday"]) {
     await page.locator(`[data-action="day"][data-day="${day}"]`).click();
-    assert.equal(await page.locator(".day-time strong").innerText(), "4–5 min");
+    assert.equal(
+      await page.locator(".day-time strong").innerText(),
+      "3 min 50 s",
+    );
     assert.equal(
       await page.locator('[data-action="start"][data-id="mobility"]').count(),
       1,
     );
   }
   await page.locator('[data-action="day"][data-day="wednesday"]').click();
-  assert.equal(await page.locator(".day-time strong").innerText(), "4–5 min");
+  assert.equal(
+    await page.locator(".day-time strong").innerText(),
+    "3 min 50 s",
+  );
   assert.equal(await page.locator(".mobility-row").count(), 1);
   await page.setViewportSize({ width: 390, height: 900 });
   await page.screenshot({
