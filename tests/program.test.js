@@ -1,318 +1,384 @@
-'use strict';
-const test = require('node:test'),
-  assert = require('node:assert/strict');
-const { PROGRAM: P } = require('../js/program');
-const config = (week = 3, extra = {}) => ({
-  ...P.defaults(),
-  cycle: 1,
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import crypto from "node:crypto";
+import {
+  defaults,
+  dayPlan,
+  DAYS,
+  phaseFor,
+  athleticDose,
+  loadRange,
+} from "../src/prescription.js";
+const config = (week = 3) => ({
+  ...defaults(),
   week,
-  entryStage: 3,
-  phaseGate: 'R',
-  ...extra,
+  entry: 3,
+  gate: "R",
+  anchors: { snatch: 155, cj: 205, jerk: 200, clean: 220 },
 });
-const rows = (t, d, ctx) =>
-  P.dayPlan(t, d, ctx)
-    .sessions.filter((s) => !s.skipped)
-    .flatMap((s) => s.rows);
-const failureCount = (t, d) =>
-  rows(t, d)
-    .filter((e) => e.kind === 'failure')
+const rows = (c, d, ctx = {}) =>
+  dayPlan(c, d, ctx).sessions.flatMap((s) => (s.skipped ? [] : s.rows));
+const count = (c) =>
+  DAYS.flatMap((d) => rows(c, d))
+    .filter((e) => e.kind === "failure")
     .reduce((n, e) => n + e.sets, 0);
-const weekCount = (t) => P.days.reduce((n, d) => n + failureCount(t, d), 0);
-test('52-week calendar reproduces 2,064 work sets and 104 distinct bench days', () => {
-  let total = 0,
-    benches = 0;
-  for (let cycle = 1; cycle <= 4; cycle++)
-    for (let week = 1; week <= 13; week++) {
-      const t = config(week, { cycle, entryStage: Math.min(week, 3) });
-      total += weekCount(t);
-      const days = P.days.filter((d) => rows(t, d).some((e) => e.id === 'bench'));
-      assert.equal(days.length, 2);
-      assert.deepEqual(days, week === 12 ? ['monday', 'saturday'] : ['tuesday', 'friday']);
-      assert.deepEqual(rows(t, days[0]).find((e) => e.id === 'bench').repRange, [3, 5]);
-      benches += days.length;
-    }
-  assert.equal(total, 2064);
-  assert.equal(benches, 104);
+const e = (c, d, id) => rows(c, d).find((e) => e.id === id);
+test("bundled source is byte-identical to its provenance hash and has all 43 pages", () => {
+  const meta = JSON.parse(fs.readFileSync("program/source.json")),
+    pages = JSON.parse(fs.readFileSync("program/pages.json"));
+  assert.equal(
+    crypto
+      .createHash("sha256")
+      .update(fs.readFileSync("program/revision-6.pdf"))
+      .digest("hex"),
+    meta.sha256,
+  );
+  assert.equal(pages.length, 43);
+  assert.match(pages[29].text, /2,064/);
+  assert.match(pages[33].text, /ONE Friday calf set/);
 });
-test('entry, Friday-11 and pivot failure doses match the program', () => {
-  assert.equal(weekCount(config(1, { entryStage: 1 })), 28);
-  assert.equal(weekCount(config(2, { entryStage: 2 })), 36);
-  assert.equal(weekCount(config(3)), 44);
-  assert.equal(failureCount(config(11), 'tuesday'), 22);
-  assert.equal(failureCount(config(11), 'friday'), 14);
-  assert.equal(weekCount(config(12)), 2);
-  assert.equal(weekCount(config(13)), 44);
-});
-test('both failure days use the exact revised menu, order, reps and set allocation', () => {
-  for (const d of ['tuesday', 'friday']) {
-    const list = rows(config(), d).filter((e) => e.kind === 'failure');
-    assert.deepEqual(
-      list.map((e) => [e.id, e.sets, e.repRange]),
-      [
-        [d === 'tuesday' ? 'front_squat' : 'back_squat', 1, [4, 6]],
-        ['bench', 1, d === 'tuesday' ? [3, 5] : [6, 8]],
-        ['incline', 3, [6, 10]],
-        ['lateral', 4, [12, 20]],
-        ['row', 2, [8, 12]],
-        ['pulldown', 1, [8, 12]],
-        ['shrug', 1, [10, 15]],
-        ['rear_delt', 1, [12, 20]],
-        ['curl', 1, [8, 12]],
-        ['triceps', 1, [10, 15]],
-        ['leg_curl', 2, [8, 12]],
-        ['calf', 2, [10, 15]],
-        ['leg_ext', 1, [10, 15]],
-        ['crunch', 1, [10, 15]],
-      ],
-    );
-    assert.match(list.find((e) => e.id === 'triceps').name, /Overhead/);
-    assert.match(list.find((e) => e.id === 'calf').name, /Standing/);
-    assert.match(list.find((e) => e.id === 'leg_ext').name, /reclined/);
-    assert.ok(list.every((e) => e.rir === 0 && e.rest >= 150));
-  }
-});
-test('Foundation work totals 28 snatches, 13 cleans, 19 jerks and 6 pulls', () => {
-  const all = P.days.flatMap((d) => rows(config(), d));
-  const reps = (id) =>
-    all
-      .filter((e) => e.id === id)
-      .reduce((n, e) => n + e.sets * (e.reps === '1+1' ? 1 : Number(e.reps)), 0);
-  assert.equal(reps('snatch') + reps('hang'), 28);
-  assert.equal(reps('cj'), 13);
-  assert.equal(reps('cj') + reps('jerk'), 19);
-  assert.equal(reps('pull'), 6);
-});
-test('phase loads and earned heavy slots never create unearned >90% base work', () => {
+test("p.7 independently transcribed phase rows match every normal day", () => {
   const expected = {
-    3: {
+    F: {
       monday: [
-        [6, 2, [65, 75]],
-        [3, '1+1', [60, 70]],
+        ["snatch", 6, 2, 65, 75, 7],
+        ["cj", 3, "1+1", 60, 70, 7],
       ],
       tuesday: [
-        [6, '1+1', [65, 75]],
-        [3, 2, [55, 65]],
+        ["cj", 6, "1+1", 65, 75, 7],
+        ["hang", 3, 2, 55, 65, 7],
+      ],
+      thursday: [
+        ["snatch", 6, 1, 70, 80, 7],
+        ["jerk", 3, 2, 75, 85, 7],
+        ["pull", 2, 3, 90, 100, 7],
+      ],
+      friday: [
+        ["snatch", 4, 1, 75, 85, 8],
+        ["cj", 4, "1+1", 75, 85, 8],
       ],
     },
-    6: {
+    B: {
       monday: [
-        [6, 2, [70, 80]],
-        [3, '1+1', [65, 75]],
+        ["snatch", 6, 2, 70, 80, 8],
+        ["cj", 3, "1+1", 65, 75, 8],
       ],
       tuesday: [
-        [6, '1+1', [72, 82]],
-        [3, 2, [60, 70]],
+        ["cj", 6, "1+1", 72, 82, 8],
+        ["hang", 3, 2, 60, 70, 8],
+      ],
+      thursday: [
+        ["snatch", 5, 1, 75, 85, 8],
+        ["jerk", 4, 1, 85, 95, 8],
+        ["pull", 2, 3, 95, 105, 7],
+      ],
+      friday: [
+        ["snatch", 4, 1, 80, 90, 8],
+        ["cj", 4, "1+1", 80, 90, 8],
       ],
     },
-    10: {
+    R: {
       monday: [
-        [5, 1, [78, 85]],
-        [3, '1+1', [70, 78]],
+        ["snatch", 5, 1, 78, 85, 8],
+        ["cj", 3, "1+1", 70, 78, 8],
       ],
       tuesday: [
-        [5, '1+1', [78, 85]],
-        [3, 1, [65, 75]],
+        ["cj", 5, "1+1", 78, 85, 8],
+        ["hang", 3, 1, 65, 75, 8],
+      ],
+      thursday: [
+        ["snatch", 4, 1, 75, 82, 8],
+        ["jerk", 3, 1, 90, 100, 8],
+      ],
+      friday: [
+        ["snatch", 4, 1, 80, 90, 8],
+        ["cj", 4, "1+1", 80, 90, 8],
       ],
     },
   };
-  for (const [week, days] of Object.entries(expected))
-    for (const [d, values] of Object.entries(days))
+  for (const [p, days] of Object.entries(expected))
+    for (const [d, expectedRows] of Object.entries(days)) {
+      const c = config({ F: 3, B: 6, R: 9 }[p]);
       assert.deepEqual(
-        rows(config(Number(week)), d)
-          .filter((e) => e.kind === 'quality')
-          .map((e) => [e.sets, e.reps, e.range]),
-        values,
+        rows(c, d)
+          .filter((e) => e.kind === "quality")
+          .map((e) => [e.id, e.sets, e.reps, ...e.range, e.effort]),
+        expectedRows,
       );
-  for (const week of [6, 10, 11])
-    for (const ex of rows(config(week), 'friday').filter((e) => e.kind === 'quality'))
-      assert.ok(ex.sequence.every((r) => r[1] <= 90));
-  const t = config(10, { heavy: { snatch: 95, cj: 92, extraSnatch: 3, extraCj: 3 } }),
-    a = rows(t, 'monday')[0];
-  assert.equal(a.sets, 5);
-  assert.equal(a.repSequence.at(-1), 1);
-  assert.deepEqual(a.sequence.at(-1), [90, 92]);
+    }
 });
-test('unknown RJ uses CJ light technique and never power clean or inferred max', () => {
-  for (const week of [3, 6, 10]) {
-    const r = rows(config(week), 'thursday').find((e) => e.id === 'jerk');
-    assert.equal(r.anchor, 'cj');
-    assert.deepEqual([r.sets, r.reps, r.range, r.effort], [3, 2, [50, 70], 6]);
-  }
-  const t = config(6);
-  t.anchors.jerk = 200;
-  const r = rows(t, 'thursday').find((e) => e.id === 'jerk');
-  assert.deepEqual([r.sets, r.reps, r.range, r.anchor], [4, 1, [85, 95], 'jerk']);
-});
-test('weeks 4/8 hold the preceding prescription, not automatic deloads', () => {
-  for (const [held, previous] of [
-    [4, 3],
-    [8, 7],
-  ])
-    for (const d of P.days)
-      assert.deepEqual(
-        rows(config(held), d).map(({ checkpoint, ...e }) => e),
-        rows(config(previous), d),
-      );
-});
-test('uncleared phase gates hold the appropriate phase', () => {
-  assert.equal(P.dayPlan(config(6, { phaseGate: 'F' }), 'monday').phase, 'F');
-  assert.deepEqual(rows(config(10, { phaseGate: 'B' }), 'monday')[0].range, [70, 80]);
-  assert.deepEqual(rows(config(12, { phaseGate: 'B' }), 'friday')[0].range, [75, 85]);
-});
-test('split changes distribution to 9 + 13 without changing exercise work', () => {
-  for (const d of ['tuesday', 'friday']) {
-    const split = P.dayPlan(config(3, { split: true }), d).sessions;
+test("pp.13–15 order, per-row dose, rep ranges, rests and 9+13 split", () => {
+  const expected = [
+    ["incline", 3, 6, 10, 210],
+    ["lateral", 4, 12, 20, 150],
+    ["row", 2, 8, 12, 180],
+    ["pulldown", 1, 8, 12, 180],
+    ["shrug", 1, 10, 15, 150],
+    ["rear_delt", 1, 12, 20, 150],
+    ["curl", 1, 8, 12, 150],
+    ["triceps", 1, 10, 15, 150],
+    ["leg_curl", 2, 8, 12, 150],
+    ["calf", 2, 10, 15, 150],
+    ["leg_ext", 1, 10, 15, 150],
+    ["crunch", 1, 10, 15, 150],
+  ];
+  for (const d of ["tuesday", "friday"]) {
+    const c = config();
     assert.deepEqual(
-      split.map((s) => s.rows.filter((e) => e.kind === 'failure').reduce((n, e) => n + e.sets, 0)),
+      rows(c, d)
+        .filter((e) => e.kind === "failure")
+        .slice(2)
+        .map((e) => [e.id, e.sets, ...e.repRange, e.rest]),
+      expected,
+    );
+    c.split = true;
+    assert.deepEqual(
+      dayPlan(c, d).sessions.map((s) =>
+        s.rows
+          .filter((e) => e.kind === "failure")
+          .reduce((n, e) => n + e.sets, 0),
+      ),
       [9, 13],
     );
-    assert.deepEqual(
-      split.flatMap((s) => s.rows),
-      rows(config(), d),
-    );
   }
 });
-test('taper Friday is three scored attempts per lift; Saturday only moderate bench', () => {
+test("p.5 first-entry ramp and p.30 independent annual totals", () => {
+  let annual = 0,
+    cycleTotals = [];
+  for (let cycle = 1; cycle <= 4; cycle++) {
+    let sum = 0;
+    for (let week = 1; week <= 13; week++) {
+      const c = {
+        ...config(week),
+        cycle,
+        entry: cycle === 1 && week < 3 ? week : 3,
+      };
+      sum += count(c);
+      const bench = DAYS.flatMap((d) =>
+        rows(c, d)
+          .filter((e) => e.id === "bench")
+          .map((e) => [d, e.repRange]),
+      );
+      assert.deepEqual(
+        bench,
+        week === 12
+          ? [
+              ["monday", [3, 5]],
+              ["saturday", [6, 8]],
+            ]
+          : [
+              ["tuesday", [3, 5]],
+              ["friday", [6, 8]],
+            ],
+      );
+    }
+    cycleTotals.push(sum);
+    annual += sum;
+  }
+  assert.deepEqual(cycleTotals, [498, 522, 522, 522]);
+  assert.equal(annual, 2064);
+  const c = defaults();
+  assert.equal(e(c, "monday", "snatch").sets, 4);
+  assert.deepEqual(e(c, "monday", "snatch").range, [65, 65]);
+  assert.equal(count(c), 28);
+  c.entry = 2;
+  assert.equal(count(c), 36);
+});
+test("pp.6,18,19 phase gates, checkpoints, week 11, taper and pivot", () => {
+  let c = config(6);
+  c.gate = "F";
+  assert.equal(phaseFor(c).phase, "F");
+  assert.equal(e(c, "tuesday", "front_squat").reps, "4–6");
+  c = config(9);
+  c.gate = "B";
+  assert.equal(phaseFor(c).phase, "B");
+  c = config(11);
+  assert.equal(count(c), 36);
+  assert.ok(
+    rows(c, "friday")
+      .filter((e) => e.kind === "failure")
+      .every((e) => e.sets === 1),
+  );
+  c = config(12);
+  assert.equal(count(c), 2);
+  assert.equal(e(c, "friday", "snatch").sets, 3);
+  assert.equal(e(c, "thursday", "snatch").rest, 120);
+  assert.equal(e(c, "tuesday", "snatch").rest, 180);
+  assert.equal(rows(c, "friday").length, 2);
+  c = config(13);
   assert.deepEqual(
-    rows(config(12), 'friday').map((e) => [e.id, e.sets, e.test]),
+    rows(c, "thursday").map((e) => [
+      e.id,
+      e.sets,
+      e.reps,
+      e.range,
+      e.effort,
+      e.rest,
+    ]),
     [
-      ['snatch', 3, true],
-      ['cj', 3, true],
+      ["snatch", 4, 1, [60, 70], 6, 120],
+      ["cj", 3, "1+1", [60, 70], 6, 120],
     ],
   );
+  assert.ok(rows(c, "tuesday").every((e) => e.kind === "failure"));
+  assert.equal(count(c), 44);
+});
+test("pp.16,27 regressions, unassessed RJ and assessments replace work", () => {
+  const c = config();
+  c.anchors.jerk = null;
   assert.deepEqual(
-    rows(config(12), 'saturday').map((e) => [e.id, e.repRange]),
-    [['bench', [6, 8]]],
+    [
+      e(c, "thursday", "jerk").sets,
+      e(c, "thursday", "jerk").reps,
+      e(c, "thursday", "jerk").range,
+      e(c, "thursday", "jerk").anchor,
+    ],
+    [3, 2, [50, 70], "cj"],
   );
-  for (const d of ['monday', 'thursday'])
-    assert.deepEqual(
-      rows(config(13), d).map((e) => [e.id, e.sets, e.range]),
-      [
-        ['snatch', 4, [60, 70]],
-        ['cj', 3, [60, 70]],
-      ],
-    );
-  for (const d of ['tuesday', 'friday'])
-    assert.ok(rows(config(13), d).every((e) => e.kind === 'failure'));
-});
-test('cutting is initially identical and the base configuration is never mutated', () => {
-  const t = config(),
-    snapshot = JSON.stringify(t);
-  for (const d of P.days) assert.deepEqual(rows({ ...t, cutting: true }, d), rows(t, d));
-  P.dayPlan(t, 'tuesday', { readiness: 'amber' });
-  assert.equal(JSON.stringify(t), snapshot);
-});
-test('amber omits ALL conventional work and reduces Olympic sets with floor', () => {
-  const p = P.dayPlan(config(), 'tuesday', { readiness: 'amber' }),
-    es = p.sessions.flatMap((s) => s.rows);
-  assert.ok(es.every((e) => e.kind === 'quality'));
+  c.technique.jerk = "dip";
+  const j = e(c, "thursday", "pause_jerk");
   assert.deepEqual(
-    es.map((e) => e.sets),
-    [4, 2],
+    [j.sets, j.reps, j.range, j.anchor, j.effort, j.rest],
+    [3, 2, [40, 60], "cj", 6, 90],
   );
-  assert.ok(es.every((e) => e.effort <= 7));
-  const red = P.dayPlan(config(), 'tuesday', { readiness: 'red' });
-  assert.ok(red.sessions.every((s) => s.skipped));
-});
-test('targeted reductions and reset respect the failure-scope exceptions', () => {
-  const target = rows(config(3, { recovery: 'targeted' }), 'tuesday');
-  assert.equal(target.find((e) => e.id === 'incline').sets, 2);
-  assert.equal(target.find((e) => e.id === 'lateral').sets, 2);
-  assert.equal(target.find((e) => e.id === 'row').sets, 1);
-  const reset = rows(config(3, { recovery: 'reset' }), 'tuesday');
+  c.technique.jerk = "none";
+  c.assessment = "jerk";
+  assert.equal(e(c, "thursday", "jerk").sets, 5);
+  assert.equal(e(c, "thursday", "jerk").effort, 8);
+  c.assessment = "clean";
   assert.deepEqual(
-    reset.filter((e) => e.kind === 'failure').map((e) => e.id),
-    ['bench'],
+    rows(c, "tuesday")
+      .slice(0, 3)
+      .map((e) => [e.id, e.sets]),
+    [
+      ["cj", 3],
+      ["clean", 3],
+      ["hang", 3],
+    ],
   );
-  assert.ok(reset.filter((e) => e.kind === 'quality').every((e) => e.effort === 6));
+  c.assessment = "none";
+  c.technique.snatch = "receive";
+  assert.equal(e(c, "monday", "snatch").effort, 4);
+  assert.equal(e(c, "monday", "snatch").rest, 90);
+  c.technique.snatch = "balance";
+  assert.equal(rows(c, "monday")[0].sets, 2);
+  assert.equal(rows(c, "monday")[0].reps, 1);
 });
-test('athletics and aerobics require explicit introduction, taper omits them, week 11 halves Monday only', () => {
-  for (const week of [1, 5, 9, 13])
-    for (const d of P.days)
-      assert.ok(P.dayPlan(config(week), d).sessions.every((s) => s.kind === 'lifting'));
-  const t = config(11, {
-    athletics: { enabled: true, stage: 7, day: 'thursday', secondary: 2, variation: 'none' },
-    cardio: { enabled: true, minutes: 60 },
-  });
-  const field = P.dayPlan(t, 'monday').sessions.find((s) => s.kind === 'field');
+test("pp.17–18 stricter rules never restore phase-omitted work", () => {
+  let checked = 0;
+  for (let week = 1; week <= 13; week++)
+    for (const entry of [1, 2, 3])
+      for (const day of DAYS)
+        for (const recovery of ["normal", "targeted", "reset", "restore"])
+          for (const level of ["green", "amber", "red"])
+            for (const event of [
+              "normal",
+              "verification",
+              "unsafe",
+              "game",
+              "larger_later",
+              "game_later",
+            ]) {
+              const c = { ...config(week), entry, recovery };
+              const p = dayPlan(c, day, { level, event });
+              checked++;
+              for (const s of p.sessions) {
+                assert.equal(
+                  new Set(s.rows.map((e) => e.key)).size,
+                  s.rows.length,
+                );
+                if (s.skipped) continue;
+                for (const e of s.rows) {
+                  assert.ok(
+                    e.minutes > 0 || (Number.isInteger(e.sets) && e.sets > 0),
+                  );
+                  if (level === "amber") assert.notEqual(e.kind, "failure");
+                  if (level === "red" || event === "unsafe" || event === "game")
+                    assert.fail("Unsafe session still active");
+                  if (week === 12)
+                    assert.ok(e.kind === "quality" || e.id === "bench");
+                }
+              }
+            }
+  assert.equal(checked, 19656);
+});
+test("pp.21,29 exact athletic progression and taper retention", () => {
+  const expected = [
+    [2, 3, 10, "85–90%"],
+    [3, 3, 10, "85–90%"],
+    [3, 3, 15, "85–90%"],
+    [3, 3, 15, "90–95%"],
+    [4, 3, 15, "90–95%"],
+    [4, 3, 20, "90–95%"],
+    [5, 3, 20, "90–95%"],
+    [5, 4, 20, "90–95%"],
+  ];
+  for (let i = 0; i < 8; i++) {
+    const d = athleticDose(i);
+    assert.deepEqual([d.jumps, d.runs, d.meters, d.effort], expected[i]);
+  }
+  const c = config(11);
+  c.athletics = { ...c.athletics, enabled: true, stage: 7, secondary: 2 };
   assert.deepEqual(
-    field.rows.map((e) => e.sets),
+    dayPlan(c, "monday")
+      .sessions.find((s) => s.kind === "athletic")
+      .rows.map((e) => e.sets),
     [3, 2],
   );
-  assert.equal(P.dayPlan(t, 'thursday').sessions.filter((s) => s.kind === 'field').length, 0);
-  t.week = 12;
-  for (const d of P.days) assert.ok(P.dayPlan(t, d).sessions.every((s) => s.kind === 'lifting'));
-});
-test('overhead trial replaces incline, pauses week 12/13; week 11 respects one set per exercise', () => {
-  const trial = { kind: 'press', day: 'friday' };
-  assert.equal(weekCount(config(6, { trial })), 44);
-  const w11 = rows(config(11, { trial }), 'friday');
-  assert.ok(w11.some((e) => e.id === 'press'));
-  assert.ok(!w11.some((e) => e.id === 'incline'));
-  assert.equal(failureCount(config(11, { trial }), 'friday'), 14);
-  assert.ok(!rows(config(13, { trial }), 'friday').some((e) => e.id === 'press'));
-});
-test('clean/RJ assessments are replacements with explicit Foundation effort exception', () => {
-  const c = rows(config(4, { assessment: 'clean' }), 'tuesday').filter((e) => e.kind === 'quality');
-  assert.equal(c.find((e) => e.id === 'cj').sets, 3);
-  assert.equal(c.find((e) => e.id === 'clean').effort, 8);
-  const t = config(6, { assessment: 'jerk' });
-  t.anchors.jerk = 200;
-  const j = rows(t, 'thursday').find((e) => e.id === 'jerk');
-  assert.equal(j.sets, 4);
-  assert.ok(j.assessment);
-  assert.match(j.warmup, /Replaces/);
-});
-test('all plan/session/row identifiers are unique under every week and recovery mode', () => {
-  for (let week = 1; week <= 13; week++)
-    for (const split of [false, true])
-      for (const recovery of ['normal', 'targeted', 'reset'])
-        for (const readiness of ['green', 'amber', 'red'])
-          for (const d of P.days) {
-            const p = P.dayPlan(config(week, { split, recovery }), d, { readiness });
-            assert.equal(new Set(p.sessions.map((s) => s.id)).size, p.sessions.length);
-            for (const s of p.sessions) {
-              assert.equal(new Set(s.rows.map((e) => e.key)).size, s.rows.length);
-              assert.ok(Number.isFinite(s.totalMin));
-              for (const e of s.rows) if (!e.minutes) assert.ok(e.sets > 0);
-            }
-          }
-});
-test('established set trials remain after a new trial starts and obey week 11/pivot overrides', () => {
-  const established = [
-    { kind: 'set', day: 'tuesday', exercise: 'shrug' },
-    { kind: 'set', day: 'friday', exercise: 'shrug' },
-  ];
-  assert.equal(weekCount(config(6, { established })), 46);
-  assert.equal(
-    weekCount(
-      config(6, { established, trial: { kind: 'set', day: 'tuesday', exercise: 'lateral' } }),
-    ),
-    47,
+  assert.ok(
+    !dayPlan(c, "thursday").sessions.some((s) => s.kind === "athletic"),
   );
-  assert.equal(failureCount(config(11, { established }), 'friday'), 14);
-  assert.equal(weekCount(config(13, { established })), 44);
+  c.week = 12;
+  assert.ok(!dayPlan(c, "monday").sessions.some((s) => s.kind === "athletic"));
+  c.week = 13;
+  assert.equal(
+    dayPlan(c, "monday").sessions.find((s) => s.kind === "athletic").rows[0]
+      .sets,
+    5,
+  );
 });
-test('targeted A-to-B and C-to-D controls reduce only the implicated work', () => {
-  const t = config(6, {
-    reduceMondaySnatch: true,
-    reduceCJerk: true,
-    trial: { kind: 'pause_jerk', day: 'thursday' },
-  });
-  t.anchors.jerk = 200;
-  assert.equal(rows(t, 'monday')[0].sets, 4);
-  const c = rows(t, 'thursday');
-  assert.equal(c.find((e) => e.id === 'jerk').sets, 3);
-  assert.ok(!c.some((e) => e.id === 'pause_jerk'));
+test("p.22 aerobic allocation sums actual minutes; all days after priority work; no taper work", () => {
+  for (const minutes of [40, 45, 50, 55, 60, 70, 150, 160, 300]) {
+    const c = config();
+    c.cardio = { enabled: true, minutes };
+    assert.equal(
+      DAYS.flatMap((d) => rows(c, d))
+        .filter((e) => e.id === "aerobic")
+        .reduce((n, e) => n + e.minutes, 0),
+      minutes,
+    );
+    c.week = 12;
+    assert.ok(DAYS.flatMap((d) => rows(c, d)).every((e) => e.id !== "aerobic"));
+  }
 });
-test('a local Monday reduction truncates previously earned heavy/double sequences to the reduced budget', () => {
-  const { MODEL: M } = require('../js/model');
-  const t = config(6, {
-      reduceMondaySnatch: true,
-      heavy: { snatch: 92, cj: 0, extraSnatch: 3, extraCj: 0 },
-    }),
-    ex = rows(t, 'monday')[0];
-  assert.equal(ex.sets, 4);
-  assert.equal(M.qualityState(ex, []).planned, 8);
+test("pp.28,31–34 heavy attempts replace, support substitutes, week 11 and paused trials", () => {
+  const c = config(9);
+  c.heavy = { snatch: 95, cj: 92, extraSnatch: 3, extraCj: 2 };
+  const a = e(c, "monday", "snatch");
+  assert.equal(a.repSequence.at(-1), 1);
+  assert.equal(a.sequence.at(-1)[1], 92);
+  assert.equal(e(c, "friday", "snatch").sequence.at(-1)[1], 95);
+  c.week = 3;
+  c.trials = [
+    { id: "press1", kind: "press", day: "friday" },
+    { id: "calf1", kind: "calf_partial", day: "friday" },
+  ];
+  assert.equal(count(c), 44);
+  assert.equal(e(c, "friday", "incline").sets, 2);
+  assert.equal(rows(c, "friday").filter((e) => e.id === "calf").length, 2);
+  c.week = 11;
+  assert.ok(!e(c, "friday", "incline"));
+  assert.equal(e(c, "friday", "press").sets, 1);
+  assert.equal(rows(c, "friday").filter((e) => e.id === "calf").length, 1);
+  c.week = 13;
+  assert.ok(!e(c, "friday", "press"));
+  assert.equal(e(c, "friday", "incline").sets, 3);
+});
+test("p.5 rounding and independent anchors", () => {
+  const c = config(),
+    sn = e(c, "friday", "snatch");
+  assert.deepEqual(loadRange(sn, c.anchors, 0, 5), [115, 130]);
+  c.anchors.cj = 100;
+  assert.deepEqual(loadRange(sn, c.anchors, 0, 5), [115, 130]);
 });

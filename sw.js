@@ -1,62 +1,57 @@
-'use strict';
-const CACHE = 'oly-revision6-v2';
-const ASSETS = [
-  './index.html',
-  './styles.css',
-  './manifest.json',
-  './icon.svg',
-  './js/program.js',
-  './js/model.js',
-  './js/app.js',
-  './js/sync.js',
+const CACHE = "oly-groundup-v7-10";
+const FILES = [
+  "./",
+  "index.html",
+  "styles.css",
+  "icon.svg",
+  "manifest.json",
+  "src/app.js",
+  "src/catalog.js",
+  "src/duration.js",
+  "src/routines.js",
+  "src/prescription.js",
+  "src/training.js",
+  "src/review.js",
+  "src/storage.js",
+  "program/pages.json",
+  "program/source.json",
+  "program/revision-6.pdf",
 ];
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting()),
-  );
+self.addEventListener("install", (event) =>
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES))),
+);
+// Do not force-activate over a running workout. New code activates on the next fresh visit.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "ACTIVATE_UPDATE")
+    event.waitUntil(self.skipWaiting());
 });
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) =>
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith('oly-') && key !== CACHE)
-            .map((key) => caches.delete(key)),
+            .filter((k) => k.startsWith("oly-") && k !== CACHE)
+            .map((k) => caches.delete(k)),
         ),
       )
       .then(() => self.clients.claim()),
-  );
-});
-self.addEventListener('fetch', (event) => {
-  const req = event.request,
-    url = new URL(req.url),
-    scope = new URL(self.registration.scope);
+  ),
+);
+self.addEventListener("fetch", (event) => {
   if (
-    req.method !== 'GET' ||
-    url.origin !== scope.origin ||
-    !url.pathname.startsWith(scope.pathname)
+    event.request.method !== "GET" ||
+    new URL(event.request.url).origin !== self.location.origin
   )
     return;
   event.respondWith(
-    fetch(req)
-      .then(async (response) => {
-        if (response.ok) {
-          const cache = await caches.open(CACHE);
-          await cache.put(req, response.clone());
-        }
-        return response;
-      })
-      .catch(async () => {
-        const cache = await caches.open(CACHE),
-          hit = await cache.match(req);
-        if (hit) return hit;
-        if (req.mode === 'navigate') return (await cache.match('./index.html')) || Response.error();
-        return Response.error();
-      }),
+    caches
+      .open(CACHE)
+      .then(
+        async (cache) =>
+          (await cache.match(event.request, { ignoreSearch: true })) ||
+          fetch(event.request),
+      ),
   );
 });

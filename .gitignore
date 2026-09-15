@@ -1,2 +1,6 @@
-.claude/
+node_modules/
+tmp/
 *.log
+test-results/
+.DS_Store
+.claude/
