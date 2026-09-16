@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-12";
+const CACHE = "oly-groundup-v7-13";
 const FILES = [
   "./",
   "index.html",
@@ -6,6 +6,10 @@ const FILES = [
   "icon.svg",
   "manifest.json",
   "src/app.js",
+  "src/cloud-sync.js",
+  "src/google-auth.js",
+  "src/planner-feed.js",
+  "src/planner-integration.js",
   "src/catalog.js",
   "src/duration.js",
   "src/timeline.js",
@@ -44,7 +48,10 @@ self.addEventListener("activate", (event) =>
 self.addEventListener("fetch", (event) => {
   if (
     event.request.method !== "GET" ||
-    new URL(event.request.url).origin !== self.location.origin
+    new URL(event.request.url).origin !== self.location.origin ||
+    !new URL(event.request.url).pathname.startsWith(
+      new URL("./", self.location.href).pathname,
+    )
   )
     return;
   event.respondWith(

@@ -6,7 +6,7 @@ Before a release, run `npm run audit` and `git diff --check`. Commit the reviewe
 
 The `/oly-tracker/` browser test verifies the real hosting path, settings migration, stretch-only Start buttons and offline session recovery. App 7.10 preserves compatible old Revision 6 settings and maps the old stretch names to the new controls. Original old journal data remains intact; incompatible fields are recorded for review. New-format journals always take precedence.
 
-Old installed clients can retain an already loaded release. After finishing any active workout, close all tracker tabs/windows and reopen the public URL. App 7.12 exposes its build and an update check in Settings; future waiting updates can be activated there. Do not clear site storage to update the code.
+Old installed clients can retain an already loaded release. After finishing any active workout, close all tracker tabs/windows and reopen the public URL. App 7.13 exposes its build and an update check in Settings; future waiting updates can be activated there. Do not clear site storage to update the code.
 
 To verify session deletion on the deployed release without touching a personal journal, run `OLY_TEST_URL=https://jonathandesta.github.io/oly-tracker/ node tests/deletion-browser.mjs`. This uses a fresh isolated browser context and synthetic logs.
 

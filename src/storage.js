@@ -25,6 +25,26 @@ function assert(ok, msg) {
 }
 export function validate(data) {
   assert(object(data) && data.schema === SCHEMA, "unrecognized format.");
+  if (data.calibration !== undefined) {
+    assert(
+      object(data.calibration) &&
+        Array.isArray(data.calibration.excludedRecordIds) &&
+        data.calibration.excludedRecordIds.every(
+          (x) => typeof x === "string",
+        ) &&
+        Array.isArray(data.calibration.observations) &&
+        data.calibration.observations.every(
+          (o) =>
+            object(o) &&
+            typeof o.id === "string" &&
+            typeof o.signature === "string" &&
+            finite(o.seconds, 1, 36000) &&
+            typeof o.includesChange === "boolean" &&
+            typeof o.source === "string",
+        ),
+      "scheduling calibration.",
+    );
+  }
   const s = structuredClone(data),
     t = s.training,
     b = defaults();
@@ -473,6 +493,13 @@ export function validate(data) {
         (!r.endedAt || finite(r.endedAt, r.startedAt, 1e15)),
       "timestamps.",
     );
+    assert(
+      (r.timingIncludesChange === undefined ||
+        typeof r.timingIncludesChange === "boolean") &&
+        (r.timingExcluded === undefined ||
+          typeof r.timingExcluded === "boolean"),
+      "calibration record flags.",
+    );
     for (const e of r.session.rows) {
       if (e.kind === "mobility")
         assert(
@@ -783,6 +810,28 @@ export function loadStore(storage) {
     } catch {
       state.archives.push({ unparsedStorageKey: key, raw });
     }
+  }
+  // One-time recovery from the former Planner mirror, only when Oly has no
+  // current journal or valid backup. This is never an ongoing storage bridge.
+  try {
+    const mirrored = JSON.parse(storage.getItem("day_cache_v1"))?.olyState
+      ?.data;
+    if (object(mirrored)) {
+      if (mirrored.schema === SCHEMA && !state.archives.length) {
+        const recovered = validate(mirrored);
+        storage.setItem("oly_before_planner_sync", JSON.stringify(mirrored));
+        storage.setItem(KEY, JSON.stringify(recovered));
+        return { state: recovered, recovered: true, error: "" };
+      }
+      if (
+        !state.archives.some(
+          (a) => JSON.stringify(a) === JSON.stringify(mirrored),
+        )
+      )
+        state.archives.push(mirrored);
+    }
+  } catch {
+    // Planner retains its original data; an invalid mirror never replaces Oly.
   }
   const previous = state.archives
     .filter((x) => x?.revision === 6 && object(x.training))

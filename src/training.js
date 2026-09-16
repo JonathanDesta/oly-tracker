@@ -22,16 +22,26 @@ export const SCHEMA = 7;
 export const uid = () =>
   globalThis.crypto?.randomUUID?.() ||
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const localDate = (d = new Date()) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const chicagoDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Chicago",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+export const localDate = (d = new Date()) => {
+  const p = Object.fromEntries(
+    chicagoDate.formatToParts(d).map((part) => [part.type, part.value]),
+  );
+  return `${p.year}-${p.month}-${p.day}`;
+};
 export function addDays(date, n) {
-  const d = new Date(date + "T12:00:00");
-  d.setDate(d.getDate() + n);
-  return localDate(d);
+  const d = new Date(date + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 export function monday(date = localDate()) {
-  const d = new Date(date + "T12:00:00");
-  return addDays(date, -((d.getDay() + 6) % 7));
+  const d = new Date(date + "T12:00:00Z");
+  return addDays(date, -((d.getUTCDay() + 6) % 7));
 }
 export function fresh(date = localDate()) {
   return {
@@ -584,8 +594,8 @@ export function deferDay(s, day, date) {
   )
     throw Error("Choose a date on or after the current scheduled date.");
   const delta = Math.round(
-    (new Date(date + "T12:00:00") -
-      new Date(scheduledDate(s, day) + "T12:00:00")) /
+    (new Date(date + "T12:00:00Z") -
+      new Date(scheduledDate(s, day) + "T12:00:00Z")) /
       86400000,
   );
   for (const d of DAYS.slice(DAYS.indexOf(day))) {

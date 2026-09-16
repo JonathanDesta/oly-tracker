@@ -1,0 +1,296 @@
+import { defaults, dayPlan, DAYS } from "./prescription.js";
+import {
+  planFor,
+  scheduledDate,
+  addDays,
+  localDate,
+  monday,
+} from "./training.js";
+import { fixedSession, fixedDay } from "./timeline.js";
+import { paceStatus } from "./pacing.js";
+import { canonical } from "./cloud-sync.js";
+
+export const FEED_KEY = "oly_planner_feed_v1";
+const LETTERS = { monday: "A", tuesday: "B", thursday: "C", friday: "D" };
+const median = (values) => {
+  const a = values.slice().sort((a, b) => a - b);
+  const n = a.length;
+  return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+};
+export function prescriptionSignature(session, config = {}) {
+  return canonical({
+    session: session.id,
+    kind: session.kind,
+    equipment: config.equipment || {},
+    unilateralCable: config.timing?.unilateralCable !== false,
+    rows: session.rows.map((e) =>
+      Object.fromEntries(
+        [
+          "id",
+          "key",
+          "kind",
+          "sets",
+          "reps",
+          "repRange",
+          "repSequence",
+          "range",
+          "sequence",
+          "rest",
+          "afterRest",
+          "regression",
+          "holdSeconds",
+          "minutes",
+          "setup",
+        ]
+          .filter((k) => e[k] !== undefined)
+          .map((k) => [k, e[k]]),
+      ),
+    ),
+  });
+}
+export function calibrationDefaults() {
+  const config = defaults();
+  return {
+    excludedRecordIds: [],
+    observations: [
+      {
+        id: "reported-intro-a-45",
+        signature: prescriptionSignature(
+          dayPlan(config, "monday").sessions.find((s) => s.id === "main"),
+          config,
+        ),
+        seconds: 2700,
+        includesChange: false,
+        source:
+          "User reported · introductory A · all warm-ups and rests included",
+      },
+    ],
+  };
+}
+export function forecastSession(state, session, config = state.training) {
+  const signature = prescriptionSignature(session, config);
+  const calibration = state.calibration || calibrationDefaults();
+  const records = state.records.filter(
+    (r) =>
+      r.status === "complete" &&
+      !calibration.excludedRecordIds.includes(r.id) &&
+      !r.timingExcluded &&
+      r.endedAt > r.startedAt &&
+      r.endedAt - r.startedAt < 10 * 3600000 &&
+      prescriptionSignature(
+        r.session,
+        r.timeConfig || { equipment: r.equipment, timing: r.timing },
+      ) === signature,
+  );
+  const observed = records
+    .sort((a, b) => b.endedAt - a.endedAt)
+    .slice(0, 5)
+    .map((r) => ({
+      seconds: (r.endedAt - r.startedAt) / 1000,
+      includesChange: r.timingIncludesChange === true,
+      source: "Completed matching session",
+    }));
+  // Seed observations are used until actual matching sessions are available.
+  if (!observed.length)
+    observed.push(
+      ...calibration.observations
+        .filter((o) => o.signature === signature)
+        .slice(-5),
+    );
+  const guideSeconds = fixedSession(session, config).seconds[0];
+  return {
+    signature,
+    guideSeconds,
+    forecastSeconds: Math.round(
+      observed.length
+        ? median(
+            observed.map((o) => o.seconds + (o.includesChange ? 0 : 600)),
+          ) - (observed.every((o) => o.includesChange) ? 0 : 600)
+        : guideSeconds,
+    ),
+    postChangeSeconds:
+      observed.length && observed.every((o) => o.includesChange) ? 0 : 600,
+    basis: observed.length
+      ? records.length
+        ? "measured"
+        : "reported"
+      : "model",
+    sampleCount: observed.length,
+    coverage: {
+      warmups: true,
+      rests: true,
+      travel: false,
+      postChange:
+        observed.length > 0 && observed.every((o) => o.includesChange),
+    },
+  };
+}
+function nextMonday(date) {
+  const start = monday(date);
+  return start === date ? start : addDays(start, 7);
+}
+export function buildPlannerFeed(state, now = Date.now()) {
+  const entries = [];
+  for (const day of DAYS.filter((d) => LETTERS[d])) {
+    const active = state.active?.day === day ? state.active : null;
+    const plan = planFor(
+      state,
+      day,
+      scheduledDate(state, day) === localDate(new Date(now)),
+      now,
+    );
+    const included = plan.sessions
+      .filter((s) => s.kind !== "mobility")
+      .map((s) => (active?.session.id === s.id ? active.session : s));
+    const dayTiming = fixedDay({ ...plan, sessions: included }, state.training);
+    const sessionForecasts = included.map((s) => ({
+      session: s,
+      ...forecastSession(
+        state,
+        s,
+        active?.session.id === s.id
+          ? active.timeConfig || state.training
+          : state.training,
+      ),
+      ...(s.skipped || !s.rows.length
+        ? { forecastSeconds: 0, postChangeSeconds: 0 }
+        : {}),
+    }));
+    // Continuation overhead from fixedDay is counted once across optional modules.
+    const modelSum = sessionForecasts.reduce((n, f) => n + f.guideSeconds, 0);
+    const seconds = Math.max(
+      0,
+      sessionForecasts.reduce((n, f) => n + f.forecastSeconds, 0) -
+        Math.max(0, modelSum - dayTiming.seconds[0]),
+    );
+    const records = state.records.filter(
+      (r) => r.weekId === state.weekId && r.day === day,
+    );
+    const complete = included.every(
+      (s) =>
+        !s.rows.length ||
+        s.skipped ||
+        records.some((r) => r.session.id === s.id),
+    );
+    const latestRecord = records
+      .filter((r) => r.endedAt)
+      .sort((a, b) => b.endedAt - a.endedAt)[0];
+    let activeRemainingSeconds = null;
+    if (active) {
+      const timing = paceStatus(active, now);
+      // Live guided remaining time protects actual rests and ongoing work.
+      activeRemainingSeconds =
+        timing?.remaining ??
+        Math.max(0, seconds - (now - active.startedAt) / 1000);
+      const activeIndex = included.findIndex((s) => s.id === active.session.id);
+      activeRemainingSeconds += sessionForecasts
+        .slice(activeIndex + 1)
+        .reduce((n, f) => n + f.forecastSeconds, 0);
+    }
+    entries.push({
+      id: `${state.weekId}:${day}`,
+      day,
+      label: `Workout ${LETTERS[day]}`,
+      date: active?.date || scheduledDate(state, day),
+      signature: canonical(sessionForecasts.map((f) => f.signature)),
+      forecastSeconds: Math.round(seconds),
+      guideSeconds: dayTiming.seconds[0],
+      postChangeSeconds: sessionForecasts.at(-1)?.postChangeSeconds ?? 600,
+      basis: sessionForecasts.every((f) => f.basis !== "model")
+        ? sessionForecasts[0].basis
+        : "model",
+      sampleCount: Math.min(...sessionForecasts.map((f) => f.sampleCount)),
+      coverage: { warmups: true, rests: true, travel: false },
+      visits: dayTiming.visits,
+      complete,
+      active: !!active,
+      startedAt: active?.startedAt || records[0]?.startedAt || null,
+      endedAt: complete ? latestRecord?.endedAt || null : null,
+      activeRemainingSeconds,
+      modules: included.map((s) => ({
+        id: s.id,
+        title: s.title || s.name || s.id,
+        rows: s.rows.length,
+      })),
+    });
+  }
+  return {
+    schema: 1,
+    type: "oly:planner-feed",
+    generatedAt: now,
+    sourceRevision: state.version,
+    sourceUpdatedAt: state.updatedAt,
+    weekId: state.weekId,
+    weekStart: state.weekStart,
+    program: {
+      week: state.training.week,
+      entry: state.training.entry,
+      cycle: state.training.cycle,
+      completed: state.completed,
+    },
+    repeatStart: entries.length
+      ? nextMonday(
+          [addDays(entries[0].date, 7), addDays(entries.at(-1).date, 3)]
+            .sort()
+            .at(-1),
+        )
+      : null,
+    entries,
+  };
+}
+// Projections contain no tokens, API keys or executable commands.
+export function journalEntities(state) {
+  const result = {
+    program: Object.fromEntries(
+      [
+        "schema",
+        "training",
+        "weekId",
+        "weekStart",
+        "dates",
+        "completed",
+        "benchReservations",
+      ].map((k) => [k, state[k]]),
+    ),
+    active: { active: state.active, restEnd: state.restEnd },
+    readiness: state.readiness,
+    calibration: state.calibration || calibrationDefaults(),
+    archives: state.archives,
+  };
+  for (const r of state.records) result[`record:${r.id}`] = r;
+  for (const r of state.reviews) result[`review:${canonical(r)}`] = r;
+  for (const e of state.events) result[`event:${e.id || canonical(e)}`] = e;
+  for (const key of ["legacy", "legacyArchives", "athleticDay"])
+    if (state[key] !== undefined) result[key] = state[key];
+  return result;
+}
+export function adoptJournalEntities(state, entities) {
+  if (!entities.program || !entities.active || !entities.calibration)
+    throw Error(
+      "Cloud journal is missing required data. The local journal is intact.",
+    );
+  return {
+    ...state,
+    ...entities.program,
+    ...entities.active,
+    readiness: entities.readiness || null,
+    calibration: entities.calibration,
+    archives: entities.archives || [],
+    records: Object.entries(entities)
+      .filter(([k]) => k.startsWith("record:"))
+      .map(([, v]) => v)
+      .sort((a, b) => a.startedAt - b.startedAt),
+    reviews: Object.entries(entities)
+      .filter(([k]) => k.startsWith("review:"))
+      .map(([, v]) => v)
+      .sort((a, b) => a.at - b.at),
+    events: Object.entries(entities)
+      .filter(([k]) => k.startsWith("event:"))
+      .map(([, v]) => v),
+    ...Object.fromEntries(
+      ["legacy", "legacyArchives", "athleticDay"]
+        .filter((k) => entities[k] !== undefined)
+        .map((k) => [k, entities[k]]),
+    ),
+  };
+}
