@@ -26,6 +26,6 @@ See [Google's token model](https://developers.google.com/identity/oauth2/web/gui
 
 ## Release and regression checks
 
-Deploy Oly before Planner. Cache `oly-groundup-v7-13` includes the integration modules, only intercepts its own application path and never deletes Planner caches. Existing active-session update guards remain in force.
+Deploy Oly before Planner. Cache `oly-groundup-v7-13-fresh` includes the integration modules, only intercepts its own application path and never deletes Planner caches. Existing active-session update guards remain in force.
 
 Run `npm test`, `npm run test:browser`, `npm run format:check` and `npm run check:deployment`. Planner additionally supplies two-device browser tests for IndexedDB reloads, concurrent edits, explicit conflict choices, deletions and offline queues. Simulated requests never touch a real Google account. Original source, 52-week execution, duration, migration, pacing and offline browser tests remain required.

@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-13";
+const CACHE = "oly-groundup-v7-13-fresh";
 const FILES = [
   "./",
   "index.html",
@@ -24,7 +24,13 @@ const FILES = [
   "program/revision-6.pdf",
 ];
 self.addEventListener("install", (event) =>
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES))),
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) =>
+        cache.addAll(FILES.map((url) => new Request(url, { cache: "reload" }))),
+      ),
+  ),
 );
 // Do not force-activate over a running workout. New code activates on the next fresh visit.
 self.addEventListener("message", (event) => {
