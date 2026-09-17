@@ -30,7 +30,7 @@ import { validate } from "../src/storage.js";
 const mon = new Date("2026-09-14T10:00:00").getTime();
 const rows = (p) => p.sessions.flatMap((s) => (s.skipped ? [] : s.rows));
 function ready(week = 3) {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   Object.assign(s.training, {
     week,
     entry: 3,

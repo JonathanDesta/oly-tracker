@@ -6,6 +6,11 @@ import {
   DAYS,
 } from "./catalog.js";
 import { TIME_DEFAULTS, estimateSession } from "./duration.js";
+import {
+  weekdaySchedule,
+  primaryAthleticSlot,
+  secondaryAthleticSlot,
+} from "./calendar.js";
 export { DAYS };
 export const copy = (value) => structuredClone(value);
 export const sportEvent = (ctx = {}) =>
@@ -652,13 +657,18 @@ export function athleticDose(stage) {
 function athletic(c, day, ctx) {
   const a = ctx.returnAthletics || c.athletics;
   if (!a.enabled || c.week === 12) return [];
-  const primaryDay = c.week === 11 ? "monday" : ctx.athleticDay || a.day;
+  const primaryDay =
+    c.week === 11
+      ? primaryAthleticSlot(c)
+      : ctx.athleticDay ||
+        (weekdaySchedule(c) ? primaryAthleticSlot(c) : a.day);
+  const secondDay = secondaryAthleticSlot(c);
   const primary = day === primaryDay,
     second =
       c.week !== 11 &&
       a.secondary > 0 &&
-      day === "thursday" &&
-      primaryDay !== "thursday";
+      day === secondDay &&
+      primaryDay !== secondDay;
   if (!primary && !second) return [];
   const d = second
     ? {
@@ -730,7 +740,7 @@ function athletic(c, day, ctx) {
   return [
     session(
       second ? "athletics-secondary" : "athletics",
-      second ? "Thursday athletic trial" : "Jumps & accelerations",
+      second ? "Second athletic exposure" : "Jumps & accelerations",
       rows.filter((e) => e.sets),
       "athletic",
       "After priority work; preferably ≥3 hours later. In one visit, take a 5-minute transition, then running warm-up.",
@@ -783,6 +793,20 @@ export function dayPlan(config, day, ctx = {}) {
     notes: [],
     mobility: [],
   };
+  if (weekdaySchedule(c) && c.week !== 12) {
+    if (day === "thursday")
+      p.notes.push(
+        "In the normal weekday plan, Tuesday C follows Monday B failure work. Check familiar-load snatch/jerk quality and positions; reduce or stop affected work if recovery is abnormal. Athletics is conditional on normal legs and running/jumping quality.",
+      );
+    if (day === "friday")
+      p.notes.push(
+        "In the normal weekday plan, Friday D follows Thursday A. Compare familiar-load quality and use the alcohol/readiness rules after a Thursday event; no calendar date guarantees recovery.",
+      );
+    if (c.week === 11)
+      p.notes.push(
+        "Week 11: established athletics on Tuesday C only, half jump sets and run repetitions. Friday D is reduced; its lower failure work remains seven days before the planned test.",
+      );
+  }
   let ol = [],
     conv = [];
   if (c.week === 12) {
@@ -872,16 +896,30 @@ export function dayPlan(config, day, ctx = {}) {
       p.sessions.push(
         session(
           "main",
-          {
-            monday: "A · Snatch practice",
-            tuesday: "B · Clean & jerk + failure work",
-            thursday: "C · Snatch + rack jerk",
-            friday:
-              c.week === 12
-                ? "Mock meet · three attempts per lift"
-                : "D · Both lifts + failure work",
-            saturday: "Moderate bench",
-          }[day],
+          (c.week === 13
+            ? {
+                monday: "A · Easy Olympic practice",
+                thursday: "C · Easy Olympic practice",
+                tuesday: "B · Squat, bench & assistance",
+                friday: "D · Squat, bench & assistance",
+              }[day]
+            : c.week === 12 && day !== "friday" && day !== "saturday"
+              ? {
+                  monday: "Taper · Olympic practice + low-rep bench",
+                  tuesday: "Taper · Olympic singles",
+                  thursday: "Taper · Easy rehearsal",
+                }[day]
+              : null) ||
+            {
+              monday: "A · Snatch practice",
+              tuesday: "B · Clean & jerk + failure work",
+              thursday: "C · Snatch + rack jerk",
+              friday:
+                c.week === 12
+                  ? "Mock meet · three attempts per lift"
+                  : "D · Both lifts + failure work",
+              saturday: "Moderate bench",
+            }[day],
           all,
         ),
       );

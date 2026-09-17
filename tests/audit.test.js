@@ -20,7 +20,7 @@ import {
 import { validate } from "../src/storage.js";
 const start = new Date("2026-09-14T10:00:00").getTime();
 function ready() {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   s.readiness = {
     date: "2026-09-14",
     level: "green",

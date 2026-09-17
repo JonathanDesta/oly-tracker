@@ -15,7 +15,7 @@ const now = new Date("2026-09-14T10:00:00").getTime();
 const rows = (c, day, ctx = {}) =>
   dayPlan(c, day, ctx).sessions.flatMap((s) => s.rows);
 function profile(week = 3, entry = 3) {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   Object.assign(s.training, { week, entry, gate: week >= 9 ? "R" : "F" });
   s.readiness = {
     date: "2026-09-14",

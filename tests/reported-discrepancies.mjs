@@ -20,7 +20,7 @@ const dialog = page.locator("dialog");
 async function seed(options) {
   await page.evaluate(async (options) => {
     const { fresh } = await import("./src/training.js");
-    const s = fresh("2026-09-14");
+    const s = fresh("2026-09-14", "source");
     Object.assign(s.training, { entry: 3, ...options });
     s.readiness = {
       date: "2026-09-14",

@@ -1,3 +1,12 @@
+import {
+  programDays,
+  SLOT_LETTERS,
+  weekdaySchedule,
+  secondaryAthleticSlot,
+  scheduleName,
+  scheduleTrialPending,
+  setSchedule,
+} from "./calendar.js";
 import { installPlannerIntegration } from "./planner-integration.js";
 import {
   DAYS,
@@ -88,7 +97,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.14";
+const APP_BUILD = "7.15";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -144,7 +153,7 @@ try {
 if (state?.active) view = "workout";
 if (state)
   selected =
-    DAYS.find(
+    programDays(state.training).find(
       (d) =>
         dayPlan(state.training, d).sessions.some((s) => s.id === "main") &&
         !weekRecords(state).some((r) => r.day === d && r.session.id === "main"),
@@ -249,6 +258,17 @@ function weekView() {
         : "Build the lifts. Keep the quality.",
       `Cycle ${t.cycle} · Week ${t.week}/13 · ${PHASE_NAMES[phase.phase]}${t.entry < 3 ? " · Entry dose " + t.entry : ""}`,
     ) +
+    notice(scheduleName(t)) +
+    (t.nextSchedule
+      ? notice(
+          `The ${t.nextSchedule === "weekday" ? "weekday" : "source"} plan starts after this saved week. Finish or resolve the existing sessions; saved dates and logs stay intact.`,
+        )
+      : "") +
+    (scheduleTrialPending(t)
+      ? notice(
+          `Schedule trial: ${t.scheduleTrial.weeks.length}/2 complete green weeks reviewed at the established dose. Check C/D quality; hold new dose additions.`,
+        )
+      : "") +
     (storageError ? notice(storageError, "warning") : "") +
     (state.completed
       ? notice(
@@ -260,14 +280,21 @@ function weekView() {
       : "") +
     `<div class="overview"><article><small>PRIORITY</small><strong>01 <span>Weightlifting</span></strong><p>Then hypertrophy, athleticism, longevity.</p></article><article><small>PLANNED THIS WEEK</small><strong>${failureSets} <span>failure sets</span></strong><p>Separate from quality-limited Olympic work.</p></article><article><small>BENCH CONTINUITY</small><strong>${["bench_low", "bench_moderate"].filter((k) => consumedBench(state, k)).length}<span> / 2 exposures</span></strong><p>Low 3–5 · moderate 6–8 · ≥48 actual hours.</p></article></div>` +
     readinessCard() +
-    `<section class="week-section"><div class="section-label"><h2>The week ahead</h2><span>Phase first. Readiness second.</span></div><div class="week-days">${DAYS.map((d) => `<button data-action="day" data-day="${d}" class="day ${selected === d ? "selected" : ""}" aria-pressed="${selected === d}"><small>${calendarWeekday(d, true)}</small><strong>${{ monday: "A", tuesday: "B", thursday: "C", friday: "D" }[d] || "—"}</strong><span>${dateLabel(scheduledDate(state, d))}</span>${resolved(d, "main") ? '<i aria-label="Resolved">✓</i>' : ""}</button>`).join("")}</div></section>` +
+    `<section class="week-section"><div class="section-label"><h2>The week ahead</h2><span>Phase first. Readiness second.</span></div><div class="week-days">${programDays(
+      t,
+    )
+      .map(
+        (d) =>
+          `<button data-action="day" data-day="${d}" class="day ${selected === d ? "selected" : ""}" aria-pressed="${selected === d}"><small>${calendarWeekday(d, true)}</small><strong>${SLOT_LETTERS[d] || "—"}</strong><span>${dateLabel(scheduledDate(state, d))}</span>${resolved(d, "main") ? '<i aria-label="Resolved">✓</i>' : ""}</button>`,
+      )
+      .join("")}</div></section>` +
     `<section class="day-content"><div class="section-label"><div><div class="eyebrow">${calendarWeekday(selected)} / ${dateLabel(scheduledDate(state, selected))}</div><h2>${selected === "wednesday" || selected === "sunday" ? "Recovery & readiness" : PHASE_NAMES[p.phase]}</h2></div>${btn("Move this day", "defer", `data-day="${selected}"`, "quiet")}</div>${p.notes.map((s) => notice(s)).join("")}${dayTime(timing)}${p.sessions.map((s, i) => preview(s, p, timing.sessions[i])).join("")}${!p.sessions.length ? '<div class="empty-card"><span>↘</span><h3>Space to recover.</h3><p>Off or targeted mobility. Optional easy walking; no missed-volume debt.</p></div>' : ""}${mobilityCard(p, timing)}</section>` +
-    `<div class="week-actions">${btn("Weekly review", "review", "", "primary button")}${btn("Rescue a bench slot", "rescue")}${t.athletics.enabled ? btn(`Relocate athletics to C · ${calendarWeekday("thursday")}`, "relocate", "", "quiet") : ""}</div>` +
+    `<div class="week-actions">${btn("Weekly review", "review", "", "primary button")}${btn("Rescue a bench slot", "rescue")}${t.athletics.enabled ? btn(`Relocate athletics to ${SLOT_LETTERS[secondaryAthleticSlot(t)]} · ${calendarWeekday(secondaryAthleticSlot(t))}`, "relocate", "", "quiet") : ""}</div>` +
     `${monitoring(state)
       .map((s) => notice(s, "warning"))
       .join(
         "",
-      )}<p class="fine-print">Day letters stay with the session when dates move; tabs show the actual weekday. To rotate the whole week, select the unresolved A slot and use Move this day. The next week continues from the shifted rhythm. A–B–rest–C–D–rest–rest; no more than two consecutive Olympic days in the normal sequence. ${sourceLink(23)}</p>`
+      )}<p class="fine-print">Day letters stay with the session when dates move; tabs show the actual weekday. To move the whole week, select its first unresolved session and use Move this day. Later dates follow the current order. ${weekdaySchedule(t) && t.week !== 12 ? "B–C–rest–A–D–rest–rest" : "A–B–rest–C–D–rest–rest"}; at most two consecutive normal Olympic days. Test week keeps its separate taper and post-test bench. ${sourceLink(23)}</p>`
   );
 }
 function timeParts(parts, labels) {
@@ -794,6 +821,7 @@ function guideView() {
       "The complete program.",
       "Revision 6 · 13 September 2026 · Exact rules are reasoned inference unless the source labels them otherwise.",
     ) +
+    `<section class="panel"><h2>Your current schedule</h2><p>${esc(scheduleName(state.training))}. The weekday plan is your September 17 schedule amendment: session prescriptions and histories retain their A/B/C/D identities. The original PDF below retains its original weekdays.</p><p>Ordinary weeks: Monday B, Tuesday C, Thursday A, Friday D. Recovery work remains Wednesday and the weekend. Established primary athletics follows Tuesday C; an earned second exposure follows Thursday A, only while ready. Week 11: half-dose primary athletics on Tuesday C only. Week 12: original Monday/Tuesday/Thursday taper, Friday test, moderate bench afterward. Pivot returns to the weekday order.</p><p>Review C after B and D after A for two normal weeks at the established dose before additions. Friday depends on Thursday alcohol exposure; Monday depends on weekend recovery. Normal warm-ups do not prove unaffected adaptation.</p></section>` +
     `<div class="guide-grid"><section class="panel"><h2>Four priorities, in order.</h2><ol class="priority-list"><li>Olympic weightlifting performance</li><li>Hypertrophy · upper chest, side delts, traps</li><li>Athleticism</li><li>Longevity</li></ol><p>Every conventional work set reaches strict-form failure. Olympic lifts, preparation, athletics and mobility remain quality-limited.</p><a class="button" href="program/revision-6.pdf" target="_blank" rel="noopener">Open original PDF ↗</a></section><section class="panel"><h2>Keep the endpoint honest.</h2><p>Stable machines: another complete concentric cannot be achieved with prescribed form. Free weights: last complete valid rep, no further valid rep in reserve. TECH, pain and unsafe stops are separate outcomes.</p><p>Rep ranges select the load. They do not replace the endpoint. No forced reps, drop sets, rest-pause extensions or assisted negatives.</p>${sourceLink(2)}</section></div><section class="panel source-panel"><div class="section-label"><h2>Read the source</h2><span>43 pages · available offline</span></div><div class="source-controls">${select("Program page", "guide-page", Object.fromEntries(Array.from({ length: 43 }, (_, i) => [i + 1, `${i + 1}. ${guideTitles[i] || "Peer-reviewed references"}`])), guidePage)}${input("Find a word or phrase", "guide-search", "", "search", 'placeholder="e.g. two exposures"')}</div>${page ? `<pre class="source-text" tabindex="0">${esc(page.text)}</pre>` : "<p>Loading the locally bundled source…</p>"}<div id="search-results"></div></section>`
   );
 }
@@ -807,10 +835,11 @@ function settingsView() {
       "Use reviewed changes for workload progression. Setup changes start a new load comparison.",
     ) +
     `<section class="panel"><h2>App & offline updates</h2><p>App ${APP_BUILD} · complete session timing. Each browser/device keeps an offline copy; connect Google below to sync your journal and setup.</p>${btn("Check for updates", "check-update", "", "quiet")}<p>Updates preserve saved records. Save form changes and finish any active session before using the update banner.</p></section>` +
+    `<section class="panel"><h2>Weekly schedule</h2><p>${esc(scheduleName(t))}</p><p>Weekday plan: Mon B, Tue C, Thu A, Fri D. Week 12 retains the original taper/test order. Switching an already-started week takes effect after its review.</p>${t.nextSchedule ? notice(`Pending next week: ${t.nextSchedule === "weekday" ? "weekday plan" : "source plan"}.`) : ""}<form data-form="schedule">${select("Training calendar", "schedule", { weekday: "Weekday plan · Mon B / Tue C / Thu A / Fri D", source: "Original PDF order · Mon A / Tue B / Thu C / Fri D" }, t.nextSchedule || t.schedule)}<p class="form-error" role="alert"></p>${submit("Save training calendar")}</form></section>` +
     `<section class="panel"><h2>Schedule & equipment</h2><form data-form="equipment"><div class="input-grid">${select("Visits on B/D", "split", { single: "Single visit", split: "Split after incline + laterals (≥3 h)" }, t.split ? "split" : "single")}${select("Smallest barbell increment · lb", "increment", { 2.5: "2.5 lb", 5: "5 lb" }, t.increment)}${select("Incline press", "incline", { default: "Machine · 30–45°", smith: "Smith · safeties", db: "Dumbbells · safe endpoint" }, t.equipment.incline || "default")}${select("Lateral raise", "lateral", { default: "Cable", db: "Dumbbell" }, t.equipment.lateral || "default")}${select("Supported row", "row", { default: "Chest-supported row", machine: "Supported machine row" }, t.equipment.row || "default")}${select("Leg curl", "leg_curl", { default: "Seated leg curl", lying: "Lying leg curl" }, t.equipment.leg_curl || "default")}${select("Calves", "calf", { default: "Standing, knees extended", press: "Supported knee-extended press", seated: "Seated · individualized fallback" }, t.equipment.calf || "default")}${select("Leg extension", "leg_ext", { default: "Supported reclined · ~40° hip flexion", upright: "Upright · equipment fallback" }, t.equipment.leg_ext || "default")}${select("Abdominals", "crunch", { default: "Machine crunch", cable: "Cable crunch" }, t.equipment.crunch || "default")}${select("Triceps", "triceps", { default: "Overhead cable extension", pressdown: "Pressdown · intolerance/interference" }, t.equipment.triceps || "default")}</div><p class="muted">Substitutions retain sets, reps and endpoint. Bench requires a flat barbell, safeties and competent spotting. No glute isolation.</p><p class="form-error" role="alert"></p>${submit("Save schedule & equipment")}</form></section>` +
     `<section class="panel"><h2>Time planning</h2><p>These allowances set the displayed times and guided countdowns. Training doses stay the same; extra recovery extends the prescribed rest.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 30 seconds", moderate: "Moderate · 2 minutes", busy: "Busy · 4 minutes" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use your selected times. Countdown targets include prescribed rest plus your extra recovery allowance. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
     `<section class="panel"><h2>Technical references</h2><p>SN ${t.anchors.snatch} lb · CJ ${t.anchors.cj} lb · CL ${t.anchors.clean || "unassessed"} · RJ ${t.anchors.jerk || "unassessed"}. Power clean never loads full CJ.</p>${btn("Record a demonstrated reference", "anchor")}${sourceLink(27)}</section>` +
-    `<section class="panel"><h2>Technique & interference</h2><form data-form="technique"><div class="input-grid">${["snatch", "clean", "jerk"].map((k) => select(pretty(k), k, k === "jerk" ? { none: "Ordinary prescription", stance: "Light split stance/recovery", dip: "Light pause-dip regression" } : { none: "Ordinary prescription", receive: "Unsafe receiving · technique-bar rehearsal", return: "Secure return · 4 singles at 40–60%", turnover: "High-hang turnover replacement", balance: "First two sets knee-pause" }, t.technique[k])).join("")}</div>${check("Reduce A snatch doubles to 4 × 2: repeated B-session cost", "reduceA", t.reduceA)}${check("One fewer C jerk set for two exposures; suspend C assistance", "reduceJerk", t.reduceJerk)}${check("Lower-block fatigue: curls/calves 1; omit extensions/crunch", "lowerDose", t.lowerDose)}${check("Omit week-11 D affected lower work for slow recovery", "omitLastLower", t.omitLastLower)}${check("Omit provisional C pulls after target/cost review", "omitPull", t.omitPull)}${textarea("Observed issue / target and return review", "reason", "", "required")}<p class="form-error" role="alert"></p>${submit("Save technical prescription")}</form>${sourceLink(16)}${sourceLink(34)}</section>` +
+    `<section class="panel"><h2>Technique & interference</h2><form data-form="technique"><div class="input-grid">${["snatch", "clean", "jerk"].map((k) => select(pretty(k), k, k === "jerk" ? { none: "Ordinary prescription", stance: "Light split stance/recovery", dip: "Light pause-dip regression" } : { none: "Ordinary prescription", receive: "Unsafe receiving · technique-bar rehearsal", return: "Secure return · 4 singles at 40–60%", turnover: "High-hang turnover replacement", balance: "First two sets knee-pause" }, t.technique[k])).join("")}</div>${check("Reduce A snatch doubles to 4 × 2: repeated next-session cost", "reduceA", t.reduceA)}${check("One fewer C jerk set for two exposures; suspend C assistance", "reduceJerk", t.reduceJerk)}${check("Lower-block fatigue: curls/calves 1; omit extensions/crunch", "lowerDose", t.lowerDose)}${check("Omit week-11 D affected lower work for slow recovery", "omitLastLower", t.omitLastLower)}${check("Omit provisional C pulls after target/cost review", "omitPull", t.omitPull)}${textarea("Observed issue / target and return review", "reason", "", "required")}<p class="form-error" role="alert"></p>${submit("Save technical prescription")}</form>${sourceLink(16)}${sourceLink(34)}</section>` +
     `<section class="panel"><h2>Optional work & controlled trials</h2><p>Athletics: ${t.athletics.enabled ? `stage ${t.athletics.stage}, ${t.athletics.secondary ? "two slots" : "one slot"}` : "not introduced"}. Aerobics: ${t.cardio.enabled ? t.cardio.minutes + " min/week" : "not introduced"}.</p>${btn("Review one program change", "change", "", "primary button")}${btn("Reduce or suspend optional work", "reduce-optional", "", "quiet")}${t.trials.map((trial) => `<div class="trial-row"><div><strong>${esc(trial.kind.replaceAll("_", " "))} · ${calendarWeekday(trial.day)}</strong><p>${esc(trial.reason)}</p><small>${trialExposures(state, trial).length} comparable exposures · ${trial.paused ? "paused" : trial.status} · review ${trial.reviewAt || "2 / 4 / 8"}</small></div>${btn("Review", "trial", `data-id="${trial.id}"`)}</div>`).join("")}</section>` +
     `<section class="panel"><h2>Targeted mobility</h2><form data-form="mobility"><p>Choose at most two restrictions; no extra stretching if positions are comfortable.</p>${["Ankle · bent-knee calf stretch, heel down", "Overhead shoulder · hands-on-bench lat stretch, ribs controlled", "Front rack · supported wrist stretch or unloaded elbow lifts", "Hip rotation · supported 90/90"].map((x) => check(x, "mobility", t.mobility.includes(x)).replace('name="mobility"', `name="mobility" value="${esc(x)}"`)).join("")}<div class="input-grid">${select("Hold duration", "seconds", { 30: "30 s", 45: "45 s after two weeks without improvement" }, t.mobilitySeconds)}${select("Days per week", "days", { 3: "3", 4: "4 after two weeks without improvement" }, t.mobilityDays)}</div><p class="form-error" role="alert"></p>${check("Two weeks at the current dose did not improve the selected position", "observed")}${submit("Save mobility")}</form></section>` +
     `<section class="panel"><h2>Program position</h2><p>New users start with the entry ramp. Weeks advance through review; interruptions extend elapsed time.</p>${btn("Set reviewed starting position", "position", "", "quiet")}</section><section class="panel"><h2>Backup & restore</h2><p>This journal is saved locally and can sync through Google Drive. Export regularly; browser data clearing removes local copies. The original program and app work offline after the first load.</p><div class="actions">${btn("Export full backup", "export")}<label class="file-button">Import backup<input type="file" id="import" accept="application/json,.json"></label></div><p class="muted">Import is validated before replacing the active journal; the current journal is archived in the imported backup.</p></section>`
@@ -943,7 +972,7 @@ function openReview() {
   formModal(
     "Weekly comparison & decision",
     "review",
-    `${reviewChecklist(t.week === 13)}<p>Compare like-load Olympic quality, first failure sets and next-session positions. Resolve priority-1 needs first. If unclear: reverse health-only additions, then athletics, then recent/local hypertrophy.</p>${monitoring(
+    `${reviewChecklist(t.week === 13)}${scheduleTrialPending(t) ? notice("Schedule trial: complete two green weeks at the established dose. Compare C after B and D after A at familiar loads; review any athletic cost. A tolerable schedule is not proof of equal long-term gains.") + check("C/D quality, receiving positions and first-set output stayed normal under this schedule", "scheduleQuality") : ""}<p>Compare like-load Olympic quality, first failure sets and next-session positions. Resolve priority-1 needs first. If unclear: reverse health-only additions, then athletics, then recent/local hypertrophy.</p>${monitoring(
       state,
     )
       .map((s) => notice(s, "warning"))
@@ -1114,7 +1143,7 @@ async function action(el) {
         },
         consumedBench(state, "bench_low") ? "bench_moderate" : "bench_low",
       ) +
-        `<p>Nearest ready day, ≥48 actual hours between sessions. Keep bench after priority lifting and away from a vulnerable next session. Friday can become low-rep with Sunday moderate; shift the next Tuesday when needed. Only bench is rescued.</p>${notice(benchWindow(state).last ? "Last bench: " + stamp(benchWindow(state).last) + ". Earliest next: " + stamp(benchWindow(state).eligibleAt) : "No previous bench timestamp recorded.")}${check("Today’s priority work is complete; relocation will not compromise the next priority session", "placement")}${sourceLink(20)}`,
+        `<p>Nearest ready day, ≥48 actual hours between sessions. Keep bench after priority lifting and away from a vulnerable next session. D can become low-rep with moderate bench on the next eligible day; shift the next B when needed. Only bench is rescued.</p>${notice(benchWindow(state).last ? "Last bench: " + stamp(benchWindow(state).last) + ". Earliest next: " + stamp(benchWindow(state).eligibleAt) : "No previous bench timestamp recorded.")}${check("Today’s priority work is complete; relocation will not compromise the next priority session", "placement")}${sourceLink(20)}`,
       "Start eligible bench",
     );
   if (a === "relocate") {
@@ -1123,7 +1152,7 @@ async function action(el) {
         throw Error("Finish the active session before relocating athletics.");
       if (s.training.week === 11 || s.training.week === 12)
         throw Error(
-          "Week 11 athletics stays with A only; week 12 has no athletics.",
+          "Week 11 retains only the scheduled half-dose primary module; week 12 has no athletics.",
         );
       if (
         weekRecords(s).some(
@@ -1131,8 +1160,8 @@ async function action(el) {
         )
       )
         throw Error("Primary module already performed this week.");
-      s.athleticDay = "thursday";
-    }, "Primary athletics moved to C; no extra module.");
+      s.athleticDay = secondaryAthleticSlot(s.training);
+    }, "Primary athletics moved to the backup lifting slot; no extra module.");
     return;
   }
   if (a === "pace-show") {
@@ -1408,7 +1437,7 @@ async function action(el) {
     return formModal(
       "Reviewed starting position",
       "position",
-      `<p>For established training or a long-interruption restart. Logs remain intact. Use the entry ramp again after a long interruption.</p><div class="input-grid">${input("Cycle", "cycle", state.training.cycle, "number", 'min="1" max="4" step="1" required')}${input("Cycle week", "week", state.training.week, "number", 'min="1" max="13" step="1" required')}${select("Entry tolerance dose", "entry", { 1: "Entry 1", 2: "Entry 2", 3: "Established base" }, state.training.entry)}${select("Demonstrated phase gate", "gate", { F: "Foundation", B: "Build · two secure normal weeks", R: "Realization · secure 80–85% singles" }, state.training.gate)}${input("Date of this week’s A / Monday slot", "date", state.weekStart, "date", "required")}</div>${textarea("Training history and reason for this starting position", "reason", "", "required")}${check("Position and phase gate are supported by my actual training; no compression to meet dates", "confirmed")}`,
+      `<p>For established training or a long-interruption restart. Logs remain intact. Use the entry ramp again after a long interruption.</p><div class="input-grid">${input("Cycle", "cycle", state.training.cycle, "number", 'min="1" max="4" step="1" required')}${input("Cycle week", "week", state.training.week, "number", 'min="1" max="13" step="1" required')}${select("Entry tolerance dose", "entry", { 1: "Entry 1", 2: "Entry 2", 3: "Established base" }, state.training.entry)}${select("Demonstrated phase gate", "gate", { F: "Foundation", B: "Build · two secure normal weeks", R: "Realization · secure 80–85% singles" }, state.training.gate)}${input("First date of this training week (normally Monday)", "date", state.weekStart, "date", "required")}</div>${textarea("Training history and reason for this starting position", "reason", "", "required")}${check("Position and phase gate are supported by my actual training; no compression to meet dates", "confirmed")}`,
       "Set reviewed position",
     );
   if (a === "reduce-optional")
@@ -1500,6 +1529,24 @@ function handleForm(form) {
     return;
   }
   transact((s) => {
+    if (type === "schedule") {
+      const schedule = f.get("schedule");
+      if (s.active)
+        throw Error("Finish the active session before changing the calendar.");
+      if (!["source", "weekday"].includes(schedule))
+        throw Error("Choose a training calendar.");
+      if (schedule === s.training.schedule) delete s.training.nextSchedule;
+      else if (
+        weekRecords(s).length ||
+        Object.keys(s.dates).length ||
+        s.benchReservations.some((b) => b.weekId === s.weekId)
+      )
+        s.training.nextSchedule = schedule;
+      else {
+        setSchedule(s.training, schedule);
+        s.athleticDay = null;
+      }
+    }
     if (type === "aerobic") finishAerobic(s, f.num("minutes"));
     if (type === "readiness") {
       s.readiness = {
@@ -1568,6 +1615,7 @@ function handleForm(form) {
         recovery: f.get("recovery"),
         green: f.has("green"),
         buildReady: f.has("buildReady"),
+        scheduleQuality: f.has("scheduleQuality"),
         realizationReady: f.has("realizationReady"),
         restored: f.has("restored"),
         notes: f.get("notes"),

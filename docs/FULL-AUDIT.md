@@ -1,5 +1,7 @@
 # Full source-to-app audit
 
+App 7.15 adds the user-approved [weekday schedule amendment](SCHEDULE-AMENDMENT.md). The source audit below describes the original profile; its unchanged lifting prescriptions remain tested. The new calendar is an explicit authorized departure from the PDF weekday order, with separate migration, timing, sequence, full-year execution and browser checks. No audit certifies physiological optimality.
+
 **Status: PASS — zero unresolved findings in this source-to-app audit.** This report supersedes the earlier audit conclusions. Earlier passes missed real defects; their green test results were not sufficient evidence of full conformance.
 
 The authority is the supplied **Weightlifting First — Failure Work-Set Edition, revision 6, 13 September 2026**. The original file and `program/revision-6.pdf` have SHA-256 `dcf2a114ad2c3becccb962913979121c0ceecaa2be4d442d598951fa8c0ce547`. A fresh `pdftotext -layout` extraction was compared with the app's source reader: **43 pages, zero text differences after whitespace normalization**. The page-7 table was also rendered and visually checked. Operational pages 1–34 were read against the implementation; reference pages 35–43 remain intact and available offline. No external training advice was substituted for this program.

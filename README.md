@@ -11,7 +11,7 @@ Open [localhost:8766](http://127.0.0.1:8766). Node 22+ is required for the local
 ## Training workflow
 
 1. Check today's readiness and actual sport/alcohol exposure.
-2. Start the next dated A/B/C/D session. A late start rolls later dates; use **Move this day** for planned deferrals.
+2. Start the next dated session: ordinarily Monday B, Tuesday C, Thursday A, Friday D. A late start rolls later dates; use **Move this day** for planned deferrals.
 3. Complete the general and exercise-specific preparations. Log actual Olympic attempts, or valid conventional reps and their honest endpoint. Misses count. TECH and safety stops do not count as successful failure sets.
 4. Save a next-session follow-up in History. Use the weekly review to repeat, advance, reduce, or restore the dose.
 5. Start optional work or a controlled trial only through a documented eligibility review in Settings. Read the adjacent source pages for the required observations.
@@ -22,7 +22,7 @@ Bench is tracked as separate low- and moderate-rep exposures, with at least 48 a
 
 Records stay in this browser on this device. Export JSON backups in Settings or History. Imports are validated before replacement, and the current journal is archived in the restored state. Previous `oly_state`, `oly_rev6_backup`, and `oly_before_rev6` data are preserved intact as previous-program archives. The rebuild starts at the program's entry dose; use a reviewed starting position for established training.
 
-The new journal uses `oly_program_v7`. The app has no account, cloud synchronization, analytics, or external font/script requirement. The service worker does not force an update over a running workout. Use Settings → Check for updates, then the update banner. For an older version without these controls, close all app tabs and reopen.
+The new journal uses `oly_program_v7`. Local use needs no account. Optional private Google Drive sync is available; there are no analytics or external font requirements. The service worker does not force an update over a running workout. Use Settings → Check for updates, then the update banner. For an older version without these controls, close all app tabs and reopen.
 
 ## Verification
 
@@ -41,9 +41,9 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.14 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.15 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
-GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all 18 served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
+GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
 ## Removing test sessions
 
@@ -53,4 +53,6 @@ Open History → select a session → Delete session, then confirm. You can also
 
 App 7.13 adds a read-only Planner feed, prescription-specific duration calibration and automatic private Google Drive revision sync while connected. See [Planner integration](docs/PLANNER-SYNC.md) for setup, conflict handling, offline behavior and test coverage. Guided timers and program prescriptions remain unchanged.
 
-App 7.14 shows actual weekdays after a calendar move and preserves the rotated rhythm in Planner forecasts. To move the entire unresolved week, select A and use **Move this day**. Session letters continue to identify the PDF prescriptions; no sets, rests, progression or warm-ups change. Calendar convenience does not establish physiological optimality.
+The app shows actual weekdays after a calendar move and preserves the rotated rhythm in Planner forecasts. To move the entire unresolved week, select its first session (B in the weekday plan, A in the source/taper calendar) and use **Move this day**. Session letters continue to identify the PDF prescriptions; no sets, rests, progression or warm-ups change. Calendar convenience does not establish physiological optimality.
+
+App 7.15 applies the user-approved weekday schedule: **Mon B / Tue C / Thu A / Fri D**, with recovery work on Wednesday and the weekend. Week 12 retains its original taper/test calendar. Existing started weeks finish in their saved order before switching. See [the schedule amendment](docs/SCHEDULE-AMENDMENT.md) for optional work, observation gates, migration and the special-week rules.

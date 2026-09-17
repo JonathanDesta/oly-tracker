@@ -49,7 +49,7 @@ try {
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
     const { fresh } = await import("./src/training.js");
-    const s = fresh("2026-09-14");
+    const s = fresh("2026-09-14", "source");
     s.training.mobility = ["Ankle · bent-knee calf stretch, heel down"];
     s.readiness = {
       date: "2026-09-14",
@@ -79,11 +79,11 @@ try {
     "oly-update-test-2",
   ]);
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.14/);
+  assert.match(await page.locator("main").innerText(), /App 7\.15/);
   await click("Check for updates");
   await page
     .getByText(
-      "App 7.14 is current. Saved workouts and settings are unchanged.",
+      "App 7.15 is current. Saved workouts and settings are unchanged.",
       { exact: true },
     )
     .waitFor();

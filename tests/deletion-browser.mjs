@@ -33,7 +33,7 @@ try {
   await page.goto(url);
   await page.evaluate(async () => {
     const { fresh, omissionRecord } = await import("./src/training.js");
-    const s = fresh("2026-09-14");
+    const s = fresh("2026-09-14", "source");
     s.readiness = {
       date: "2026-09-14",
       level: "green",
@@ -53,7 +53,7 @@ try {
   });
   await page.reload();
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.14/);
+  assert.match(await page.locator("main").innerText(), /App 7\.15/);
   await click("Week");
   await page.locator('[data-action="day"][data-day="monday"]').click();
   await click("Start session →");
@@ -140,7 +140,7 @@ try {
   assert.deepEqual(errors, []);
   const result = {
     url,
-    appBuild: "7.14",
+    appBuild: "7.15",
     cancellation: true,
     offlineDeletion: true,
     offlineRestart: true,

@@ -21,7 +21,7 @@ const read = () =>
 async function seed(options = {}) {
   await page.evaluate(async (options) => {
     const { fresh } = await import("./src/training.js");
-    const s = fresh("2026-09-14");
+    const s = fresh("2026-09-14", "source");
     Object.assign(s.training, { week: 5, entry: 3, gate: "B", ...options });
     s.training.athletics.enabled = true;
     s.training.cardio = options.cardio || { enabled: true, minutes: 150 };

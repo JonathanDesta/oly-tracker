@@ -33,7 +33,7 @@ import {
 import { applyChange, reviewTrial } from "../src/review.js";
 const mon = new Date("2026-09-14T10:00:00").getTime();
 function ready(now = mon) {
-  const s = fresh(localDate(new Date(now)));
+  const s = fresh(localDate(new Date(now)), "source");
   s.readiness = {
     date: localDate(new Date(now)),
     level: "green",

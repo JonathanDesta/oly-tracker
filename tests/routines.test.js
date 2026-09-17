@@ -26,7 +26,7 @@ import { estimateDay, estimateSession } from "../src/duration.js";
 import { validate } from "../src/storage.js";
 const wednesday = new Date("2026-09-16T10:00:00").getTime();
 function state(now = wednesday) {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   s.training.mobility = [
     "Ankle · bent-knee calf stretch, heel down",
     "Front rack · supported wrist stretch or unloaded elbow lifts",

@@ -93,7 +93,7 @@ test("the newest Revision 6 mirror wins; malformed settings cannot erase valid m
   assert.deepEqual(s.training.mobility, ["Hip rotation · supported 90/90"]);
   assert.deepEqual(s.reviews.at(-1).settingsToReview, ["anchors"]);
   assert.equal(s.archives.length, 2);
-  const current = fresh("2026-09-14");
+  const current = fresh("2026-09-14", "source");
   current.training.mobility = [
     "Front rack · supported wrist stretch or unloaded elbow lifts",
   ];

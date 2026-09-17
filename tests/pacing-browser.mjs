@@ -30,7 +30,7 @@ async function seed(date, mobility = false, cardio = false) {
   await page.evaluate(
     async ({ date, mobility, cardio }) => {
       const { fresh } = await import("./src/training.js");
-      const s = fresh("2026-09-14");
+      const s = fresh("2026-09-14", "source");
       s.training.mobility = mobility
         ? ["Ankle · bent-knee calf stretch, heel down"]
         : [];
@@ -203,7 +203,7 @@ try {
     JSON.stringify(
       {
         url,
-        appBuild: "7.14",
+        appBuild: "7.15",
         fixedTotals: true,
         guidedWarmups: true,
         actualSetEnd: true,

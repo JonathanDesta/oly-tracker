@@ -41,7 +41,7 @@ const sync = (s, at = now) =>
     at,
   );
 function ready() {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   s.readiness = {
     date: "2026-09-14",
     level: "green",

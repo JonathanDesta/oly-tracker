@@ -208,7 +208,7 @@ test("time: source restrictions, taper, pivot and empty days recalculate without
   assert.equal(minutesText([0, 0]), "0 min");
 });
 test("time: settings validate, old backups receive defaults and sessions freeze their starting assumptions", () => {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   delete s.training.timing;
   assert.deepEqual(validate(s).training.timing, TIME_DEFAULTS);
   s.training.timing = { ...TIME_DEFAULTS };

@@ -11,6 +11,13 @@ import {
   sportEvent,
 } from "./prescription.js";
 import { timeProfile } from "./duration.js";
+import {
+  programDays,
+  slotOffset,
+  slotLabel,
+  setSchedule,
+  scheduleTrialPending,
+} from "./calendar.js";
 import { createPacing, closePacing } from "./pacing.js";
 import {
   mobilitySteps,
@@ -43,8 +50,8 @@ export function monday(date = localDate()) {
   const d = new Date(date + "T12:00:00Z");
   return addDays(date, -((d.getUTCDay() + 6) % 7));
 }
-export function fresh(date = localDate()) {
-  return {
+export function fresh(date = localDate(), schedule = "weekday") {
+  const state = {
     schema: SCHEMA,
     version: 0,
     updatedAt: 0,
@@ -62,6 +69,12 @@ export function fresh(date = localDate()) {
     restEnd: 0,
     completed: false,
   };
+  setSchedule(
+    state.training,
+    schedule,
+    Date.parse(state.weekStart + "T12:00:00Z"),
+  );
+  return state;
 }
 export function fingerprint(e) {
   return [e.key, e.name, e.repRange?.join("-") || e.reps, e.setup || 0].join(
@@ -394,7 +407,7 @@ export const consumedBench = (s, key) =>
     r.sets.some((e) => e.benchSlot === key || e.key === key),
   );
 export function scheduledDate(s, day) {
-  return s.dates[day] || addDays(s.weekStart, DAYS.indexOf(day));
+  return s.dates[day] || addDays(s.weekStart, slotOffset(s.training, day));
 }
 export function contextFor(s, now = Date.now()) {
   const r =
@@ -598,7 +611,8 @@ export function deferDay(s, day, date) {
       new Date(scheduledDate(s, day) + "T12:00:00Z")) /
       86400000,
   );
-  for (const d of DAYS.slice(DAYS.indexOf(day))) {
+  const order = programDays(s.training);
+  for (const d of order.slice(order.indexOf(day))) {
     if (!weekRecords(s).some((r) => r.day === d && r.session.id === "main"))
       s.dates[d] = addDays(scheduledDate(s, d), delta);
   }
@@ -667,14 +681,15 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
         "This session is scheduled later. Preserve the rolling sequence and recovery days.",
       );
     if (id === "main") {
-      for (const d of DAYS.slice(0, DAYS.indexOf(day))) {
+      const order = programDays(s.training);
+      for (const d of order.slice(0, order.indexOf(day))) {
         const prior = planFor(s, d).sessions.find((x) => x.id === "main");
         if (
           prior &&
           !weekRecords(s).some((r) => r.day === d && r.session.id === "main")
         )
           throw Error(
-            `Resolve ${d} first; roll the sequence rather than compressing it.`,
+            `Resolve ${slotLabel(s.training, d)} first; roll the sequence rather than compressing it.`,
           );
       }
     }
@@ -1281,6 +1296,7 @@ function nextExposure(s) {
   s.dates = {};
   s.weekId = uid();
   s.athleticDay = null;
+  if (s.training.nextSchedule) setSchedule(s.training, s.training.nextSchedule);
 }
 export function advanceWeek(s, review, now = Date.now()) {
   if (s.active)
@@ -1295,7 +1311,7 @@ export function advanceWeek(s, review, now = Date.now()) {
     review.recovery === "normal" &&
     (t.recovery === "normal" || (t.recovery === "restore" && review.restored))
   ) {
-    for (const day of DAYS)
+    for (const day of programDays(t))
       for (const se of dayPlan(t, day).sessions.filter((x) =>
         ["main", "accessories"].includes(x.id),
       ))
@@ -1303,8 +1319,54 @@ export function advanceWeek(s, review, now = Date.now()) {
           !weekRecords(s).some((r) => r.day === day && r.session.id === se.id)
         )
           throw Error(
-            `Resolve ${day} ${se.id === "accessories" ? "visit 2 " : ""}before advancing (train, defer, or omit with a reason).`,
+            `Resolve ${slotLabel(t, day)} ${se.id === "accessories" ? "visit 2 " : ""}before advancing (train, defer, or omit with a reason).`,
           );
+  }
+  if (scheduleTrialPending(t)) {
+    const comparable = JSON.stringify([
+      t.entry,
+      phaseFor(t).phase,
+      t.recovery,
+      t.split,
+      t.reduceA,
+      t.reduceJerk,
+      t.lowerDose,
+      t.omitPull,
+      t.heavy,
+      t.athletics,
+      t.cardio,
+      t.trials
+        .filter((x) => !x.paused)
+        .map((x) => x.id)
+        .sort(),
+    ]);
+    const acceptable =
+      review.scheduleQuality &&
+      review.green &&
+      review.recovery === "normal" &&
+      t.recovery === "normal" &&
+      t.entry === 3 &&
+      ![11, 12, 13].includes(t.week) &&
+      programDays(t).every((day) =>
+        dayPlan(t, day)
+          .sessions.filter((se) => ["main", "accessories"].includes(se.id))
+          .every((se) =>
+            weekRecords(s).some(
+              (r) =>
+                r.day === day &&
+                r.session.id === se.id &&
+                r.status === "complete",
+            ),
+          ),
+      );
+    if (
+      !acceptable ||
+      (t.scheduleTrial.workload && t.scheduleTrial.workload !== comparable)
+    )
+      t.scheduleTrial.weeks = [];
+    t.scheduleTrial.workload = comparable;
+    if (acceptable && !t.scheduleTrial.weeks.includes(s.weekId))
+      t.scheduleTrial.weeks.push(s.weekId);
   }
   s.reviews.push({
     ...review,

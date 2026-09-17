@@ -30,7 +30,7 @@ const rev = (id, parents, changes, writer = id) => ({
   createdAt: 1,
 });
 test("reported introductory A calibrates only the matching dose without changing guided timers", () => {
-  const s = fresh("2026-09-14"),
+  const s = fresh("2026-09-14", "source"),
     before = JSON.stringify(s);
   const a = dayPlan(s.training, "monday").sessions[0];
   assert.equal(forecastSession(s, a).forecastSeconds, 2700);
@@ -51,7 +51,7 @@ test("reported introductory A calibrates only the matching dose without changing
   );
 });
 test("recent matching observations use a median and exclude partial or interrupted sessions", () => {
-  const s = fresh("2026-09-14"),
+  const s = fresh("2026-09-14", "source"),
     session = dayPlan(s.training, "tuesday").sessions[0];
   s.calibration = calibrationDefaults();
   for (const [i, min] of [100, 120, 125, 130, 135, 140, 999].entries())
@@ -70,7 +70,7 @@ test("recent matching observations use a median and exclude partial or interrupt
   assert.equal(forecastSession(s, session).basis, "model");
 });
 test("feed follows real dates and preserves the source journal through projection", () => {
-  const s = fresh("2026-09-14");
+  const s = fresh("2026-09-14", "source");
   s.dates.thursday = "2026-09-18";
   s.dates.friday = "2026-09-21";
   const before = JSON.stringify(s),
@@ -86,7 +86,7 @@ test("feed follows real dates and preserves the source journal through projectio
 });
 test("calendar rotations preserve the next A date and all training prescriptions", () => {
   for (let offset = 0; offset < 7; offset++) {
-    const s = fresh("2026-12-28");
+    const s = fresh("2026-12-28", "source");
     const before = JSON.stringify(s.training);
     deferDay(s, "monday", addDays(s.weekStart, offset));
     const feed = buildPlannerFeed(s, Date.parse("2026-12-28T12:00:00Z"));
@@ -226,7 +226,7 @@ test("private Drive roundtrip handles pagination, offline edits and explicit con
 });
 
 test("mixed timing coverage counts changing only once and deliberate interruptions stay excluded", () => {
-  const s = fresh("2026-09-28"),
+  const s = fresh("2026-09-28", "source"),
     session = dayPlan(s.training, "tuesday").sessions[0];
   s.records = [false, true].map((includes, n) => ({
     id: String(n),
@@ -249,7 +249,7 @@ test("Chicago dates, fixed future weekdays and current readiness flow through th
   assert.equal(localDate(new Date("2026-11-02T05:30:00Z")), "2026-11-01");
   assert.equal(addDays("2026-10-31", 2), "2026-11-02");
   const now = Date.parse("2026-09-28T12:00:00-05:00"),
-    s = fresh("2026-09-28");
+    s = fresh("2026-09-28", "source");
   s.readiness = {
     date: "2026-09-28",
     level: "amber",
@@ -273,7 +273,7 @@ test("Chicago dates, fixed future weekdays and current readiness flow through th
 test("legacy Planner mirrors recover only an absent Oly journal and never replace current data", async () => {
   const { loadStore, KEY } = await import("../src/storage.js");
   const storage = memory(),
-    original = fresh("2026-09-28");
+    original = fresh("2026-09-28", "source");
   original.version = 2;
   storage.setItem(
     "day_cache_v1",
@@ -287,7 +287,7 @@ test("legacy Planner mirrors recover only an absent Oly journal and never replac
   assert(restored.recovered);
   assert(storage.getItem("oly_before_planner_sync"));
   assert(!JSON.stringify(restored.state).includes("not-journal-data"));
-  const current = fresh("2026-10-05");
+  const current = fresh("2026-10-05", "source");
   storage.setItem(KEY, JSON.stringify(current));
   assert.equal(loadStore(storage).state.weekId, current.weekId);
 });

@@ -6,6 +6,7 @@ The rebuild separates the source prescription from the actual training record. I
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/catalog.js`      | Exercise names, source execution cues, base accessory doses, warm-ups                                                                               |
 | `src/prescription.js` | Pure phase templates, entry ramp, substitutions, optional work, then stricter readiness/event rules                                                 |
+| `src/calendar.js`     | Stable source-slot identities, approved weekday mapping and protected calendar adoption                                                             |
 | `src/training.js`     | Dated sequence, actual bench spacing, immutable session snapshots, attempt accounting, progression, repeat/recovery transitions                     |
 | `src/review.js`       | Explicit eligibility reviews, one-domain changes, bounded assistance trials and continuity                                                          |
 | `src/timeline.js`     | Fixed targets and ordered preparation/work/rest/overhead steps shared by previews and runner                                                        |

@@ -23,7 +23,7 @@ async function seed(date, mobility = true) {
   await page.evaluate(
     async ({ date, mobility }) => {
       const { fresh } = await import("./src/training.js");
-      const s = fresh("2026-09-14");
+      const s = fresh("2026-09-14", "source");
       s.training.mobility = mobility
         ? ["Ankle · bent-knee calf stretch, heel down"]
         : [];

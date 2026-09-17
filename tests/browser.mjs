@@ -27,7 +27,7 @@ async function seed(fn, argument) {
   await page.evaluate(
     async ({ source, arg }) => {
       const { fresh } = await import("./src/training.js");
-      const s = fresh("2026-09-14");
+      const s = fresh("2026-09-14", "source");
       s.readiness = {
         date: "2026-09-14",
         level: "green",
@@ -47,6 +47,7 @@ try {
   await page
     .getByRole("heading", { name: "Build the lifts. Keep the quality." })
     .waitFor();
+  await seed("s.readiness = null;");
   await page.screenshot({
     path: "test-results/week-desktop.png",
     fullPage: true,

@@ -24,7 +24,7 @@ const read = () =>
 async function seed() {
   await page.evaluate(async () => {
     const { fresh } = await import("./src/training.js");
-    const s = fresh("2026-09-14");
+    const s = fresh("2026-09-14", "source");
     Object.assign(s.training, { week: 3, entry: 3 });
     s.readiness = {
       date: "2026-09-14",

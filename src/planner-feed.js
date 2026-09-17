@@ -1,11 +1,17 @@
-import { defaults, dayPlan, DAYS } from "./prescription.js";
-import { planFor, scheduledDate, addDays, localDate } from "./training.js";
+import { defaults, dayPlan } from "./prescription.js";
+import {
+  planFor,
+  scheduledDate,
+  addDays,
+  localDate,
+  benchWindow,
+} from "./training.js";
 import { fixedSession, fixedDay } from "./timeline.js";
 import { paceStatus } from "./pacing.js";
 import { canonical } from "./cloud-sync.js";
+import { programDays, SLOT_LETTERS, scheduleName } from "./calendar.js";
 
 export const FEED_KEY = "oly_planner_feed_v1";
-const LETTERS = { monday: "A", tuesday: "B", thursday: "C", friday: "D" };
 const median = (values) => {
   const a = values.slice().sort((a, b) => a - b);
   const n = a.length;
@@ -121,7 +127,9 @@ export function forecastSession(state, session, config = state.training) {
 }
 export function buildPlannerFeed(state, now = Date.now()) {
   const entries = [];
-  for (const day of DAYS.filter((d) => LETTERS[d])) {
+  for (const day of programDays(state.training).filter((d) =>
+    dayPlan(state.training, d).sessions.some((s) => s.id === "main"),
+  )) {
     const active = state.active?.day === day ? state.active : null;
     const plan = planFor(
       state,
@@ -180,8 +188,15 @@ export function buildPlannerFeed(state, now = Date.now()) {
     entries.push({
       id: `${state.weekId}:${day}`,
       day,
-      label: `Workout ${LETTERS[day]}`,
+      label: SLOT_LETTERS[day]
+        ? `Workout ${SLOT_LETTERS[day]}`
+        : "Moderate bench",
       date: active?.date || scheduledDate(state, day),
+      notBefore:
+        !active &&
+        included.some((s) => !s.skipped && s.rows.some((e) => e.id === "bench"))
+          ? benchWindow(state, now).eligibleAt
+          : null,
       signature: canonical(sessionForecasts.map((f) => f.signature)),
       forecastSeconds: Math.round(seconds),
       guideSeconds: dayTiming.seconds[0],
@@ -217,12 +232,22 @@ export function buildPlannerFeed(state, now = Date.now()) {
       entry: state.training.entry,
       cycle: state.training.cycle,
       completed: state.completed,
+      schedule: state.training.schedule,
+      scheduleName: scheduleName(state.training),
     },
-    repeatStart: entries.length
-      ? [addDays(state.weekStart, 7), addDays(entries.at(-1).date, 3)]
-          .sort()
-          .at(-1)
-      : null,
+    repeatDays: programDays(state.training),
+    repeatStart:
+      entries.length && !state.training.nextSchedule
+        ? [
+            addDays(state.weekStart, 7),
+            addDays(
+              entries.find((e) => e.day === "friday")?.date || state.weekStart,
+              3,
+            ),
+          ]
+            .sort()
+            .at(-1)
+        : null,
     entries,
   };
 }

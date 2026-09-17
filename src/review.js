@@ -1,4 +1,5 @@
 import { phaseFor, copy, dayPlan, sportEvent } from "./prescription.js";
+import { scheduleTrialPending } from "./calendar.js";
 import {
   uid,
   normal,
@@ -10,16 +11,16 @@ import {
 export const CHANGE_OPTIONS = {
   set: "Add one weekly hypertrophy set",
   squat: "Trial one support squat set",
-  press: "Trial Friday overhead press substitution",
+  press: "Trial D overhead press substitution",
   pause_jerk: "Trial C pause-dip jerk substitution",
   pause_load: "Progress pause-dip jerk trial load",
-  calf_partial: "Trial Friday fixed-range calf substitution",
+  calf_partial: "Trial D fixed-range calf substitution",
   athletic_start: "Introduce athletics",
   athletic_step: "Advance primary athletics one step",
-  athletic_second: "Trial Thursday jumps",
-  athletic_runs: "Add Thursday 2 × 10 m runs",
-  secondary_jump: "Add 3 Thursday jumps",
-  secondary_run: "Add one Thursday run",
+  athletic_second: "Trial second athletic exposure · jumps",
+  athletic_runs: "Add secondary 2 × 10 m runs",
+  secondary_jump: "Add 3 secondary jumps",
+  secondary_run: "Add one secondary run",
   fly: "Trial flying 10 m replacement",
   cut: "Trial 45° cut replacement",
   variation_intensity: "Progress selected running variation intensity",
@@ -109,6 +110,13 @@ export function applyChange(s, change, now = Date.now()) {
     kind = change.kind;
   requireFact(CHANGE_OPTIONS[kind], "Choose a listed program change.");
   requireFact(
+    !scheduleTrialPending(t) ||
+      ["clean_assessment", "jerk_assessment", "rack", "pause_load"].includes(
+        kind,
+      ),
+    "First review two complete green weeks at the established dose with normal C/D quality under the weekday schedule. Hold dose additions while testing the new order.",
+  );
+  requireFact(
     change.reason?.trim(),
     "Record the target, baseline observations, and why this change is useful.",
   );
@@ -191,7 +199,7 @@ export function applyChange(s, change, now = Date.now()) {
     )
       requireFact(
         good.filter((r) => r.session.id === "athletics").length >= 4,
-        "Record four productive primary exposures before introducing Thursday jumps.",
+        "Record four productive primary exposures before introducing secondary jumps.",
       );
   }
   if (!assessment && !rack)
@@ -340,16 +348,16 @@ export function applyChange(s, change, now = Date.now()) {
   } else if (kind === "athletic_runs") {
     requireFact(
       t.athletics.secondary === 1,
-      "Complete two green Thursday jump exposures first.",
+      "Complete two green secondary jump exposures first.",
     );
     t.athletics.secondary = 2;
   } else if (kind === "secondary_jump") {
-    requireFact(t.athletics.secondary > 0, "Start the Thursday trial first.");
+    requireFact(t.athletics.secondary > 0, "Start the secondary trial first.");
     t.athletics.secondaryJumps++;
   } else if (kind === "secondary_run") {
     requireFact(
       t.athletics.secondary >= 2,
-      "Establish Thursday running first.",
+      "Establish secondary running first.",
     );
     t.athletics.secondaryRuns++;
   } else if (["fly", "cut"].includes(kind)) {
@@ -485,6 +493,10 @@ export function reviewTrial(s, id, decision, reason, now = Date.now()) {
   )
     throw Error("Resume in normal F/B after readiness review.");
   if (decision === "resume") {
+    requireFact(
+      !scheduleTrialPending(s.training),
+      "Finish the two-week schedule review before resuming an added-dose trial.",
+    );
     const current = s.readiness;
     if (
       current?.date === localDate(new Date(now)) &&

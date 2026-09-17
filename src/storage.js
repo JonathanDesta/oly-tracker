@@ -4,6 +4,7 @@ import { EXERCISES } from "./catalog.js";
 import { TIME_DEFAULTS, validTimeProfile } from "./duration.js";
 import { validPacing } from "./pacing.js";
 import { validMobilityTrace, preparationElapsed } from "./routines.js";
+import { migrateSchedule } from "./calendar.js";
 export const KEY = "oly_program_v7",
   BACKUP = "oly_program_v7_backup";
 const object = (x) => x && typeof x === "object" && !Array.isArray(x);
@@ -660,7 +661,27 @@ export function validate(data) {
   );
   // Restore only optional defaults; malformed required data is rejected before replacing storage.
   s.training = { ...b, ...t, timing: { ...TIME_DEFAULTS, ...t.timing } };
-  return s;
+  assert(
+    t.schedule === undefined || ["source", "weekday"].includes(t.schedule),
+    "training schedule.",
+  );
+  assert(
+    t.nextSchedule === undefined ||
+      ["source", "weekday"].includes(t.nextSchedule),
+    "pending schedule.",
+  );
+  if (t.scheduleTrial !== undefined)
+    assert(
+      object(t.scheduleTrial) &&
+        finite(t.scheduleTrial.startedAt, 0, 1e15) &&
+        (t.scheduleTrial.workload === undefined ||
+          typeof t.scheduleTrial.workload === "string") &&
+        Array.isArray(t.scheduleTrial.weeks) &&
+        t.scheduleTrial.weeks.every((w) => typeof w === "string") &&
+        new Set(t.scheduleTrial.weeks).size === t.scheduleTrial.weeks.length,
+      "schedule review.",
+    );
+  return migrateSchedule(s);
 }
 export function importData(data) {
   if (data?.schema === SCHEMA) return validate(data);
