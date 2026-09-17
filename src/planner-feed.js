@@ -1,11 +1,5 @@
 import { defaults, dayPlan, DAYS } from "./prescription.js";
-import {
-  planFor,
-  scheduledDate,
-  addDays,
-  localDate,
-  monday,
-} from "./training.js";
+import { planFor, scheduledDate, addDays, localDate } from "./training.js";
 import { fixedSession, fixedDay } from "./timeline.js";
 import { paceStatus } from "./pacing.js";
 import { canonical } from "./cloud-sync.js";
@@ -125,10 +119,6 @@ export function forecastSession(state, session, config = state.training) {
     },
   };
 }
-function nextMonday(date) {
-  const start = monday(date);
-  return start === date ? start : addDays(start, 7);
-}
 export function buildPlannerFeed(state, now = Date.now()) {
   const entries = [];
   for (const day of DAYS.filter((d) => LETTERS[d])) {
@@ -229,11 +219,9 @@ export function buildPlannerFeed(state, now = Date.now()) {
       completed: state.completed,
     },
     repeatStart: entries.length
-      ? nextMonday(
-          [addDays(entries[0].date, 7), addDays(entries.at(-1).date, 3)]
-            .sort()
-            .at(-1),
-        )
+      ? [addDays(state.weekStart, 7), addDays(entries.at(-1).date, 3)]
+          .sort()
+          .at(-1)
       : null,
     entries,
   };

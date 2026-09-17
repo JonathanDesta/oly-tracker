@@ -181,6 +181,34 @@ try {
   await page.locator(".source-text").waitFor();
   assert.ok((await page.locator(".source-text").innerText()).length > 100);
   await ctx.setOffline(false);
+  await seed("");
+  await click("Move this day");
+  await dialog.locator('[name="date"]').fill("2026-09-15");
+  await dialog
+    .locator('[name="reason"]')
+    .fill("Calendar rotation with the original recovery pattern.");
+  await dialog.locator('button[type="submit"]').click();
+  await page.reload();
+  assert.match(
+    await page.locator('[data-action="day"][data-day="monday"]').innerText(),
+    /Tue\s+A\s+Sep 15/i,
+  );
+  assert.match(
+    await page.locator('[data-action="day"][data-day="friday"]').innerText(),
+    /Sat\s+D\s+Sep 19/i,
+  );
+  assert.match(
+    await page.locator(".day-content > .section-label .eyebrow").innerText(),
+    /Tuesday/i,
+  );
+  const rotatedFeed = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("oly_planner_feed_v1")),
+  );
+  assert.equal(rotatedFeed.repeatStart, "2026-09-22");
+  await page.screenshot({
+    path: "test-results/calendar-rotation-mobile.png",
+    fullPage: true,
+  });
   assert.deepEqual(errors, []);
   console.log(
     "PASS browser: readiness, Olympic and failure logging, refresh recovery, next-session review, setup, trial, source navigation/search, 320–1440px layout, bench spacing, backup import/export, cold offline reload.",

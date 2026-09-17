@@ -1,8 +1,8 @@
-# Planner integration · App 7.13
+# Planner integration · App 7.14
 
 Oly remains the only writer of its journal. Planner consumes a versioned read-only scheduling feed and never changes doses, exercise order, rests, readiness or progression.
 
-`src/planner-feed.js` exposes `buildPlannerFeed(state, now)`. Schema 1 (`type: oly:planner-feed`) includes source revision/time, program position, current week identity, actual session dates, prescription signatures, forecast/guided seconds, timing coverage, visit count, completion/active status, and live remaining seconds. Chicago dates are used regardless of the browser timezone. Future Planner projections retain Mon/Tue/Thu/Fri; Oly controls actual postponements and program advancement.
+`src/planner-feed.js` exposes `buildPlannerFeed(state, now)`. Schema 1 (`type: oly:planner-feed`) includes source revision/time, program position, current week identity, actual session dates, prescription signatures, forecast/guided seconds, timing coverage, visit count, completion/active status, and live remaining seconds. Chicago dates are used regardless of the browser timezone. Future Planner projections preserve the rolling A–B–rest–C–D–rest–rest rhythm from the next A date, including rotated weekdays and year boundaries. Oly controls actual postponements and program advancement.
 
 The feed is published to `oly_planner_feed_v1` and to the embedding parent through an origin-checked message. It contains scheduling metadata, not the workout journal. The iframe is not reset by calendar refresh or Planner navigation.
 
@@ -26,6 +26,6 @@ See [Google's token model](https://developers.google.com/identity/oauth2/web/gui
 
 ## Release and regression checks
 
-Deploy Oly before Planner. Cache `oly-groundup-v7-13-fresh` includes the integration modules, only intercepts its own application path and never deletes Planner caches. Existing active-session update guards remain in force.
+Deploy Oly before Planner. Cache `oly-groundup-v7-14-calendar` includes the integration modules, only intercepts its own application path and never deletes Planner caches. Existing active-session update guards remain in force.
 
 Run `npm test`, `npm run test:browser`, `npm run format:check` and `npm run check:deployment`. Planner additionally supplies two-device browser tests for IndexedDB reloads, concurrent edits, explicit conflict choices, deletions and offline queues. Simulated requests never touch a real Google account. Original source, 52-week execution, duration, migration, pacing and offline browser tests remain required.

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fresh } from "../src/training.js";
+import { fresh, deferDay, addDays } from "../src/training.js";
 import { dayPlan } from "../src/prescription.js";
 import { fixedSession } from "../src/timeline.js";
 import {
@@ -77,12 +77,26 @@ test("feed follows real dates and preserves the source journal through projectio
     feed = buildPlannerFeed(s, Date.parse("2026-09-14T14:00:00Z"));
   assert.equal(feed.entries.length, 4);
   assert.equal(feed.entries.find((e) => e.day === "friday").date, "2026-09-21");
-  assert.equal(feed.repeatStart, "2026-09-28");
+  assert.equal(feed.repeatStart, "2026-09-24");
   assert.equal(JSON.stringify(s), before);
   assert.deepEqual(
     validate(adoptJournalEntities(s, journalEntities(s))).training,
     s.training,
   );
+});
+test("calendar rotations preserve the next A date and all training prescriptions", () => {
+  for (let offset = 0; offset < 7; offset++) {
+    const s = fresh("2026-12-28");
+    const before = JSON.stringify(s.training);
+    deferDay(s, "monday", addDays(s.weekStart, offset));
+    const feed = buildPlannerFeed(s, Date.parse("2026-12-28T12:00:00Z"));
+    assert.deepEqual(
+      feed.entries.map((e) => e.date),
+      [0, 1, 3, 4].map((n) => addDays(s.weekStart, n + offset)),
+    );
+    assert.equal(feed.repeatStart, addDays(s.weekStart, 7 + offset));
+    assert.equal(JSON.stringify(s.training), before);
+  }
 });
 test("independent revisions merge; concurrent edits and delete/edit conflicts retain both versions", () => {
   const root = rev("root", [], { one: { value: 1 }, two: { value: 2 } });
