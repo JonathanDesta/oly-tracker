@@ -1,4 +1,5 @@
-// Source-verified exercise descriptions, doses and preparation: PDF pages 2, 8–14, 21.
+// Source descriptions/preparation: PDF pp.2,8–14,21. Hammer/wrist rows are the
+// later user-authorized regional amendment; they are not attributed to the PDF.
 export const EXERCISES = {
   mobility: [
     "Targeted mobility",
@@ -89,6 +90,21 @@ export const EXERCISES = {
     "Overhead cable triceps extension",
     "failure",
     "Upper arms comfortably overhead and stable; controlled deep elbow bend. Pressdown only for actual overhead intolerance.",
+  ],
+  hammer_curl: [
+    "Supported dumbbell hammer curl",
+    "failure",
+    "Seated with back supported, neutral grip; curl both arms together through a comfortable full elbow range. Log the weight of ONE dumbbell, not the pair. No shoulder swing. Stop when another strict rep cannot be completed; no forced reps.",
+  ],
+  wrist_curl: [
+    "Supported dumbbell wrist curl",
+    "failure",
+    "Forearms supported, palms up, both hands together; move only the wrists through comfortable flexion and extension. Log the weight of ONE dumbbell, not the pair. Keep the handles secure, without rolling into the fingers. Use light loads and stop at strict-form failure, never painful end range. Done after Olympic and other grip-dependent work.",
+  ],
+  wrist_extension: [
+    "Supported dumbbell wrist extension",
+    "failure",
+    "Forearms supported, palms down, both hands together; extend the wrists through a comfortable range without lifting the forearms. Log the weight of ONE dumbbell, not the pair. Light load, controlled lowering, strict-form failure; no forced or painful reps. Done after Olympic and other grip-dependent work.",
   ],
   leg_curl: [
     "Seated leg curl",

@@ -381,11 +381,17 @@ export function nextLoad(e, history, increment = 2.5) {
     allTop(last) &&
     ((e.sets > 1 && !special) ||
       (valid(history.at(-2)) && allTop(history.at(-2))))
-  )
+  ) {
+    if (["wrist_curl", "wrist_extension"].includes(e.id))
+      return {
+        weight,
+        text: "Ready for a small load increase per dumbbell. Select the smallest controllable available step; the barbell plate setting does not apply to wrists. If the next dumbbell is too large a jump, keep this load or use secure fractional loading. Log the actual load; do not force a five-pound increase.",
+      };
     return {
       weight: weight + (special ? Math.min(5, increment) : increment),
       text: "Increase by the smallest available increment; squat/low bench use 2.5–5 lb.",
     };
+  }
   return {
     weight,
     text: allTop(last)

@@ -1,29 +1,29 @@
-# Set-dose release audit · App 7.17
+# Regional allocation release audit · App 7.18
 
-Local release gate completed September 21, 2026: `npm run audit` exited successfully; **142 unit tests**, **12 browser suites**, formatting checks and the dependency audit passed. The dependency audit reported **0 vulnerabilities**. `git diff --check` passed.
+Local release gate completed September 21, 2026: `npm run audit` passed **145 unit tests**, **12 browser suites**, formatting and dependency checks, with **0 reported dependency vulnerabilities**. `git diff --check` passed. Separate integration verification used Planner 2.0.3's actual `validateFeed` against **36 stage/phase combinations**, preserving each feed and exact duration unchanged.
 
-## Evidence/prescription audit
+## Prescription review
 
-The [set-dose review](SET-DOSE-REVIEW.md) records the source evidence, its limits, every exercise's ordinary day/week allocation, muscle accounting, restart stages, adjustment process and actual duration budgets. It distinguishes the user's later failure/set-dose instructions from the unchanged PDF. The previous one-set-only recommendation is explicitly superseded. No exact allocation, fractional set credit or four-hour session is represented as a demonstrated individual optimum.
+The [complete allocation](SET-DOSE-REVIEW.md) specifies every exercise, 34 regional decisions, the distinction between direct/indirect/supporting work, the evidence and the inferences. The full target is 80 conventional plus 15 Olympic sets in ordinary Foundation/Build, with explicit restart doses 34/42/62/80 and 9/9/11/15. Wrist flexion, wrist extension and neutral-grip elbow flexion now have actual prescribed rows. Zero-isolation choices have reasons and are not described as maximal hypertrophy coverage.
 
-## Software checks
+The audit does **not** certify individual physiological optimality, equivalence of technical-failure Olympic training, or practical availability of five-hour school-year gym slots. The full B/D budgets are about 300/307 minutes and this limitation appears in the app and review. The approved calendar and one-visit default are retained. No shortened timer hides prescribed work, rest or waiting. Source-PDF fixtures remain separate from later user-authorized changes.
 
-- Ordinary stages reconcile to 28/36/44/56 conventional and 9/9/11/15 Olympic sets. Tests explicitly check every established B/D conventional exercise and each day's Olympic/conventional total.
-- The full 52-week readiness/event matrix covers 16,016 day plans. Realization, checkpoint, taper, pivot, technical restrictions, verification, local symptoms, missing protection, games and alcohol-related restrictions retain their overrides. Restart stages do not advance into checkpoint/Realization/taper/pivot weeks.
-- The amended full-year runner executes 196 sessions with independent Olympic terminal sets, both bench exposures and at least 48 hours between actual bench exposures. Separate original-program fixtures retain the 212-session source-year coverage.
-- Direct/indirect muscle counts reconcile across days and weeks. Regional upper chest is a labeled subset, Olympic contributions are unquantified, and no glute isolation appears. Per-session breakdowns cover separate visits when selected.
-- Multiple Olympic sets cannot finish from reaching a rep target. An early terminal attempt closes only its own set. Five-minute inter-set recovery is enforced. A zero-valid-rep set or repeated recorded material fault ends further sets. Pain/voluntary stops cannot earn successful work.
-- Variable pacing handles early/late endpoints, set/reset/rest transitions, safety stops and undo. Mobile tests execute two independent Olympic terminal sets, reload offline between them, undo and restore the final attempt, then validate the saved journal. No viewport overflow or uncaught page errors was found in those checks.
-- Progression requires every prescribed set in two comparable normal exposures to reach the rep-window top. First-set monitoring uses the first set rather than all reps combined.
-- Added-set trials target an existing exercise/day, block another concurrent trial and require review before retention. Individual reductions pause an addition or reduce established work. Reduced base counts cannot erase a trial or create a zero-set row when limited-event rules remove extras.
-- Legacy active rows retain their original endpoint/version and prescriptions. Reviewed-dose migration waits until the active workout ends, resets the stable-dose observation and excludes mixed-version weeks from advancement. Current and legacy state round trips pass.
-- New set counts and endpoint versions change Planner duration signatures. Feed creation and cloud round trips preserve the revised configuration. The service-worker cache includes the new dose module.
-- Existing browser coverage also passed for readiness, original source conformance, imports/exports, deletion and restart, timing settings, app updates, warm-ups, stretching-only sessions, cardio, prescribed calendar order, bench spacing and cold offline operation.
+## Software coverage
 
-Two issues were found and corrected during this release audit: a new muscle disclosure initially shared the timing disclosure's selector, and several release tests still expected App 7.16. The final complete audit above passed after both corrections. Additional review corrected checkpoint entry progression, a renewed lower entry dose and the interaction of individual reductions with added-set trials.
+- Every established B/D exercise count is asserted against an explicit expected list. All 34 muscle rows reconcile by day/week, and every displayed region has a decision. Muscle-region overlap is labeled. Warm-ups/athletics/mobility do not inflate work-set counts; Olympic sets get no numeric hypertrophy credit. A seated-calf fallback does not receive equivalent gastrocnemius credit.
+- The original source-profile checks remain green. The amended 52-week readiness/event matrix checks 16,016 day plans; the amended runner completes 196 sessions through the actual restart and full target, taper/pivot, all endpoints and both bench exposures with actual ≥48-hour spacing. The source-profile full-year fixture retains its 212-session coverage.
+- Direct forearm rows have safe strict-form endpoint cues, local warm-ups, repetitions, rest clocks, realistic bilateral execution time, and shared-station accounting. They execute after grip-dependent work. A mobile test runs all three new exercises through their actual UI, then validates saved state.
+- Local upper-body restrictions remove the new rows; verification caps retained work at one set. Limited-later-event rules remove optional extras while preserving the ordinary dose. The new rows support added-set trials, reductions, schema validation and cloud serialization through the existing path.
+- New and old dose versions remain readable. A 7.17 active workout is preserved byte-for-byte during loading; migration queues until completion, retains historical rows, caps the new introduction at stage 3 and resets stable-dose observations. Old mixed-dose sessions cannot earn new-dose advancement.
+- Each independent Olympic failure set retains its first-invalid endpoint, fixed load and five-minute recovery. Existing tests cover early/late endpoints, zero-valid-rep/repeated-fault stops, safety omissions, first-set monitoring, undo and reload.
+- Daily tables distinguish current dose from the established normal-week target, including during stage 1. The browser checks wrist targets of one set today / two this week / four at the full target, the full regional decision list and mobile overflow.
+- Counts and timing changes alter Planner prescription signatures. Existing timing tests cover all warm-ups, rests, transitions, waiting, miscellaneous allowance, cardio and stretch-only sessions. Planner forecasts receive the actual new totals; no arbitrary duration ceiling truncates them.
+- Existing browser suites pass for original conformance, restrictions, progression, imports/exports, deletion and restarting a test session, calendar order, recovery-only routines, update activation, offline operation and responsive layouts.
 
-## Publication gate
+Two new browser-fixture issues were corrected during the audit: an expected region-row count included one extra row, and a synthetically constructed active workout needed the same pacing synchronization used by real UI transactions. Neither was bypassed; the final full suite above passed after correcting the fixtures.
 
-Publication uses a normal fast-forward push and the Pages build for the exact release commit. After that build succeeds, `npm run check:deployment` compares the public HTML, styles, modules, source files, manifest, icon and service worker to local bytes. The dose mobile/offline suite is then run against the public URL. Production results are reported in the task completion after those checks succeed; local success alone is not treated as deployment verification.
+## Publication verification
 
-These checks establish conformance for the implemented rules and tested paths. They do not prove an individual's optimal adaptations or rule out every possible software defect. Training outcomes remain necessary for the dose review.
+Publish by normal fast-forward push, wait for the Pages job belonging to the exact release commit, compare all cached public assets with local bytes using `npm run check:deployment`, and run the regional mobile/offline browser suite against the public URL. Local test success alone does not constitute publication verification. The completion message reports the resulting public checks.
+
+These checks verify the implemented rules and exercised paths. They are not proof of absence of every possible defect, nor evidence that every muscle's exact optimal volume is knowable without individual outcome data.

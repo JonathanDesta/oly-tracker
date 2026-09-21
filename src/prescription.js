@@ -1,4 +1,8 @@
-import { conventionalDose } from "./dose.js";
+import {
+  conventionalDose,
+  DOSE_VERSION,
+  REGIONAL_ACCESSORIES,
+} from "./dose.js";
 import {
   allLoadedFailure,
   olympicFailure,
@@ -445,7 +449,11 @@ function conventional(c, day, phase, one = false) {
       },
     ),
   ];
-  for (const [id, sets, lo, hi, rest] of ACCESSORIES) {
+  const menu = [
+    ...ACCESSORIES,
+    ...(c.doseVersion === DOSE_VERSION ? REGIONAL_ACCESSORIES : []),
+  ];
+  for (const [id, sets, lo, hi, rest] of menu) {
     const n =
       one || c.entry === 1
         ? 1
@@ -453,7 +461,12 @@ function conventional(c, day, phase, one = false) {
           ? { incline: 2, lateral: 3, row: 2 }[id] || 1
           : sets;
     const count = conventionalDose(id, n, c, one);
-    const e = failure(id, count, lo, hi, rest, { baseSets: count });
+    const e = failure(id, count, lo, hi, rest, {
+      baseSets: count,
+      ...(REGIONAL_ACCESSORIES.some(([key]) => key === id)
+        ? { page: null, amendment: true }
+        : {}),
+    });
     const substitute = SUBSTITUTES[id]?.[c.equipment[id]];
     if (substitute) {
       e.name = substitute;
@@ -906,6 +919,8 @@ export function dayPlan(config, day, ctx = {}) {
   ol = regress(ol, c, day);
   if (allLoadedFailure(c)) {
     ol = failureOlympics(ol, c, phase, day);
+    if (c.doseVersion === DOSE_VERSION)
+      conv.forEach((e) => (e.amendment = true));
     if (c.week === 13 || c.entry === 1) conv.forEach((e) => (e.sets = 1));
     p.notes = [];
     p.notes.push(
@@ -1119,6 +1134,9 @@ const UPPER = [
   "shrug",
   "rear_delt",
   "curl",
+  "hammer_curl",
+  "wrist_curl",
+  "wrist_extension",
   "triceps",
   "press",
   "front_squat",

@@ -10,9 +10,18 @@ import {
   nextQualityRange,
   stopSession,
   planFor,
+  omitRow,
+  finishSession,
+  nextLoad,
 } from "../src/training.js";
 import { dayPlan, DAYS, copy } from "../src/prescription.js";
-import { doseLedger, DOSE_VERSION } from "../src/dose.js";
+import {
+  doseLedger,
+  DOSE_VERSION,
+  MUSCLES,
+  MUSCLE_DECISIONS,
+  LEGACY_DOSE_VERSION,
+} from "../src/dose.js";
 import {
   FAILURE_POLICY,
   LEGACY_FAILURE_POLICY,
@@ -87,12 +96,135 @@ const change = (kind, exercise = "cj", day = "tuesday") => ({
   stable: true,
 });
 
+test("complete allocation migrates 7.17 gradually, without altering active or historical prescriptions", () => {
+  const s = base();
+  s.training.doseVersion = LEGACY_DOSE_VERSION;
+  assert.equal(ledger(s).conventional, 56);
+  s.readiness = {
+    date: "2026-09-21",
+    level: "green",
+    event: "normal",
+    local: "",
+  };
+  startSession(s, "tuesday", "main", now);
+  const frozen = copy(s.active);
+  const migrated = validate(s);
+  assert.deepEqual(migrated.active, frozen);
+  assert.equal(migrated.training.doseVersion, LEGACY_DOSE_VERSION);
+  assert.equal(migrated.training.nextDoseVersion, DOSE_VERSION);
+  stopSession(migrated, "Synthetic migration boundary", now + 1000);
+  assert.equal(migrated.training.doseVersion, DOSE_VERSION);
+  assert.equal(migrated.training.failureEntry, 3);
+  assert.equal(ledger(migrated).conventional, 62);
+  assert.deepEqual(migrated.records[0].session, frozen.session);
+  assert.equal(migrated.training.failureWeeks.length, 0);
+  assert.deepEqual(validate(migrated), migrated);
+});
+
+test("forearm rows execute strict failure sets with warm-ups, full rests, station reuse, storage and readiness", () => {
+  const s = start(),
+    ids = ["hammer_curl", "wrist_curl", "wrist_extension"];
+  const rows = s.active.session.rows.filter((e) => ids.includes(e.id));
+  assert.deepEqual(
+    rows.map((e) => e.sets),
+    [1, 2, 2],
+  );
+  const time = fixedSession(s.active.session, s.training);
+  assert.equal(
+    time.rows.find((e) => e.key === "hammer_curl").parts.waiting[0],
+    120,
+  );
+  for (const e of rows) {
+    assert(e.amendment);
+    assert.match(e.note, /both|together/);
+    const parts = time.rows.find((r) => r.key === e.key).parts;
+    assert(parts.ramp[0] > 0);
+    assert.equal(parts.rest[0], (e.sets - 1) * e.rest);
+    if (e.id !== "hammer_curl") assert.equal(parts.waiting[0], 0);
+  }
+  for (const e of s.active.session.rows.filter((e) => !ids.includes(e.id)))
+    omitRow(s, e.key, "Synthetic regional runner check", now);
+  let at = now + 1000;
+  for (const e of rows)
+    for (let set = 0; set < e.sets; set++) {
+      assert.equal(nextRow(s.active).id, e.id);
+      logSet(s, { weight: 10, reps: e.repRange[1], endpoint: "failure" }, at);
+      sync(s, at);
+      assert.deepEqual(validate(s), s);
+      at += (e.rest + 60) * 1000;
+    }
+  assert.equal(nextRow(s.active), undefined);
+  finishSession(s, "Regional execution fixture", at);
+  assert.equal(s.records[0].sets.length, 5);
+  for (const e of rows) assert(successfulRow(s.records[0], e));
+  assert.deepEqual(validate(s), s);
+  const restricted = dayPlan(s.training, "tuesday", {
+    local: "upper",
+    event: "normal",
+    level: "green",
+  });
+  assert(
+    !restricted.sessions
+      .flatMap((se) => se.rows)
+      .some((e) => ids.includes(e.id)),
+  );
+  const verification = dayPlan(s.training, "friday", { event: "verification" });
+  assert(
+    verification.sessions
+      .flatMap((se) => se.rows)
+      .filter((e) => ids.includes(e.id))
+      .every((e) => e.sets === 1),
+  );
+  const source = fresh();
+  assert(!ledger(source).exercises.some((e) => ids.includes(e.id)));
+});
+
+test("regional additions, equipment-specific muscle counts and Planner signatures remain coherent", () => {
+  for (const id of ["hammer_curl", "wrist_curl", "wrist_extension"]) {
+    const s = base();
+    applyChange(s, change("set", id), now);
+    assert.deepEqual(validate(s), s);
+    assert.equal(ledger(s).conventional, 81);
+    const limited = dayPlan(s.training, "tuesday", { event: "limited_later" });
+    assert.equal(doseLedger([limited]).conventional, 40);
+  }
+  const s = base(),
+    before = planFor(s, "tuesday").sessions[0];
+  const wrist = before.rows.find((e) => e.id === "wrist_extension");
+  const suggestion = nextLoad(
+    wrist,
+    [
+      {
+        normal: true,
+        sets: Array.from({ length: 2 }, () => ({
+          weight: 5,
+          reps: 20,
+          endpoint: "failure",
+        })),
+      },
+    ],
+    5,
+  );
+  assert.equal(suggestion.weight, 5);
+  assert.match(suggestion.text, /barbell plate setting does not apply/);
+  s.training.doseVersion = LEGACY_DOSE_VERSION;
+  const previous = planFor(s, "tuesday").sessions[0];
+  assert.notEqual(
+    prescriptionSignature(before, s.training),
+    prescriptionSignature(previous, s.training),
+  );
+  s.training.doseVersion = DOSE_VERSION;
+  s.training.equipment.calf = "seated";
+  assert.equal(ledger(s).muscles.gastrocnemius.direct, 0);
+  assert.equal(ledger(s).muscles.soleus.direct, 6);
+});
+
 test("restart stages and established per-day exercise counts match the reviewed allocation", () => {
   for (const [stage, olympic, conventional] of [
-    [1, 9, 28],
-    [2, 9, 36],
-    [3, 11, 44],
-    [4, 15, 56],
+    [1, 9, 34],
+    [2, 9, 42],
+    [3, 11, 62],
+    [4, 15, 80],
   ]) {
     const s = base(stage),
       l = ledger(s);
@@ -110,10 +242,10 @@ test("restart stages and established per-day exercise counts match the reviewed 
       days[d].conventional,
     ]),
     [
-      [3, 28],
+      [3, 40],
       [5, 0],
       [3, 0],
-      [4, 28],
+      [4, 40],
     ],
   );
   assert.deepEqual(
@@ -122,27 +254,30 @@ test("restart stages and established per-day exercise counts match the reviewed 
       ["front_squat", 2],
       ["bench", 2],
       ["incline", 4],
-      ["lateral", 4],
-      ["row", 2],
+      ["lateral", 5],
+      ["row", 3],
       ["pulldown", 2],
-      ["shrug", 2],
-      ["rear_delt", 1],
+      ["shrug", 3],
+      ["rear_delt", 2],
       ["curl", 1],
       ["triceps", 1],
-      ["leg_curl", 2],
-      ["calf", 2],
+      ["leg_curl", 3],
+      ["calf", 3],
       ["leg_ext", 2],
-      ["crunch", 1],
+      ["crunch", 2],
+      ["hammer_curl", 1],
+      ["wrist_curl", 2],
+      ["wrist_extension", 2],
     ],
   );
   Object.assign(s.training, { week: 9, gate: "R" });
   assert.equal(ledger(s).olympic, 14);
   s.training.week = 11;
-  assert.equal(ledger(s).conventional, 42);
+  assert.equal(ledger(s).conventional, 57);
   s.training.week = 12;
   assert.deepEqual([ledger(s).olympic, ledger(s).conventional], [4, 2]);
   s.training.week = 13;
-  assert.deepEqual([ledger(s).olympic, ledger(s).conventional], [0, 28]);
+  assert.deepEqual([ledger(s).olympic, ledger(s).conventional], [0, 34]);
 });
 
 test("muscle accounting separates direct, indirect and unquantified contributions; totals reconcile", () => {
@@ -152,22 +287,43 @@ test("muscle accounting separates direct, indirect and unquantified contribution
     chest: 12,
     upper_chest: 8,
     front_delts: 6,
-    side_delts: 8,
-    rear_delts: 4,
-    traps: 4,
-    upper_back: 6,
-    lats: 6,
-    biceps: 6,
+    side_delts: 10,
+    rear_delts: 7,
+    traps: 6,
+    upper_back: 8,
+    lats: 7,
+    biceps: 9,
     triceps: 8,
     quads: 8,
     glutes: 4,
-    hamstrings: 4,
-    calves: 4,
-    abs: 2,
+    hamstrings: 6,
+    calves: 6,
+    abs: 4,
     adductors: 0,
     erectors: 0,
     forearms: 0,
+    wrist_flexors: 4,
+    wrist_extensors: 4,
+    brachialis: 2,
+    brachioradialis: 2,
+    gastrocnemius: 6,
+    soleus: 6,
+    pronators: 0,
+    obliques: 0,
+    hip_abductors: 0,
+    hip_flexors: 0,
+    tibialis: 0,
+    foot: 0,
+    cuff: 0,
+    serratus: 0,
+    lower_traps: 0,
+    neck: 0,
   };
+  assert.deepEqual(Object.keys(expected).sort(), Object.keys(MUSCLES).sort());
+  assert.deepEqual(
+    Object.keys(MUSCLE_DECISIONS).sort(),
+    Object.keys(MUSCLES).sort(),
+  );
   for (const [id, total] of Object.entries(expected)) {
     assert.equal(l.muscles[id].fractional, total, id);
     assert.equal(
@@ -381,7 +537,7 @@ test("new dose migration freezes a legacy active prescription and invalidates ol
 test("a renewed source entry dose and reductions never hide trial sets or produce zero-set rows", () => {
   const s = base();
   s.training.entry = 2;
-  assert.equal(ledger(s).conventional, 36);
+  assert.equal(ledger(s).conventional, 42);
   assert.equal(ledger(s).olympic, 9);
   s.training.entry = 3;
   s.training.setReductions = [{ day: "tuesday", exercise: "cj", sets: 1 }];

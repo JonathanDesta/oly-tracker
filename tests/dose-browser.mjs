@@ -76,9 +76,9 @@ try {
   await page.locator(".dose-panel > summary").click();
   assert.match(
     await page.locator(".dose-panel").innerText(),
-    /3 Olympic \+ 28 conventional/,
+    /3 Olympic \+ 40 conventional/,
   );
-  assert.match(await page.locator(".dose-panel").innerText(), /15 \+ 56/);
+  assert.match(await page.locator(".dose-panel").innerText(), /15 \+ 80/);
   const chest = page
     .locator(".dose-panel tr")
     .filter({ hasText: "Chest (all regions)" });
@@ -143,9 +143,104 @@ try {
     const { validate } = await import("./src/storage.js");
     validate(JSON.parse(localStorage.getItem("oly_program_v7")));
   });
+  // A new journal shows the actual restart dose beside the full regional target.
+  await page.evaluate(async () => {
+    const { fresh } = await import("./src/training.js");
+    const s = fresh("2026-09-21", "weekday", "all-failure");
+    s.readiness = {
+      date: "2026-09-21",
+      level: "green",
+      event: "normal",
+      local: "",
+    };
+    localStorage.setItem("oly_program_v7", JSON.stringify(s));
+  });
+  await page.reload();
+  await page.locator(".dose-panel > summary").click();
+  assert.match(await page.locator(".dose-panel").innerText(), /9 \+ 34/);
+  const wrist = page
+    .locator(".dose-panel table")
+    .first()
+    .getByRole("row")
+    .filter({ hasText: "Supported dumbbell wrist curl" });
+  assert.deepEqual(await wrist.locator("td").allTextContents(), [
+    "1",
+    "2",
+    "4",
+  ]);
+  await page
+    .locator(".dose-panel table")
+    .first()
+    .screenshot({ path: "test-results/regions-exercise-table.png" });
+  const muscles = page.locator(".dose-panel table").nth(1);
+  assert.equal(await muscles.getByRole("row").count(), 35);
+  const decisions = page.locator(".dose-panel details").filter({
+    has: page.getByText(
+      "Regional decisions · including muscles with no isolation",
+      { exact: true },
+    ),
+  });
+  await decisions.locator("summary").click();
+  assert.match(
+    await decisions.innerText(),
+    /Four supported wrist-extension sets/,
+  );
+  assert.match(await decisions.innerText(), /Zero direct neck-failure sets/);
+  await page.screenshot({
+    path: "test-results/regions-mobile-targets.png",
+    fullPage: true,
+  });
+  // Isolated fixture skips preceding work, then exercises the actual new-row UI.
+  await page.evaluate(async () => {
+    const { startSession, omitRow, rowStatus } = await import(
+      "./src/training.js"
+    );
+    const { syncPacing } = await import("./src/pacing.js");
+    const { validate } = await import("./src/storage.js");
+    const s = JSON.parse(localStorage.getItem("oly_program_v7"));
+    startSession(s, "tuesday", "main", Date.now());
+    s.active.warmup = true;
+    for (const e of s.active.session.rows.filter(
+      (e) => !["hammer_curl", "wrist_curl", "wrist_extension"].includes(e.id),
+    ))
+      omitRow(s, e.key, "Synthetic browser fixture", Date.now());
+    syncPacing(
+      s.active,
+      Object.fromEntries(
+        s.active.session.rows.map((e) => [e.key, rowStatus(s.active, e)]),
+      ),
+      Date.now(),
+    );
+    localStorage.setItem("oly_program_v7", JSON.stringify(validate(s)));
+  });
+  await page.reload();
+  if (
+    await page
+      .getByRole("button", { name: "Resume workout", exact: true })
+      .count()
+  )
+    await click("Resume workout");
+  for (const id of ["hammer_curl", "wrist_curl", "wrist_extension"]) {
+    await prep();
+    assert.equal((await stage()).key, id);
+    await click("Start timed set");
+    await page.clock.fastForward(60000);
+    await click("Set finished · record result");
+    await page.locator('[data-form="set"] [name="weight"]').fill("10");
+    await page.locator('[data-form="set"] [name="reps"]').fill("12");
+    await page
+      .locator('[data-form="set"] [name="endpoint"]')
+      .selectOption("failure");
+    await click("Save set");
+    assert.equal((await read()).active.sets.at(-1).key, id);
+  }
+  await page.evaluate(async () => {
+    const { validate } = await import("./src/storage.js");
+    validate(JSON.parse(localStorage.getItem("oly_program_v7")));
+  });
   assert.deepEqual(errors, []);
   console.log(
-    "Dose browser: muscle/exercise accounting, multi-set failure/rest, reload, offline, undo, mobile layout and storage passed.",
+    "Dose browser: full regional targets, restart doses, forearm runner, muscle/exercise accounting, multi-set failure/rest, reload, offline, undo, mobile layout and storage passed.",
   );
 } finally {
   await context.close();

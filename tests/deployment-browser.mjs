@@ -65,7 +65,7 @@ try {
   );
   await page.reload();
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.17/);
+  assert.match(await page.locator("main").innerText(), /App 7\.18/);
   assert.equal(
     await page
       .getByLabel("Ankle · bent-knee calf stretch, heel down", { exact: true })

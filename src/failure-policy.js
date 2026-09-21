@@ -69,6 +69,9 @@ export function failureSetStatus(e, logs) {
   };
 }
 export function adoptReviewedDose(t) {
+  // Introduce the newly allocated work gradually, even after finishing the old ramp.
+  if (t.doseVersion && t.doseVersion !== DOSE_VERSION)
+    t.failureEntry = Math.min(t.failureEntry || 1, 3);
   t.doseVersion = DOSE_VERSION;
   delete t.nextDoseVersion;
   t.failureWeeks = [];
@@ -102,7 +105,11 @@ export function migrateFailurePolicy(s) {
       s.training,
       s.updatedAt || Date.parse(s.weekStart + "T12:00:00Z"),
     );
-  if (allLoadedFailure(s.training) && !s.training.doseVersion && !s.completed) {
+  if (
+    allLoadedFailure(s.training) &&
+    s.training.doseVersion !== DOSE_VERSION &&
+    !s.completed
+  ) {
     if (s.active) s.training.nextDoseVersion = DOSE_VERSION;
     else adoptReviewedDose(s.training);
   }

@@ -91,7 +91,8 @@ export function validate(data) {
   }
   for (const field of ["doseVersion", "nextDoseVersion"])
     assert(
-      t[field] === undefined || t[field] === DOSE_VERSION,
+      t[field] === undefined ||
+        [DOSE_VERSION, "reviewed-v1"].includes(t[field]),
       "dose version.",
     );
   assert(
@@ -223,6 +224,9 @@ export function validate(data) {
           "shrug",
           "rear_delt",
           "curl",
+          "hammer_curl",
+          "wrist_curl",
+          "wrist_extension",
           "triceps",
           "leg_curl",
           "calf",

@@ -1,4 +1,11 @@
-import { DOSE_STAGES, MUSCLES, DOSE_REVIEWS, doseLedger } from "./dose.js";
+import {
+  DOSE_STAGES,
+  DOSE_VERSION,
+  MUSCLES,
+  MUSCLE_DECISIONS,
+  DOSE_REVIEWS,
+  doseLedger,
+} from "./dose.js";
 import {
   allLoadedFailure,
   olympicFailure,
@@ -104,7 +111,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.17";
+const APP_BUILD = "7.18";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -230,7 +237,7 @@ function nav(next) {
   window.scrollTo({ top: 0 });
 }
 function rowSource(e) {
-  return olympicFailure(e)
+  return olympicFailure(e) || e.amendment
     ? btn("Failure amendment ↗", "failure-guide", "", "source-link")
     : sourceLink(e.page || 7);
 }
@@ -327,21 +334,46 @@ function dosePanel(p) {
   if (!allLoadedFailure(state.training)) return "";
   const day = doseLedger([p]),
     week = doseLedger(DAYS.map((d) => dayPlan(state.training, d)));
-  const exerciseIds = [...new Set(week.exercises.map((e) => e.id))];
+  const target = doseLedger(
+    DAYS.map((d) =>
+      dayPlan(
+        {
+          ...state.training,
+          doseVersion: DOSE_VERSION,
+          entry: 3,
+          failureEntry: 4,
+          week: 3,
+          gate: "F",
+          recovery: "normal",
+          trials: [],
+          setReductions: [],
+          lowerDose: false,
+          reduceA: false,
+          reduceJerk: false,
+          omitPull: false,
+          technique: { snatch: "none", clean: "none", jerk: "none" },
+        },
+        d,
+      ),
+    ),
+  );
+  const exerciseIds = [
+    ...new Set([...week.exercises, ...target.exercises].map((e) => e.id)),
+  ];
   const sum = (entries, id) =>
     entries.filter((e) => e.id === id).reduce((n, e) => n + e.sets, 0);
   const doseText = (m) =>
     `${m.fractional}${m.additional.length ? " + other work*" : ""}`;
-  return `<details class="panel dose-panel"><summary><strong>Sets by exercise and muscle · today & week</strong></summary><p>This day's eligible plan: <b>${day.olympic} Olympic + ${day.conventional} conventional sets</b>. The ordinary planned week at your current dose has <b>${week.olympic} + ${week.conventional}</b>. These are prescriptions, not completed logs; daily readiness can reduce the weekly plan. Warm-ups, athletics and stretches are excluded from loaded-set totals.</p><div class="dose-scroll"><table><caption>Exercise work sets</caption><thead><tr><th>Exercise</th><th>This day</th><th>Week before daily reductions</th></tr></thead><tbody>${exerciseIds.map((id) => `<tr><th>${esc(week.exercises.find((e) => e.id === id).name)}</th><td>${sum(day.exercises, id)}</td><td>${sum(week.exercises, id)}</td></tr>`).join("")}</tbody></table></div><div class="dose-scroll"><table><caption>Muscle workload · conventional set estimate</caption><thead><tr><th>Muscle</th><th>This day</th><th>Week</th></tr></thead><tbody>${Object.entries(
+  return `<details class="panel dose-panel"><summary><strong>Sets by exercise and muscle · today & week</strong></summary><p>This day's eligible plan: <b>${day.olympic} Olympic + ${day.conventional} conventional sets</b>. The ordinary planned week at your current dose has <b>${week.olympic} + ${week.conventional}</b>. These are prescriptions, not completed logs; daily readiness can reduce the weekly plan. Warm-ups, athletics and stretches are excluded from loaded-set totals.</p><div class="dose-scroll"><table><caption>Exercise work sets</caption><thead><tr><th>Exercise</th><th>This day</th><th>Current week</th><th>Established normal-week target</th></tr></thead><tbody>${exerciseIds.map((id) => `<tr><th>${esc([...week.exercises, ...target.exercises].find((e) => e.id === id).name)}</th><td>${sum(day.exercises, id)}</td><td>${sum(week.exercises, id)}</td><td>${sum(target.exercises, id)}</td></tr>`).join("")}</tbody></table></div><div class="dose-scroll"><table><caption>Muscle workload · conventional set estimate</caption><thead><tr><th>Muscle</th><th>This day</th><th>Current week</th><th>Established target</th></tr></thead><tbody>${Object.entries(
     MUSCLES,
   )
     .map(
       ([id, label]) =>
-        `<tr><th>${label}<small>${week.muscles[id].direct} direct + ${week.muscles[id].indirect} indirect weekly sets</small></th><td>${doseText(day.muscles[id])}</td><td>${doseText(week.muscles[id])}</td></tr>`,
+        `<tr><th>${label}<small>${week.muscles[id].direct} direct + ${week.muscles[id].indirect} indirect weekly sets</small></th><td>${doseText(day.muscles[id])}</td><td>${doseText(week.muscles[id])}</td><td>${doseText(target.muscles[id])}</td></tr>`,
     )
     .join(
       "",
-    )}</tbody></table></div><p class="fine-print">The muscle estimate counts a direct conventional set as 1 and an indirect set as ½. It is an accounting aid, not a measured stimulus. *Other work contributes without a defensible set conversion: Olympic lifts, bracing/grip, and flat-bench upper-chest work. Zero counted sets does not mean no training stimulus. Deep squats count toward glutes, with benefit dependent on depth and execution. Upper chest is a subset of total chest; do not add the two. Muscle totals overlap and must not be summed into whole-body sets.</p><details><summary>Which exercises contribute additional work?</summary>${Object.entries(
+    )}</tbody></table></div><p class="fine-print">The muscle estimate counts a direct conventional set as 1 and an indirect set as ½. It is an accounting aid, not a measured stimulus. *Other work contributes without a defensible set conversion: Olympic lifts, bracing/grip, and flat-bench upper-chest work. Zero counted sets does not mean no training stimulus. Deep squats count toward glutes, with benefit dependent on depth and execution. Chest, calf and elbow-flexor regional rows overlap their parent totals; do not add them together. Muscle totals overlap and must not be summed into whole-body sets.</p><details><summary>Which exercises contribute additional work?</summary>${Object.entries(
     MUSCLES,
   )
     .filter(([id]) => week.muscles[id].additional.length)
@@ -351,7 +383,13 @@ function dosePanel(p) {
     )
     .join(
       "",
-    )}</details><h3>How the dose is reviewed</h3><p>Starting/restarting: four stages, advancing only after a complete green week and normal next-session follow-ups. An ordinary Foundation week progresses through 28, 36, 44 and 56 conventional sets, and 9, 9, 11 and 15 Olympic sets. Taper, pivot and readiness reductions take precedence. The last stage is a starting allocation for ongoing review, not a ceiling or a proven individual optimum.</p>${DOSE_REVIEWS.map(([name, text]) => `<p><b>${name}:</b> ${text}</p>`).join("")}<p>These review landmarks are practical inferences for your priority order, not scientific thresholds. After two stable green weeks, trial one additional weekly set on one exercise. Hold other additions for two normal weeks, compare performance and recovery, and retain only with a useful response. Assess physique trends over a full cycle; two weeks mainly assesses tolerance. Improving performance alone does not prove maximum muscle growth. If later sets or the next Olympic session deteriorate, use Remove one weekly work set after review. It can pause a trial or reduce an established exercise; restoring a set uses the same controlled addition process.</p>${allLoadedFailure(state.training) ? btn("Review one program change", "change", "", "button") : ""}</details>`;
+    )}</details><details><summary>Regional decisions · including muscles with no isolation</summary><p>These decisions describe the established target. Your current introduction stage, phase, equipment and readiness can reduce the actual prescription.</p>${Object.entries(
+    MUSCLES,
+  )
+    .map(([id, name]) => `<p><b>${name}:</b> ${MUSCLE_DECISIONS[id]}</p>`)
+    .join(
+      "",
+    )}</details><h3>How the dose is reviewed</h3><p>Starting/restarting: four stages, advancing only after a complete green week and normal next-session follow-ups. An ordinary Foundation week progresses through 34, 42, 62 and 80 conventional sets, and 9, 9, 11 and 15 Olympic sets. Taper, pivot and readiness reductions take precedence. The last stage is the full selected allocation. Its exact counts are reasoned prescriptions, not measured individual optima.</p>${DOSE_REVIEWS.map(([name, text]) => `<p><b>${name}:</b> ${text}</p>`).join("")}<p>The chosen targets balance the priority order, training overlap and failure fatigue; they are not scientific thresholds. After two stable green weeks, trial one additional weekly set on one exercise. Hold other additions for two normal weeks, compare performance and recovery, and retain only with a useful response. Assess physique trends over a full cycle; two weeks mainly assesses tolerance. Improving performance alone does not prove maximum muscle growth. If later sets or the next Olympic session deteriorate, use Remove one weekly work set after review. It can pause a trial or reduce an established exercise; restoring a set uses the same controlled addition process.</p>${allLoadedFailure(state.training) ? btn("Review one program change", "change", "", "button") : ""}</details>`;
 }
 function sessionMuscles(s, p) {
   if (s.skipped || s.kind !== "lifting") return "";
@@ -368,7 +406,7 @@ function sessionMuscles(s, p) {
     )
     .join(
       "",
-    )}</dl><p class="fine-print">Muscle totals overlap. Upper chest is part of total chest. See Sets by exercise and muscle above for the direct/indirect breakdown and contributing exercises.</p></details>`;
+    )}</dl><p class="fine-print">Muscle totals overlap. Chest, calf and elbow-flexor regional rows overlap. See Sets by exercise and muscle above for the direct/indirect breakdown and contributing exercises.</p></details>`;
 }
 function timeParts(parts, labels) {
   return `<dl class="time-parts">${Object.entries(parts)
@@ -895,9 +933,10 @@ function failureGuide() {
   <p>Your amendment supersedes the PDF wherever endpoints or workload conflict. It applies to loaded working sets, including Olympic lifts and pulls. Warm-ups, unloaded rehearsal, athletics, aerobic work and mobility retain their original endpoints. The original PDF remains available as the unchanged source.</p>
   <p><strong>Olympic endpoint:</strong> each prescribed work set uses a fixed load. Complete a valid rep, reset 15 seconds, then repeat. A clean-and-jerk rep requires BOTH lifts to be valid. The first miss or grade-C technically invalid rep ends the set immediately. Recover at least five minutes before the next prescribed set. No extra retry sets, drop sets or escalating attempts. Zero valid reps in a set, or the same material fault ending two sets, ends the exercise. Log every attempt. Effort 1–10 describes the attempt; it is not an early stopping cap. Pain or an unsafe situation ends work and is recorded as incomplete, never disguised as failure.</p>
   <p><strong>Load selection:</strong> Foundation aims for 2–4 valid reps, Build 1–3, Realization 1–2; pulls use 3–5. These windows guide the next load, never force the current set to end. Initial estimates are 80%, 85% and 88% of the appropriate demonstrated reference; hang snatch uses 10 percentage points less, pulls 10 more. An unassessed rack jerk starts at 65% CJ. Round down; reduce if preparation is insecure. If no load permits secure preparation, defer the work. The app repeats the previous comparable load, reduces about 5–10% below the window, and adds one plate increment only after every prescribed set in two normal comparable exposures reaches its top with normal subsequent recovery. Holds apply during introduction, checkpoints, Realization and taper.</p>
-  <p><strong>Dose and calendar:</strong> ordinary weekday order remains Monday B, Tuesday C, Thursday A, Friday D. The restart has four stages: an ordinary Foundation week has 28/36/44/56 conventional sets and 9/9/11/15 Olympic sets. Each complete green weekly review may advance one stage, with next-session follow-ups required. Good historical recovery supports trying the progression; it does not skip observation. Record the next-session checks in History. Then review two full green weeks at a stable workload before optional additions. A controlled addition can now add one weekly Olympic or conventional set to a selected existing exercise. Source heavy-slot and bounded-assessment rules remain superseded. Existing logs and active sessions keep their original prescription.</p>
+  <p><strong>Dose and calendar:</strong> ordinary weekday order remains Monday B, Tuesday C, Thursday A, Friday D. The restart has four stages: an ordinary Foundation week has 34/42/62/80 conventional sets and 9/9/11/15 Olympic sets. Each complete green weekly review may advance one stage, with next-session follow-ups required. Good historical recovery supports trying the progression; it does not skip observation. Record the next-session checks in History. Then review two full green weeks at a stable workload before optional additions. A controlled addition can now add one weekly Olympic or conventional set to a selected existing exercise. Source heavy-slot and bounded-assessment rules remain superseded. Existing logs and active sessions keep their original prescription.</p>
   <p><strong>Recovery:</strong> at least five minutes after each Olympic failure set before the next set or loaded exercise, plus any next-exercise ramp. Amber/global fatigue, targeted/reset weeks and sport later that day omit Olympic failure work. A technical restriction omits the affected work; no submaximal working-set substitute. Week 12 has Monday Olympic failure sets plus low-rep bench, no Tuesday/Thursday loading, Friday fixed-load failure benchmarks, and moderate bench afterward. The benchmark is not a three-attempt competition total. Week 13 has no Olympic loading and one set per retained conventional exercise. Actual bench exposures still require at least 48 hours.</p>
-  <p><strong>Timing:</strong> the initial Olympic budget assumes the upper valid-rep target plus one terminal attempt. Each valid extra rep adds its work/reset countdown; an early endpoint removes unused attempts. Timers never decide whether a rep was valid or a set reached failure. Preparation, equipment changes, moderate waiting and miscellaneous time remain included.</p>
+  <p><strong>Timing:</strong> the initial Olympic budget assumes the upper valid-rep target plus one terminal attempt. Each valid extra rep adds its work/reset countdown; an early endpoint removes unused attempts. Timers never decide whether a rep was valid or a set reached failure. Preparation, equipment changes, moderate waiting and miscellaneous time remain included. The full allocation with default allowances budgets about five hours on B/D; this is a time cost, not evidence that five-hour sessions are optimal. Your current stage's actual plan and time appear on each day.</p>
+  <p><strong>Regional coverage:</strong> the full target adds supported hammer curls (two sets/week), wrist curls and wrist extensions (four each/week), placed after grip-dependent lifting. Wrist training research supports additional specific strength benefits, but does not establish these precise hypertrophy doses: <a href="https://pubmed.ncbi.nlm.nih.gov/15320673/" target="_blank" rel="noopener">Szymanski et al. (2004)</a>. Seated hamstring curls, knee-extended calf raises and overhead triceps extensions retain regional coverage supported by <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7969179/" target="_blank" rel="noopener">Maeo et al. (2021)</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/38156065/" target="_blank" rel="noopener">Kinoshita et al. (2023)</a> and <a href="https://pubmed.ncbi.nlm.nih.gov/35819335/" target="_blank" rel="noopener">Maeo et al. (2023)</a>. <a href="https://pubmed.ncbi.nlm.nih.gov/31230110/" target="_blank" rel="noopener">Kubo et al. (2019)</a> supports adductor/glute coverage from deep squats. None establishes the exact combined weekly allocation. See the regional decisions in each day's set table for every included region and every zero-isolation choice.</p>
   <p>Volume review: <a href="https://link.springer.com/article/10.1007/s40279-025-02344-w" target="_blank" rel="noopener">Pelland et al. (2026)</a> supports a dose response with diminishing returns and fractional accounting as a heuristic; <a href="https://pubmed.ncbi.nlm.nih.gov/41843416/" target="_blank" rel="noopener">ACSM (2026)</a> supports multiple sets and higher muscle-building volume. Neither establishes these exact counts or a failure-set conversion for Olympic lifting. See the day’s set table and review landmarks.</p><p><strong>Evidence limits:</strong> failure is not established as superior for strength or power. Closer-to-failure conventional resistance work can support hypertrophy, but that does not validate repeated snatches or clean-and-jerks to technical failure. The exact per-exercise set allocation, starting percentages, resets, recovery period and taper/pivot changes above are practical inferences under your preference, not proven optimal or equivalent to the original plan. See <a href="https://pubmed.ncbi.nlm.nih.gov/33555822/" target="_blank" rel="noopener">Vieira et al., 2021</a>, <a href="https://rke.abertay.ac.uk/en/publications/exploring-the-dose-response-relationship-between-estimated-resist/" target="_blank" rel="noopener">Robinson et al., 2024</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/27038416/" target="_blank" rel="noopener">Pareja-Blanco et al., 2017</a> and <a href="https://pubmed.ncbi.nlm.nih.gov/23121475/" target="_blank" rel="noopener">Hardee et al., 2013</a>.</p></section>`;
 }
 function guideView() {
@@ -1086,7 +1125,7 @@ function openChange() {
       ),
       "set",
     ) +
-      `<div class="input-grid">${select("Exercise for this change", "exercise", { snatch: "Full snatch", cj: "Clean & jerk", hang: "Hang snatch", jerk: "Rack jerk", pull: "Snatch pull", bench: "Flat barbell bench", incline: "Incline", lateral: "Lateral raise", shrug: "Shrug", row: "Row", pulldown: "Pulldown", rear_delt: "Rear delt", curl: "Curl", triceps: "Triceps", leg_curl: "Leg curl", calf: "Calf", leg_ext: "Leg extension", crunch: "Crunch", front_squat: "Front squat", back_squat: "Back squat", press: "Overhead press (active substitution)" }, "shrug")}${select("Day for an added set", "day", { monday: `A · ${calendarWeekday("monday")}`, thursday: `C · ${calendarWeekday("thursday")}`, tuesday: `B · ${calendarWeekday("tuesday")}`, friday: `D · ${calendarWeekday("friday")}` }, "friday")}${allLoadedFailure(state.training) ? "" : input("Previous secure rack working load (rack progression only)", "baselineLoad", "", "number", 'min="1" step="any"') + input("New rack or pause-jerk trial load (+2.5–5 lb only)", "load", "", "number", 'min="1" step="any"')}</div>` +
+      `<div class="input-grid">${select("Exercise for this change", "exercise", { snatch: "Full snatch", cj: "Clean & jerk", hang: "Hang snatch", jerk: "Rack jerk", pull: "Snatch pull", bench: "Flat barbell bench", incline: "Incline", lateral: "Lateral raise", shrug: "Shrug", row: "Row", pulldown: "Pulldown", rear_delt: "Rear delt", curl: "Supinated curl", hammer_curl: "Hammer curl", wrist_curl: "Wrist curl", wrist_extension: "Wrist extension", triceps: "Triceps", leg_curl: "Leg curl", calf: "Calf", leg_ext: "Leg extension", crunch: "Crunch", front_squat: "Front squat", back_squat: "Back squat", press: "Overhead press (active substitution)" }, "shrug")}${select("Day for an added set", "day", { monday: `A · ${calendarWeekday("monday")}`, thursday: `C · ${calendarWeekday("thursday")}`, tuesday: `B · ${calendarWeekday("tuesday")}`, friday: `D · ${calendarWeekday("friday")}` }, "friday")}${allLoadedFailure(state.training) ? "" : input("Previous secure rack working load (rack progression only)", "baselineLoad", "", "number", 'min="1" step="any"') + input("New rack or pause-jerk trial load (+2.5–5 lb only)", "load", "", "number", 'min="1" step="any"')}</div>` +
       notice(
         allLoadedFailure(state.training)
           ? "Failure amendment: Olympic loads progress from valid reps and two normal subsequent exposures. One added weekly Olympic set can be trialed on an existing row after the stable-dose review. Source heavy slots and bounded assessments remain superseded. Optional conventional/athletic/aerobic additions require the new introduction plus two complete stable green weeks. Other source eligibility rules still apply."

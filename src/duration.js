@@ -59,6 +59,8 @@ export function family(e) {
   return e.id;
 }
 function station(e, c) {
+  if (["hammer_curl", "wrist_curl", "wrist_extension"].includes(e.id))
+    return "dumbbell-bench";
   if (e.kind === "mobility") return "mobility";
   if (e.kind === "speed") return "field";
   if (e.kind === "aerobic") return e.key === "aerobic_walk" ? "walk" : "cardio";
