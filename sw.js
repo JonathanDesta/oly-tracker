@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-19-whole-week";
+const CACHE = "oly-groundup-v7-19-whole-week-labels";
 const FILES = [
   "./",
   "index.html",

@@ -73,6 +73,16 @@ try {
     localStorage.setItem("oly_program_v7", JSON.stringify(s));
   });
   await page.reload();
+  assert.match(
+    await page.getByText("Day letters stay with the session").innerText(),
+    /B–rest–C–rest–D–rest–rest/,
+  );
+  assert.equal(
+    await page
+      .locator('[data-action="day"][data-day="monday"] strong')
+      .innerText(),
+    "—",
+  );
   await page.locator(".dose-panel > summary").click();
   assert.match(
     await page.locator(".dose-panel").innerText(),

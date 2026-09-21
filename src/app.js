@@ -15,6 +15,7 @@ import {
   programDays,
   SLOT_LETTERS,
   weekdaySchedule,
+  threeDaySchedule,
   secondaryAthleticSlot,
   scheduleName,
   scheduleTrialPending,
@@ -318,16 +319,16 @@ function weekView() {
     )
       .map(
         (d) =>
-          `<button data-action="day" data-day="${d}" class="day ${selected === d ? "selected" : ""}" aria-pressed="${selected === d}"><small>${calendarWeekday(d, true)}</small><strong>${SLOT_LETTERS[d] || "—"}</strong><span>${dateLabel(scheduledDate(state, d))}</span>${resolved(d, "main") ? '<i aria-label="Resolved">✓</i>' : ""}</button>`,
+          `<button data-action="day" data-day="${d}" class="day ${selected === d ? "selected" : ""}" aria-pressed="${selected === d}"><small>${calendarWeekday(d, true)}</small><strong>${threeDaySchedule(t) && t.week !== 12 && d === "monday" ? "—" : SLOT_LETTERS[d] || "—"}</strong><span>${dateLabel(scheduledDate(state, d))}</span>${resolved(d, "main") ? '<i aria-label="Resolved">✓</i>' : ""}</button>`,
       )
       .join("")}</div></section>` +
-    `<section class="day-content"><div class="section-label"><div><div class="eyebrow">${calendarWeekday(selected)} / ${dateLabel(scheduledDate(state, selected))}</div><h2>${selected === "wednesday" || selected === "sunday" ? "Recovery & readiness" : PHASE_NAMES[p.phase]}</h2></div>${btn("Move this day", "defer", `data-day="${selected}"`, "quiet")}</div>${p.notes.map((s) => notice(s)).join("")}${dayTime(timing)}${dosePanel(p)}${p.sessions.map((s, i) => preview(s, p, timing.sessions[i])).join("")}${!p.sessions.length ? '<div class="empty-card"><span>↘</span><h3>Space to recover.</h3><p>Off or targeted mobility. Optional easy walking; no missed-volume debt.</p></div>' : ""}${mobilityCard(p, timing)}</section>` +
+    `<section class="day-content"><div class="section-label"><div><div class="eyebrow">${calendarWeekday(selected)} / ${dateLabel(scheduledDate(state, selected))}</div><h2>${selected === "wednesday" || selected === "sunday" || (threeDaySchedule(t) && t.week !== 12 && selected === "monday") ? "Recovery & readiness" : PHASE_NAMES[p.phase]}</h2></div>${btn("Move this day", "defer", `data-day="${selected}"`, "quiet")}</div>${p.notes.map((s) => notice(s)).join("")}${dayTime(timing)}${dosePanel(p)}${p.sessions.map((s, i) => preview(s, p, timing.sessions[i])).join("")}${!p.sessions.length ? '<div class="empty-card"><span>↘</span><h3>Space to recover.</h3><p>Off or targeted mobility. Optional easy walking; no missed-volume debt.</p></div>' : ""}${mobilityCard(p, timing)}</section>` +
     `<div class="week-actions">${btn("Weekly review", "review", "", "primary button")}${btn("Rescue a bench slot", "rescue")}${t.athletics.enabled ? btn(`Relocate athletics to ${SLOT_LETTERS[secondaryAthleticSlot(t)]} · ${calendarWeekday(secondaryAthleticSlot(t))}`, "relocate", "", "quiet") : ""}</div>` +
     `${monitoring(state)
       .map((s) => notice(s, "warning"))
       .join(
         "",
-      )}<p class="fine-print">Day letters stay with the session when dates move; tabs show the actual weekday. To move the whole week, select its first unresolved session and use Move this day. Later dates follow the current order. ${allLoadedFailure(t) && t.week === 12 ? "Monday work, Friday benchmark, then moderate bench" : allLoadedFailure(t) && t.week === 13 ? "B–rest–rest–rest–D–rest–rest" : weekdaySchedule(t) && t.week !== 12 ? "B–C–rest–A–D–rest–rest" : "A–B–rest–C–D–rest–rest"}; at most two consecutive normal Olympic days. Test week keeps its separate taper and post-test bench. ${sourceLink(23)}</p>`
+      )}<p class="fine-print">Day letters stay with the session when dates move; tabs show the actual weekday. To move the whole week, select its first unresolved session and use Move this day. Later dates follow the current order. ${allLoadedFailure(t) && t.week === 12 ? "Monday work, Friday benchmark, then moderate bench" : threeDaySchedule(t) ? "B–rest–C–rest–D–rest–rest" : allLoadedFailure(t) && t.week === 13 ? "B–rest–rest–rest–D–rest–rest" : weekdaySchedule(t) && t.week !== 12 ? "B–C–rest–A–D–rest–rest" : "A–B–rest–C–D–rest–rest"}; at most two consecutive normal Olympic days. Test week keeps its separate taper and post-test bench. ${sourceLink(23)}</p>`
   );
 }
 function dosePanel(p) {
