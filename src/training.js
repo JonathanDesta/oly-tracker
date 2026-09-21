@@ -1,4 +1,14 @@
 import {
+  allLoadedFailure,
+  olympicFailure,
+  failureReached,
+  validReps,
+  failureProgression,
+  adoptFailurePolicy,
+  migrateFailurePolicy,
+  failureTrialPending,
+} from "./failure-policy.js";
+import {
   copy,
   defaults,
   dayPlan,
@@ -50,7 +60,11 @@ export function monday(date = localDate()) {
   const d = new Date(date + "T12:00:00Z");
   return addDays(date, -((d.getUTCDay() + 6) % 7));
 }
-export function fresh(date = localDate(), schedule = "weekday") {
+export function fresh(
+  date = localDate(),
+  schedule = "weekday",
+  workSetPolicy = "source",
+) {
   const state = {
     schema: SCHEMA,
     version: 0,
@@ -74,12 +88,24 @@ export function fresh(date = localDate(), schedule = "weekday") {
     schedule,
     Date.parse(state.weekStart + "T12:00:00Z"),
   );
+  state.training.workSetPolicy = workSetPolicy;
+  if (workSetPolicy === "all-failure")
+    adoptFailurePolicy(
+      state.training,
+      Date.parse(state.weekStart + "T12:00:00Z"),
+    );
   return state;
 }
 export function fingerprint(e) {
-  return [e.key, e.name, e.repRange?.join("-") || e.reps, e.setup || 0].join(
-    "|",
-  );
+  return [
+    e.key,
+    e.name,
+    e.repRange?.join("-") || e.reps,
+    e.setup || 0,
+    ...(olympicFailure(e)
+      ? [e.endpointPolicy, e.validRepRange.join("-"), e.resetSeconds]
+      : []),
+  ].join("|");
 }
 const normalContext = (c) =>
   c?.level === "green" &&
@@ -94,6 +120,13 @@ export const normal = (r) =>
   r.followup?.normal === true;
 export function successfulRow(r, e) {
   const logs = r.sets.filter((x) => x.key === e.key);
+  if (olympicFailure(e))
+    return (
+      !r.omissions.some((o) => o.key === e.key) &&
+      failureReached(logs) &&
+      validReps(logs) > 0 &&
+      logs.every((x) => !x.overCap && !["pain", "stop"].includes(x.endpoint))
+    );
   return (
     !r.omissions.some((o) => o.key === e.key) &&
     logs.length ===
@@ -140,6 +173,10 @@ export function slotAt(e, index) {
 export function nextQualityRange(w, e) {
   const logs = w.sets.filter((x) => x.key === e.key),
     last = logs.at(-1);
+  if (olympicFailure(e))
+    return logs.length
+      ? [logs[0].weight, logs[0].weight]
+      : loadRange(e, w.anchors, 0, w.increment);
   if (e.assessment && last) {
     const increase = e.id === "clean" ? 10 : last.effort <= 6 ? 20 : 10;
     return [last.weight, last.weight + increase];
@@ -164,6 +201,23 @@ export function nextQualityRange(w, e) {
   return loadRange(e, w.anchors, slotAt(e, logs.length), w.increment);
 }
 export function qualityStatus(e, logs) {
+  if (olympicFailure(e)) {
+    const unsafe = logs.some((r) => ["pain", "stop"].includes(r.endpoint));
+    const terminal = failureReached(logs);
+    return {
+      done: unsafe || terminal,
+      stop: unsafe,
+      endpointReached: terminal,
+      validReps: validReps(logs),
+      reduceAt: -1,
+      cap: null,
+      reason: unsafe
+        ? "Safety stop; incomplete failure set. Review before resuming."
+        : terminal
+          ? "First miss/invalid rep ends this set. No retry."
+          : "Continue at the same load until the first miss or invalid rep; the rep target is not a stopping rule.",
+    };
+  }
   let consecutiveMiss = 0,
     consecutiveFault = 0,
     lastFault = "",
@@ -220,6 +274,8 @@ export function rowStatus(w, e) {
   return {
     logs,
     count: logs.length,
+    endpointReached: q?.endpointReached,
+    validReps: q?.validReps,
     planned:
       e.kind === "quality" ? attempts(e) : e.kind === "aerobic" ? 1 : e.sets,
     done:
@@ -573,6 +629,20 @@ export function planFor(
         e.note +=
           " After resuming, hold a secure load for two comparable normal exposures before progressing (p.32).";
       }
+      if (olympicFailure(e)) {
+        e.hold ||=
+          s.training.recovery !== "normal" ||
+          !!context.local ||
+          ["verification", "larger_later"].includes(context.event);
+        const suggestion = failureProgression(
+          e,
+          exposureHistory(s, e),
+          s.training.increment,
+        );
+        if (suggestion.weight) e.workingLoad = suggestion.weight;
+        e.progressionNote = suggestion.text;
+        continue;
+      }
       if (!(e.hold || e.checkpoint) || e.reduced || e.assessment) continue;
       const hist = exposureHistory(s, e)
         .filter((r) => r.normal && successfulRow(r.record, r.row))
@@ -779,6 +849,8 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
     increment: s.training.increment,
     context: ctx,
     timeConfig: {
+      workSetPolicy: s.training.workSetPolicy || "source",
+      failureEntry: s.training.failureEntry,
       timing: timeProfile(s.training),
       equipment: copy(s.training.equipment),
       anchors: copy(s.training.anchors),
@@ -944,7 +1016,7 @@ export function logSet(s, data, now = Date.now()) {
       "Current readiness/event defers loaded work. Reassess or end this session.",
     );
   if (
-    e.kind === "failure" &&
+    (e.kind === "failure" || olympicFailure(e)) &&
     (current.level === "amber" ||
       sportEvent(current) === "game_later" ||
       (current.noProtection &&
@@ -1005,6 +1077,19 @@ export function logSet(s, data, now = Date.now()) {
       slot = slotAt(e, logs.length),
       range = nextQualityRange(w, e),
       effortCap = slot === e.sets - 1 ? e.finalEffort || e.effort : e.effort;
+    if (olympicFailure(e)) {
+      if (r.preparation)
+        throw Error(
+          "Warm-ups are separate from this failure set; log working reps only.",
+        );
+      r.failurePolicy = e.endpointPolicy;
+      r.validRep = r.outcome === "make" && r.grade !== "C";
+      r.terminal = !r.validRep && !["pain", "stop"].includes(r.endpoint);
+      if (logs.length && r.weight !== logs[0].weight)
+        throw Error(
+          "Keep the same load within this failure set. End or omit it if a change is needed; no drop sets or retry.",
+        );
+    }
     const reductionCap = qualityStatus(e, logs).cap;
     r.overCap =
       r.effort > effortCap ||
@@ -1070,9 +1155,10 @@ export function logSet(s, data, now = Date.now()) {
   const count = rowStatus(w, e).count,
     withinSet =
       e.kind === "quality" &&
-      count < attempts(e) &&
-      slotAt(e, count - 1) === slotAt(e, count);
-  s.restEnd = now + (withinSet ? 15 : e.rest || 0) * 1000;
+      (olympicFailure(e)
+        ? !rowStatus(w, e).done
+        : count < attempts(e) && slotAt(e, count - 1) === slotAt(e, count));
+  s.restEnd = now + (withinSet ? e.resetSeconds || 15 : e.rest || 0) * 1000;
   if (e.kind === "quality" && rowStatus(w, e).done && e.afterRest)
     s.restEnd = now + e.afterRest * 1000;
   if (["pain", "stop"].includes(r.endpoint)) {
@@ -1110,7 +1196,9 @@ export function finishSession(s, notes = "", now = Date.now()) {
     w.session.rows.some((e) => {
       const status = rowStatus(w, e);
       return (
-        status.count < status.planned ||
+        (olympicFailure(e)
+          ? !status.endpointReached
+          : status.count < status.planned) ||
         status.logs.some(
           (r) =>
             ["tech", "pain", "stop"].includes(r.endpoint) ||
@@ -1133,7 +1221,10 @@ export function finishSession(s, notes = "", now = Date.now()) {
         r.grade !== "C" &&
         !r.overCap &&
         !r.preparation &&
-        (e.assessment ||
+        ((olympicFailure(e) &&
+          s.training.anchors[e.id] &&
+          r.weight > s.training.anchors[e.id]) ||
+          e.assessment ||
           ((e.id === "jerk" || e.id === "clean") &&
             (e.repSequence?.[
               slotAt(e, w.sets.filter((x) => x.key === e.key).indexOf(r))
@@ -1165,6 +1256,7 @@ export function finishSession(s, notes = "", now = Date.now()) {
   s.active = null;
   s.restEnd = 0;
   if (w.session.rows.some((e) => e.assessment)) s.training.assessment = "none";
+  migrateFailurePolicy(s);
 }
 export function deleteSession(s, id) {
   if (s.active)
@@ -1251,6 +1343,10 @@ export function stopSession(s, reason, now = Date.now()) {
 export function benchmark(s) {
   const w = s.active;
   if (!w) throw Error("No active test.");
+  if (w.session.rows.some(olympicFailure))
+    throw Error(
+      "This is already a fixed-load failure benchmark. If warm-ups are insecure, defer the lift; do not turn it into submaximal work.",
+    );
   for (const e of w.session.rows.filter((e) => e.test)) {
     e.benchmark = true;
     e.range = [75, 85];
@@ -1264,6 +1360,14 @@ export function easyReturn(s) {
     e = w && nextRow(w);
   if (!e || e.kind !== "quality")
     throw Error("Select the current Olympic lift.");
+  if (olympicFailure(e)) {
+    omitRow(
+      s,
+      e.key,
+      "Failure work deferred: technical regression or abnormal readiness.",
+    );
+    return;
+  }
   const used = rowStatus(w, e).logs.length,
     remaining = attempts(e) - used;
   // Already logged attempts retain their original slots; new work is bounded singles.
@@ -1322,8 +1426,54 @@ export function advanceWeek(s, review, now = Date.now()) {
             `Resolve ${slotLabel(t, day)} ${se.id === "accessories" ? "visit 2 " : ""}before advancing (train, defer, or omit with a reason).`,
           );
   }
+  if (failureTrialPending(t)) {
+    const dose = JSON.stringify([
+      t.failureEntry,
+      t.entry,
+      phaseFor(t).phase,
+      t.recovery,
+      t.trials,
+      t.athletics,
+      t.cardio,
+      t.reduceA,
+      t.reduceJerk,
+      t.lowerDose,
+      t.omitPull,
+    ]);
+    const complete = programDays(t).every((day) =>
+      dayPlan(t, day)
+        .sessions.filter((se) => ["main", "accessories"].includes(se.id))
+        .every((se) =>
+          weekRecords(s).some(
+            (r) =>
+              r.day === day &&
+              r.session.id === se.id &&
+              r.status === "complete" &&
+              r.timeConfig?.workSetPolicy === "all-failure" &&
+              normal(r) &&
+              r.session.rows.every(
+                (e) => e.kind !== "quality" || successfulRow(r, e),
+              ),
+          ),
+        ),
+    );
+    const green =
+      complete &&
+      review.green &&
+      review.recovery === "normal" &&
+      t.recovery === "normal" &&
+      ![11, 12, 13].includes(t.week);
+    if (!green || t.failureWorkload !== dose) t.failureWeeks = [];
+    t.failureWorkload = dose;
+    if (green && t.failureEntry === 3 && !t.failureWeeks.includes(s.weekId))
+      t.failureWeeks.push(s.weekId);
+    if (green && t.failureEntry < 3 && review.action === "advance")
+      t.failureEntry++;
+  }
   if (scheduleTrialPending(t)) {
     const comparable = JSON.stringify([
+      t.workSetPolicy,
+      t.failureEntry,
       t.entry,
       phaseFor(t).phase,
       t.recovery,
@@ -1346,6 +1496,7 @@ export function advanceWeek(s, review, now = Date.now()) {
       review.recovery === "normal" &&
       t.recovery === "normal" &&
       t.entry === 3 &&
+      (!allLoadedFailure(t) || t.failureEntry === 3) &&
       ![11, 12, 13].includes(t.week) &&
       programDays(t).every((day) =>
         dayPlan(t, day)
@@ -1450,8 +1601,9 @@ export function reassessActive(s, now = Date.now()) {
       : next.rows.find((x) => x.key === e.key);
     if (
       !updated ||
-      (updated.kind === "quality" ? attempts(updated) : updated.sets) <=
-        rowStatus(w, e).count
+      (!olympicFailure(updated) &&
+        (updated.kind === "quality" ? attempts(updated) : updated.sets) <=
+          rowStatus(w, e).count)
     )
       omitRow(
         s,
@@ -1499,9 +1651,21 @@ export function monitoring(s) {
   const flags = [];
   const records = s.records.filter((r) => r.sets.length);
   const olympic = records.filter((r) => r.sets.some((e) => e.grade));
+  const sourceOlympic = olympic.filter(
+    (r) => !r.session.rows.some(olympicFailure),
+  );
+  for (const r of olympic.slice(-1))
+    for (const e of r.session.rows.filter(olympicFailure)) {
+      const logs = r.sets.filter((x) => x.key === e.key);
+      if (logs.length && !validReps(logs))
+        flags.push(
+          `${e.name}: no valid work rep before the endpoint. Review load, technique and recovery before the next exposure.`,
+        );
+    }
   if (
-    olympic.slice(-2).length === 2 &&
-    olympic.slice(-2).every((r) => {
+    !allLoadedFailure(s.training) &&
+    sourceOlympic.slice(-2).length === 2 &&
+    sourceOlympic.slice(-2).every((r) => {
       const a = r.sets.filter((x) => x.grade);
       return (
         a.filter((x) => x.outcome === "make" && x.grade !== "C" && !x.overCap)
@@ -1530,11 +1694,17 @@ export function monitoring(s) {
     );
   const latestRows = new Map();
   for (const r of records)
-    for (const e of r.session.rows.filter((x) => x.kind === "failure"))
+    for (const e of r.session.rows.filter(
+      (x) => x.kind === "failure" || olympicFailure(x),
+    ))
       if (r.sets.some((x) => x.key === e.key)) latestRows.set(e.key, e);
   for (const e of latestRows.values()) {
     const h = exposureHistory(s, e).filter(
-        (r) => r.sets[0].endpoint === "failure",
+        (r) =>
+          r.sets.length &&
+          (olympicFailure(e)
+            ? failureReached(r.sets)
+            : r.sets[0].endpoint === "failure"),
       ),
       last = h.at(-1),
       prev = h.at(-2);
@@ -1550,7 +1720,14 @@ export function monitoring(s) {
       .at(-1);
     if (
       baseline &&
-      [last, prev].every((r) => r.sets[0].reps < baseline.sets[0].reps * 0.8)
+      [last, prev].every(
+        (r) =>
+          (olympicFailure(e) ? validReps(r.sets) : r.sets[0].reps) <
+          (olympicFailure(e)
+            ? validReps(baseline.sets)
+            : baseline.sets[0].reps) *
+            0.8,
+      )
     )
       flags.push(
         `${e.name}: first-set reps fell more than 20% twice at the same load/setup.`,

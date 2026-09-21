@@ -1,3 +1,9 @@
+import {
+  FAILURE_POLICY,
+  olympicFailure,
+  invalidAttempt,
+  migrateFailurePolicy,
+} from "./failure-policy.js";
 import { fresh, SCHEMA } from "./training.js";
 import { defaults, DAYS } from "./prescription.js";
 import { EXERCISES } from "./catalog.js";
@@ -50,6 +56,29 @@ export function validate(data) {
     t = s.training,
     b = defaults();
   assert(object(t), "missing training configuration.");
+  assert(
+    t.workSetPolicy === undefined ||
+      ["source", "all-failure"].includes(t.workSetPolicy),
+    "work-set policy.",
+  );
+  assert(
+    t.nextWorkSetPolicy === undefined || t.nextWorkSetPolicy === "all-failure",
+    "pending work-set policy.",
+  );
+  if (t.workSetPolicy === "all-failure") {
+    assert([1, 2, 3].includes(t.failureEntry), "failure introduction dose.");
+    assert(
+      Array.isArray(t.failureWeeks) &&
+        t.failureWeeks.every((w) => typeof w === "string") &&
+        new Set(t.failureWeeks).size === t.failureWeeks.length,
+      "failure review weeks.",
+    );
+    assert(
+      t.failureWorkload === undefined || typeof t.failureWorkload === "string",
+      "failure review workload.",
+    );
+    assert(Number.isFinite(t.failureStartedAt), "failure adoption date.");
+  }
   assert(
     t.timing === undefined || validTimeProfile(t.timing),
     "time planning settings.",
@@ -512,6 +541,38 @@ export function validate(data) {
             ["upper", "lower"].includes(e.region),
           "mobility prescription.",
         );
+      if (e.endpointPolicy !== undefined) {
+        assert(
+          e.endpointPolicy === FAILURE_POLICY &&
+            e.kind === "quality" &&
+            e.sets === 1 &&
+            Array.isArray(e.validRepRange) &&
+            e.validRepRange.length === 2 &&
+            e.validRepRange.every(
+              (n) => Number.isInteger(n) && finite(n, 1, 10),
+            ) &&
+            e.validRepRange[0] <= e.validRepRange[1] &&
+            e.reps === e.validRepRange[1] + 1 &&
+            e.resetSeconds === 15 &&
+            e.recoveryAfter === 300 &&
+            e.rest === 300 &&
+            e.effort === 10 &&
+            !e.repSequence &&
+            !e.sequence,
+          "Olympic failure prescription.",
+        );
+        const logs = r.sets.filter((x) => x.key === e.key);
+        assert(
+          logs.every(
+            (x, i) =>
+              i === 0 ||
+              (!invalidAttempt(logs[i - 1]) &&
+                !["pain", "stop"].includes(logs[i - 1].endpoint) &&
+                x.weight === logs[0].weight),
+          ),
+          "one fixed-load set ending at the first invalid rep.",
+        );
+      }
       if (e.kind === "quality") {
         assert(
           e.sequence === undefined ||
@@ -681,7 +742,7 @@ export function validate(data) {
         new Set(t.scheduleTrial.weeks).size === t.scheduleTrial.weeks.length,
       "schedule review.",
     );
-  return migrateSchedule(s);
+  return migrateFailurePolicy(migrateSchedule(s));
 }
 export function importData(data) {
   if (data?.schema === SCHEMA) return validate(data);
@@ -693,7 +754,7 @@ export function importData(data) {
       object(data.log) ||
       object(data.maxes))
   ) {
-    const s = fresh();
+    const s = fresh(undefined, "weekday", "all-failure");
     s.archives = [structuredClone(data)];
     return restoreRevision6Settings(s, data);
   }
@@ -820,7 +881,7 @@ export function loadStore(storage) {
         "Saved data could not be read. Existing storage is intact. Import a valid backup to recover. " +
         errors.join(" "),
     };
-  let state = fresh();
+  let state = fresh(undefined, "weekday", "all-failure");
   for (const key of ["oly_state", "oly_rev6_backup", "oly_before_rev6"]) {
     const raw = storage.getItem(key);
     if (!raw) continue;

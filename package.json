@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "test": "node --test tests/*.test.js",
-    "test:browser": "node tests/browser.mjs && node tests/reported-discrepancies.mjs && node tests/full-conformance.mjs && node tests/duration-browser.mjs && node tests/update-browser.mjs && node tests/routines-browser.mjs && node tests/deployment-browser.mjs && node tests/deletion-browser.mjs && node tests/pacing-browser.mjs && node tests/weekday-browser.mjs",
+    "test:browser": "node tests/browser.mjs && node tests/reported-discrepancies.mjs && node tests/full-conformance.mjs && node tests/duration-browser.mjs && node tests/update-browser.mjs && node tests/routines-browser.mjs && node tests/deployment-browser.mjs && node tests/deletion-browser.mjs && node tests/pacing-browser.mjs && node tests/weekday-browser.mjs && node tests/failure-browser.mjs",
     "check:deployment": "node scripts/check-deployment.js",
     "audit": "npm run format:check && npm test && npm run test:browser && npm audit",
     "format:check": "prettier --check src scripts tests index.html styles.css sw.js manifest.json package.json README.md docs"

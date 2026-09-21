@@ -1,3 +1,4 @@
+import { olympicFailure } from "./failure-policy.js";
 import { fixedSession } from "./timeline.js";
 
 const manualStart = (s) =>
@@ -103,7 +104,20 @@ function record(w, method, now) {
 export function syncPacing(w, progress, now = Date.now()) {
   const p = w.pacing;
   if (!p) return;
-  const plan = fixedSession(w.session, w.timeConfig, w.timeConfig).stages;
+  // The initial budget assumes the upper rep target plus one terminal attempt.
+  // Actual good reps extend the queue; an early endpoint removes unused reps.
+  const session = {
+    ...w.session,
+    rows: w.session.rows.map((e) => {
+      if (!olympicFailure(e)) return e;
+      const status = progress[e.key];
+      const reps = status?.done
+        ? Math.max(1, status.count)
+        : Math.max(e.reps, (status?.count || 0) + 1);
+      return { ...e, reps };
+    }),
+  };
+  const plan = fixedSession(session, w.timeConfig, w.timeConfig).stages;
   p.plan = plan;
   let frontier = -1;
   plan.forEach((step, i) => {

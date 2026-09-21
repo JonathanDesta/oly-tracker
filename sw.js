@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-15-weekday";
+const CACHE = "oly-groundup-v7-16-failure";
 const FILES = [
   "./",
   "index.html",
@@ -12,6 +12,7 @@ const FILES = [
   "src/planner-integration.js",
   "src/catalog.js",
   "src/calendar.js",
+  "src/failure-policy.js",
   "src/duration.js",
   "src/timeline.js",
   "src/pacing.js",

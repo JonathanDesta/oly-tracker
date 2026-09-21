@@ -1,3 +1,4 @@
+import { allLoadedFailure, failureTrialPending } from "./failure-policy.js";
 import { phaseFor, copy, dayPlan, sportEvent } from "./prescription.js";
 import { scheduleTrialPending } from "./calendar.js";
 import {
@@ -34,6 +35,16 @@ export const CHANGE_OPTIONS = {
   clean_assessment: "Replace B with full-clean assessment",
   jerk_assessment: "Replace C with rack-jerk assessment",
 };
+export const sourceOlympicChange = (kind) =>
+  [
+    "pause_jerk",
+    "pause_load",
+    "rack",
+    "clean_assessment",
+    "jerk_assessment",
+  ].includes(kind) ||
+  kind.startsWith("heavy_") ||
+  kind.startsWith("extra_");
 function requireFact(ok, message) {
   if (!ok) throw Error(message);
 }
@@ -109,6 +120,14 @@ export function applyChange(s, change, now = Date.now()) {
     { phase, additions, checkpoint } = phaseFor(t),
     kind = change.kind;
   requireFact(CHANGE_OPTIONS[kind], "Choose a listed program change.");
+  requireFact(
+    !allLoadedFailure(t) || !sourceOlympicChange(kind),
+    "The failure amendment uses one fixed-load Olympic set with rep-based progression. Source heavy-slot, extra-attempt and bounded-assessment changes do not apply.",
+  );
+  requireFact(
+    !failureTrialPending(t),
+    "First complete the failure introduction, then review two full green weeks at the same established workload with normal next-session recovery. Hold optional dose additions until then.",
+  );
   requireFact(
     !scheduleTrialPending(t) ||
       ["clean_assessment", "jerk_assessment", "rack", "pause_load"].includes(
@@ -477,6 +496,14 @@ export function reviewTrial(s, id, decision, reason, now = Date.now()) {
     throw Error("Finish the active session before changing a trial.");
   const t = s.training.trials.find((x) => x.id === id);
   if (!t) throw Error("Trial not found.");
+  if (
+    allLoadedFailure(s.training) &&
+    sourceOlympicChange(t.kind) &&
+    !["remove", "pause"].includes(decision)
+  )
+    throw Error(
+      "This source Olympic trial is superseded by the failure amendment. Pause or remove it; Olympic progression now uses valid reps.",
+    );
   if (!reason?.trim())
     throw Error(
       "Record target observations, next-session response and rationale.",

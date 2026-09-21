@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.15 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.16 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -56,3 +56,11 @@ App 7.13 adds a read-only Planner feed, prescription-specific duration calibrati
 The app shows actual weekdays after a calendar move and preserves the rotated rhythm in Planner forecasts. To move the entire unresolved week, select its first session (B in the weekday plan, A in the source/taper calendar) and use **Move this day**. Session letters continue to identify the PDF prescriptions; no sets, rests, progression or warm-ups change. Calendar convenience does not establish physiological optimality.
 
 App 7.15 applies the user-approved weekday schedule: **Mon B / Tue C / Thu A / Fri D**, with recovery work on Wednesday and the weekend. Week 12 retains its original taper/test calendar. Existing started weeks finish in their saved order before switching. See [the schedule amendment](docs/SCHEDULE-AMENDMENT.md) for optional work, observation gates, migration and the special-week rules.
+
+## Loaded-set failure amendment · September 21, 2026
+
+App **7.16** applies the user's later constraint to all retained loaded working sets. Olympic work now uses one fixed-load set per exercise, with 15-second resets, ending at the first miss or technically invalid rep. Rep windows guide next-exposure loads, not set completion. Countdown steps expand or contract around actual attempts. Conventional work keeps strict-form failure; preparation, athletics, aerobic work and mobility retain their original endpoints.
+
+The amendment starts with reduced conventional volume and a new recovery observation period. It replaces the week-12 three-attempt test with fixed-load failure benchmarks and removes Olympic loading in the pivot. Ordinary Mon B / Tue C / Thu A / Fri D and actual bench-spacing checks remain. Existing active sessions and saved records are frozen; unstarted work adopts immediately. The PDF stays unchanged.
+
+This is a preference-constrained prescription, **not a demonstrated optimal or equivalent Olympic-training protocol**. Exact dose, resets, loads and taper adjustments are practical inferences. See [the specification and evidence review](docs/FAILURE-CONSTRAINT-REVIEW.md). `fresh()` retains the source policy for baseline fixtures; production journal creation in `loadStore` and migration explicitly select `all-failure`.

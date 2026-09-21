@@ -1,3 +1,4 @@
+import { olympicFailure } from "./failure-policy.js";
 // Planning allowances, not training prescriptions. Ranges are seconds throughout.
 // Source doses/rests: Revision 6 pp.8–9, 13–14, 19, 21–22, 27, 29.
 export const TIME_DEFAULTS = Object.freeze({
@@ -105,8 +106,13 @@ export function workSet(e, slot, p, c) {
         : ["jerk", "pause_jerk"].includes(e.id)
           ? [10, 18]
           : [12, 20];
-  const resets =
-    e.id === "pull" ? [2, 4] : family(e) === "jerk" ? [10, 30] : [10, 20];
+  const resets = olympicFailure(e)
+    ? pair(e.resetSeconds)
+    : e.id === "pull"
+      ? [2, 4]
+      : family(e) === "jerk"
+        ? [10, 30]
+        : [10, 20];
   const pause =
     e.key?.endsWith("_pause") || e.id === "pause_jerk" || e.id === "hang"
       ? n * 2
@@ -290,11 +296,16 @@ export function estimateSession(session, config = {}, options = {}) {
     if (
       previous &&
       previous.kind !== "aerobic" &&
-      (previous.afterRest || !parts.ramp[1] || family(previous) === family(e))
+      (previous.recoveryAfter ||
+        previous.afterRest ||
+        !parts.ramp[1] ||
+        family(previous) === family(e))
     ) {
-      const recovery = previous.afterRest
-        ? [480, 600]
-        : pair((previous.rest || 0) + p.extraRestSeconds);
+      const recovery = previous.recoveryAfter
+        ? pair(previous.recoveryAfter + p.extraRestSeconds)
+        : previous.afterRest
+          ? [480, 600]
+          : pair((previous.rest || 0) + p.extraRestSeconds);
       const setup = parts.setup;
       parts.recovery = recovery;
       parts.setup = beyond(setup, recovery);

@@ -29,7 +29,9 @@ export const secondaryAthleticSlot = (config) =>
   weekdaySchedule(config) ? "monday" : "thursday";
 export const scheduleName = (config) =>
   config.week === 12
-    ? "Test week · Monday bench, Friday test, bench afterward"
+    ? config.workSetPolicy === "all-failure"
+      ? "Taper · Monday work, Friday failure benchmark, bench afterward"
+      : "Test week · Monday bench, Friday test, bench afterward"
     : weekdaySchedule(config)
       ? "Weekday plan · Mon B / Tue C / Thu A / Fri D"
       : "Source plan · Mon A / Tue B / Thu C / Fri D";

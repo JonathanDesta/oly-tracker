@@ -1,4 +1,10 @@
 import {
+  allLoadedFailure,
+  olympicFailure,
+  failureTrialPending,
+  failureOlympics,
+} from "./failure-policy.js";
+import {
   EXERCISES as EX,
   ACCESSORIES,
   WARMUP,
@@ -88,7 +94,8 @@ export function phaseFor(c) {
     additions:
       [1, 2, 3, 5, 6, 7].includes(c.week) &&
       c.entry === 3 &&
-      c.recovery === "normal",
+      c.recovery === "normal" &&
+      !failureTrialPending(c),
   };
 }
 export function quality(
@@ -771,6 +778,16 @@ export function estimate(rows, kind = "lifting", config = {}) {
 export function dayPlan(config, day, ctx = {}) {
   const c = copy(config),
     { phase, calendar, checkpoint } = phaseFor(c);
+  if (allLoadedFailure(c)) {
+    c.entry = Math.min(c.entry, c.failureEntry || 1);
+    c.heavy = { snatch: 0, cj: 0, extraSnatch: 0, extraCj: 0 };
+    c.rackLoad = null;
+    c.assessment = "none";
+    c.trials = c.trials.filter(
+      (t) =>
+        !["pause_load", "rack", "pause_jerk"].includes(t.kind) && c.entry === 3,
+    );
+  }
   if (ctx.event === "verification") {
     c.heavy = { snatch: 0, cj: 0, extraSnatch: 0, extraCj: 0 };
     c.rackLoad = null;
@@ -874,6 +891,26 @@ export function dayPlan(config, day, ctx = {}) {
       conv = conventional(c, day, phase, c.week === 11 && day === "friday");
   }
   ol = regress(ol, c, day);
+  if (allLoadedFailure(c)) {
+    ol = failureOlympics(ol, c, phase, day);
+    if (c.week === 13 || c.entry === 1) conv.forEach((e) => (e.sets = 1));
+    p.notes = [];
+    p.notes.push(
+      "September 21 amendment: ALL retained loaded work sets end at failure. Olympic work: one fixed-load set per exercise, ending at the first miss or invalid rep; 15-second resets and at least 5 minutes recovery before the next loaded exercise. Warm-ups, athletics and recovery activities are outside this constraint.",
+    );
+    if (c.week === 12)
+      p.notes.push(
+        "Failure-compatible taper: Monday one snatch and one CJ failure set plus low-rep bench; Tuesday/Thursday no loaded work; Friday one fixed-load failure benchmark per lift; moderate bench afterward. This replaces the source three-attempt mock meet and is not a competition total.",
+      );
+    if (c.week === 13)
+      p.notes.push(
+        "Failure-compatible pivot: no Olympic work sets; one set per retained conventional exercise. Recovery reduces volume, not effort. This pivot design is a practical inference.",
+      );
+    if (Object.values(c.technique).some((x) => x !== "none"))
+      p.notes.push(
+        "An affected Olympic exercise requiring technical regression is omitted. Relearn positions in nonfatiguing preparation; do not turn remedial drills into failure sets.",
+      );
+  }
   const all = [...ol, ...conv];
   if (all.length) {
     const i = c.split ? all.findIndex((e) => e.id === "row") : -1;
@@ -924,6 +961,19 @@ export function dayPlan(config, day, ctx = {}) {
         ),
       );
   }
+  if (allLoadedFailure(c))
+    for (const s of p.sessions) {
+      s.title =
+        c.week === 12
+          ? day === "friday"
+            ? "Olympic failure benchmark"
+            : day === "monday"
+              ? "Taper · Olympic failure sets + low-rep bench"
+              : s.title
+          : c.week === 13
+            ? s.title
+            : s.title.replace("Snatch practice", "Snatch failure sets");
+    }
   p.sessions.push(...athletic(c, day, ctx));
   if (c.cardio.enabled && c.week !== 12) {
     // Main sessions build 20/20 to 30/30. Further minutes are placed as walks.
@@ -1017,11 +1067,15 @@ export function dayPlan(config, day, ctx = {}) {
     );
   if (checkpoint)
     p.notes.push(
-      "Green checkpoint: repeat the preceding successful loads and sets. No additions. Rep-window corrections and eligible component assessment replacements are exceptions.",
+      allLoadedFailure(c)
+        ? "Green checkpoint: hold work loads and set counts; correct a load that misses its rep window. No extra sets or bounded Olympic assessments."
+        : "Green checkpoint: repeat the preceding successful loads and sets. No additions. Rep-window corrections and eligible component assessment replacements are exceptions.",
     );
   if (phase !== calendar)
     p.notes.push(
-      `Phase gate held: repeat ${PHASE_NAMES[phase]} until its criteria are met. Week 12 uses a ≤85% technical benchmark if Realization is not ready.`,
+      allLoadedFailure(c)
+        ? `Phase gate held: keep ${PHASE_NAMES[phase]} targets until ready. Week 12 remains a fixed-load failure benchmark at the appropriate held load, not a maximal test.`
+        : `Phase gate held: repeat ${PHASE_NAMES[phase]} until its criteria are met. Week 12 uses a ≤85% technical benchmark if Realization is not ready.`,
     );
   return ctx.deferRestrictions ? p : restrictions(p, c, ctx);
 }
@@ -1079,6 +1133,7 @@ export function restrictions(plan, c, ctx = {}) {
     });
     if (
       !red &&
+      !allLoadedFailure(c) &&
       sport === "game" &&
       ctx.rehearsal &&
       ctx.level === "green" &&
@@ -1121,6 +1176,8 @@ export function restrictions(plan, c, ctx = {}) {
     }
     s.rows = s.rows
       .filter((e) => {
+        if (olympicFailure(e) && (amber || reduced || sport === "game_later"))
+          return false;
         if (e.kind === "mobility" && ctx.local === e.region) return false;
         if ((amber || sport === "game_later") && e.kind === "failure")
           return false;
@@ -1210,7 +1267,8 @@ export function restrictions(plan, c, ctx = {}) {
               (c.anchors[e.anchor] * e.range[0]) / 100,
             );
         }
-        if (e.kind === "quality" && verify) {
+        if (olympicFailure(e) && verify) e.hold = true;
+        if (e.kind === "quality" && !olympicFailure(e) && verify) {
           e.range = e.test
             ? [75, 75]
             : e.range
@@ -1270,7 +1328,9 @@ export function restrictions(plan, c, ctx = {}) {
   }
   if (amber)
     p.notes.push(
-      "Global amber: rest 3 minutes, reduce Olympic loads 5–10%, at most floor(⅔ sets), effort ≤7. Omit failure work. If still poor, stop or use at most 4 secure singles at 50–60% within remaining attempts.",
+      allLoadedFailure(c)
+        ? "Global amber: omit loaded failure work. Do not replace it with submaximal Olympic working sets; resume only when ready."
+        : "Global amber: rest 3 minutes, reduce Olympic loads 5–10%, at most floor(⅔ sets), effort ≤7. Omit failure work. If still poor, stop or use at most 4 secure singles at 50–60% within remaining attempts.",
     );
   if (verify)
     p.notes.push(
@@ -1293,7 +1353,7 @@ export function restrictions(plan, c, ctx = {}) {
 export function loadRange(e, anchors, slot = 0, increment = 5) {
   if (e.test && !e.benchmark && slot > 0) return null;
   const trialCap =
-    e.id === "pause_jerk" && e.trialId && anchors.jerk
+    !olympicFailure(e) && e.id === "pause_jerk" && e.trialId && anchors.jerk
       ? Math.floor((anchors.jerk * 0.75) / increment) * increment
       : Infinity;
   if (e.heldLoads?.[slot])
@@ -1306,6 +1366,8 @@ export function loadRange(e, anchors, slot = 0, increment = 5) {
     : null;
 }
 export function describe(e) {
+  if (olympicFailure(e))
+    return `1 set · first miss/invalid rep · ${e.validRepRange.join("–")} valid ${e.id === "cj" ? "CJ pairs" : "reps"} guides load · 15 s resets`;
   if (e.kind === "mobility")
     return `2 × ${e.holdSeconds} s/side · 15 s rests · 5 active reps`;
   if (e.minutes) return `${e.minutes} min · RPE 3–4`;

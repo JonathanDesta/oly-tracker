@@ -1,3 +1,4 @@
+import { olympicFailure } from "./failure-policy.js";
 import { estimateSession, timeProfile, family, workSet } from "./duration.js";
 import { mobilitySteps } from "./routines.js";
 
@@ -261,7 +262,7 @@ export function fixedSession(session, config = {}, options = {}) {
               );
           }
         } else {
-          const reset = e.kind === "quality" ? 15 : 0;
+          const reset = e.kind === "quality" ? e.resetSeconds || 15 : 0;
           const work = Math.max(
             1,
             Math.round(
@@ -274,7 +275,9 @@ export function fixedSession(session, config = {}, options = {}) {
               `work:${attempt}`,
               e.kind === "aerobic"
                 ? "Easy moving time · full-sentence talk test"
-                : `Set ${slot + 1}/${sets}${n > 1 ? ` · rep ${rep + 1}/${n}` : ""}`,
+                : olympicFailure(e)
+                  ? `Failure set · ${e.id === "cj" ? "CJ pair" : "rep"} ${rep + 1} · record actual outcome`
+                  : `Set ${slot + 1}/${sets}${n > 1 ? ` · rep ${rep + 1}/${n}` : ""}`,
               work,
               "work",
               { role: e.kind === "aerobic" ? "aerobic" : "work", attempt },
