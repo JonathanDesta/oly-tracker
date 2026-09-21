@@ -1,8 +1,11 @@
 // September 21 amendment. The exact Olympic dose is a practical inference,
 // not a protocol demonstrated superior (or equivalent) in intervention trials.
-export const FAILURE_POLICY = "first-invalid-v1";
+import { DOSE_VERSION, DOSE_STAGES, olympicDose } from "./dose.js";
+export const LEGACY_FAILURE_POLICY = "first-invalid-v1";
+export const FAILURE_POLICY = "first-invalid-v2";
 export const allLoadedFailure = (c) => c?.workSetPolicy === "all-failure";
-export const olympicFailure = (e) => e?.endpointPolicy === FAILURE_POLICY;
+export const olympicFailure = (e) =>
+  [FAILURE_POLICY, LEGACY_FAILURE_POLICY].includes(e?.endpointPolicy);
 export const invalidAttempt = (r) => r.outcome !== "make" || r.grade === "C";
 export const failureReached = (logs) =>
   !!logs.length &&
@@ -13,8 +16,69 @@ export const validReps = (logs) =>
     (r) => !invalidAttempt(r) && !["pain", "stop"].includes(r.endpoint),
   ).length;
 
+// A terminal attempt closes one set, not every set of a multi-set exercise.
+export function failureSets(logs) {
+  const sets = [];
+  for (const r of logs) {
+    if (!sets.length || failureReached(sets.at(-1))) sets.push([]);
+    sets.at(-1).push(r);
+  }
+  return sets;
+}
+export function failureSetStatus(e, logs) {
+  const sets = failureSets(logs),
+    completedSets = sets.filter(failureReached).length;
+  const current =
+    sets.length && !failureReached(sets.at(-1)) ? sets.at(-1) : [];
+  const terminals = sets.filter(failureReached).map((s) => s.at(-1));
+  const unsafe = logs.some((r) => ["pain", "stop"].includes(r.endpoint));
+  const zero =
+    e.endpointPolicy === FAILURE_POLICY &&
+    sets.some((s) => failureReached(s) && validReps(s) === 0);
+  const repeated =
+    e.endpointPolicy === FAILURE_POLICY &&
+    terminals.some(
+      (r, i) =>
+        i > 0 &&
+        r.fault?.trim() &&
+        r.fault.trim().toLowerCase() ===
+          terminals[i - 1].fault?.trim().toLowerCase(),
+    );
+  const stop = unsafe || zero || repeated;
+  return {
+    sets,
+    completedSets,
+    current,
+    currentSet: Math.min(e.sets, completedSets + 1),
+    done: stop || completedSets >= e.sets,
+    stop,
+    endpointReached: completedSets === e.sets && !unsafe,
+    validReps: validReps(logs),
+    currentValidReps: validReps(current),
+    reason: unsafe
+      ? "Safety stop; incomplete exercise. Review before resuming."
+      : zero
+        ? "No valid rep in a set: end this exercise and review the load/technique before the next exposure."
+        : repeated
+          ? "The same material fault ended two sets: end this exercise; review technique before the next exposure."
+          : completedSets >= e.sets
+            ? "Every prescribed set ended at its first miss/invalid rep."
+            : completedSets && !current.length
+              ? "Set ended. Recover at least 5 minutes before the next prescribed set; no extra retry sets."
+              : "Keep this set at one fixed load until the first miss or invalid rep; the rep window is not a stopping rule.",
+  };
+}
+export function adoptReviewedDose(t) {
+  t.doseVersion = DOSE_VERSION;
+  delete t.nextDoseVersion;
+  t.failureWeeks = [];
+  delete t.failureWorkload;
+  if (t.scheduleTrial) t.scheduleTrial.weeks = [];
+}
+
 export function adoptFailurePolicy(t, now = Date.now()) {
   t.workSetPolicy = "all-failure";
+  adoptReviewedDose(t);
   delete t.nextWorkSetPolicy;
   t.failureEntry = 1;
   t.failureWeeks = [];
@@ -38,11 +102,16 @@ export function migrateFailurePolicy(s) {
       s.training,
       s.updatedAt || Date.parse(s.weekStart + "T12:00:00Z"),
     );
+  if (allLoadedFailure(s.training) && !s.training.doseVersion && !s.completed) {
+    if (s.active) s.training.nextDoseVersion = DOSE_VERSION;
+    else adoptReviewedDose(s.training);
+  }
   return s;
 }
 export const failureTrialPending = (c) =>
   allLoadedFailure(c) &&
-  ((c.failureEntry || 1) < 3 || (c.failureWeeks || []).length < 2);
+  ((c.failureEntry || 1) < (c.doseVersion === DOSE_VERSION ? DOSE_STAGES : 3) ||
+    (c.failureWeeks || []).length < 2);
 
 export function failureOlympics(rows, c, phase, day) {
   // A pivot with no Olympic loading and a taper with two exposures reduce
@@ -80,7 +149,7 @@ export function failureOlympics(rows, c, phase, day) {
       const row = {
         ...e,
         endpointPolicy: FAILURE_POLICY,
-        sets: 1,
+        sets: olympicDose(e.id, day, c),
         validRepRange: range,
         reps: range[1] + 1,
         range: [percent, percent],
@@ -90,12 +159,13 @@ export function failureOlympics(rows, c, phase, day) {
         effort: 10,
         hold:
           [4, 8, 9, 10, 11, 12, 13].includes(c.week) ||
-          (c.failureEntry || 1) < 3 ||
+          (c.failureEntry || 1) <
+            (c.doseVersion === DOSE_VERSION ? DOSE_STAGES : 3) ||
           c.entry < 3,
         benchmark: c.week === 12 && day === "friday",
         test: c.week === 12 && day === "friday",
         assessment: false,
-        note: "One loaded work set at one fixed load. After each valid rep (a complete clean AND jerk for CJ), reset 15 seconds and repeat. End immediately at the FIRST miss or technically invalid rep (grade C); no retry or load change. The rep window guides the NEXT exposure, never the endpoint. Stop for pain or an unsafe situation and record an incomplete set. Rest at least 5 minutes before the next loaded exercise. Starting loads and reduced set counts are practical estimates, not a proven optimal Olympic-failure protocol.",
+        note: "Each prescribed set uses one fixed load. After each valid rep (a complete clean AND jerk for CJ), reset 15 seconds and repeat. The FIRST miss or technically invalid rep ends that set. Recover at least 5 minutes before the next prescribed set; never add retries or replacement sets. End the exercise after a zero-valid-rep set or the same material fault in two sets; stop the session for pain/unsafe symptoms. The rep window guides future load, never the endpoint. Exact Olympic failure set counts are a monitored inference, not a proven optimum.",
       };
       for (const field of [
         "sequence",
@@ -108,6 +178,17 @@ export function failureOlympics(rows, c, phase, day) {
         "trialIds",
       ])
         delete row[field];
+      row.baseSets = row.sets;
+      const trials = (c.trials || []).filter(
+        (t) =>
+          t.kind === "olympic_set" &&
+          !t.paused &&
+          t.day === day &&
+          t.exercise === e.id &&
+          c.week < 12,
+      );
+      row.sets += trials.length;
+      if (trials.length) row.trialIds = trials.map((t) => t.id);
       return row;
     });
 }
@@ -122,14 +203,14 @@ export function failureProgression(e, history, increment = 5) {
   const weight = last.sets[0]?.weight;
   if (!weight)
     return { weight: null, text: "No comparable loaded exposure yet." };
-  const count = validReps(last.sets);
+  const count = validReps(failureSets(last.sets)[0] || []);
   if (count < e.validRepRange[0])
     return {
       weight: Math.max(
         increment,
         Math.floor((weight * 0.925) / increment) * increment,
       ),
-      text: "Below the valid-rep window: reduce about 5–10% next exposure and review technique/recovery. No same-session retry.",
+      text: "Below the valid-rep window: reduce about 5–10% next exposure and review technique/recovery. Do not add retry sets.",
     };
   if (e.hold || e.checkpoint)
     return {
@@ -143,14 +224,16 @@ export function failureProgression(e, history, increment = 5) {
       (h) =>
         h.normal &&
         !h.record.omissions.some((o) => o.key === e.key) &&
-        failureReached(h.sets) &&
-        validReps(h.sets) >= e.validRepRange[1] &&
+        failureSetStatus(e, h.sets).completedSets === e.sets &&
+        failureSets(h.sets).every(
+          (set) => failureReached(set) && validReps(set) >= e.validRepRange[1],
+        ) &&
         h.sets.every((r) => !r.overCap && r.weight === weight),
     );
   return {
     weight: weight + (earned ? increment : 0),
     text: earned
-      ? "Two comparable, normal exposures reached the top of the valid-rep window before the terminal attempt. Add one plate increment; keep one failure-ended set."
+      ? "Two comparable, normal exposures reached the top of the valid-rep window before the terminal attempt. Add one plate increment; keep the prescribed set count."
       : "Repeat this load. An increase requires two comparable normal exposures at the top of the valid-rep window, each ending at the first miss/invalid rep, with normal subsequent recovery.",
   };
 }

@@ -96,7 +96,7 @@ try {
   );
   assert.match(
     await page.locator(".focus-meta").innerText(),
-    /6 valid pairs · endpoint pending/,
+    /set 1: 6 valid pairs/,
   );
   await page.evaluate(() => navigator.serviceWorker.ready);
   await context.setOffline(true);

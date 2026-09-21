@@ -10,7 +10,9 @@ import {
   contextFor,
 } from "./training.js";
 export const CHANGE_OPTIONS = {
-  set: "Add one weekly hypertrophy set",
+  set: "Add one weekly conventional set",
+  olympic_set: "Trial one additional weekly Olympic set",
+  reduce_set: "Remove one weekly work set after review",
   squat: "Trial one support squat set",
   press: "Trial D overhead press substitution",
   pause_jerk: "Trial C pause-dip jerk substitution",
@@ -120,9 +122,67 @@ export function applyChange(s, change, now = Date.now()) {
     { phase, additions, checkpoint } = phaseFor(t),
     kind = change.kind;
   requireFact(CHANGE_OPTIONS[kind], "Choose a listed program change.");
+  if (kind === "reduce_set") {
+    requireFact(
+      allLoadedFailure(t),
+      "Individual set reductions apply to the revised failure prescription.",
+    );
+    requireFact(
+      change.reason?.trim(),
+      "Record the performance/recovery reason for reducing this set.",
+    );
+    const row = dayPlan(t, change.day)
+      .sessions.flatMap((se) => se.rows)
+      .find(
+        (e) =>
+          e.id === change.exercise && ["quality", "failure"].includes(e.kind),
+      );
+    requireFact(
+      row && row.sets > 1,
+      "Choose an exercise with at least two work sets on that day. Use omission/readiness controls if all work must stop.",
+    );
+    const trial = t.trials.findLast(
+      (x) =>
+        !x.paused &&
+        ["set", "olympic_set"].includes(x.kind) &&
+        x.day === change.day &&
+        x.exercise === change.exercise,
+    );
+    if (trial) {
+      trial.paused = true;
+      trial.reviews.push({
+        at: now,
+        count: trialExposures(s, trial).length,
+        decision: "pause",
+        reason: change.reason,
+      });
+    } else {
+      t.setReductions ||= [];
+      const reduction = t.setReductions.find(
+        (x) => x.day === change.day && x.exercise === change.exercise,
+      );
+      if (reduction) reduction.sets++;
+      else
+        t.setReductions.push({
+          day: change.day,
+          exercise: change.exercise,
+          sets: 1,
+        });
+    }
+    t.workloadChangedAt = now;
+    s.reviews.push({
+      at: now,
+      type: "change",
+      weekId: s.weekId,
+      week: t.week,
+      cycle: t.cycle,
+      change: copy(change),
+    });
+    return;
+  }
   requireFact(
     !allLoadedFailure(t) || !sourceOlympicChange(kind),
-    "The failure amendment uses one fixed-load Olympic set with rep-based progression. Source heavy-slot, extra-attempt and bounded-assessment changes do not apply.",
+    "The failure amendment uses fixed-load Olympic failure sets with rep-based progression. Source heavy-slot, extra-attempt and bounded-assessment changes do not apply.",
   );
   requireFact(
     !failureTrialPending(t),
@@ -260,8 +320,28 @@ export function applyChange(s, change, now = Date.now()) {
     );
     t.assessment = kind === "clean_assessment" ? "clean" : "jerk";
   } else if (
-    ["set", "squat", "press", "pause_jerk", "calf_partial"].includes(kind)
+    [
+      "set",
+      "olympic_set",
+      "squat",
+      "press",
+      "pause_jerk",
+      "calf_partial",
+    ].includes(kind)
   ) {
+    if (kind === "olympic_set") {
+      requireFact(
+        allLoadedFailure(t),
+        "Olympic failure-set trials require the failure amendment.",
+      );
+      const row = dayPlan(t, change.day)
+        .sessions.flatMap((s) => s.rows)
+        .find((e) => e.id === change.exercise && e.endpointPolicy);
+      requireFact(
+        row && row.sets < 20,
+        "Choose an existing Olympic exercise on that day.",
+      );
+    }
     if (kind === "pause_jerk")
       requireFact(
         t.anchors.jerk && t.technique.jerk === "none" && !t.reduceJerk,
@@ -280,6 +360,9 @@ export function applyChange(s, change, now = Date.now()) {
     if (kind === "set")
       requireFact(
         [
+          ...(allLoadedFailure(t)
+            ? ["bench", "front_squat", "back_squat", "press"]
+            : []),
           "incline",
           "lateral",
           "row",
@@ -295,6 +378,13 @@ export function applyChange(s, change, now = Date.now()) {
         ].includes(change.exercise),
         "Choose an existing upper/lower block row.",
       );
+    if (kind === "set")
+      requireFact(
+        dayPlan(t, change.day).sessions.some((s) =>
+          s.rows.some((e) => e.id === change.exercise && e.kind === "failure"),
+        ),
+        "Choose a conventional exercise that exists on this day.",
+      );
     if (kind === "calf_partial")
       requireFact(
         !t.equipment.calf,
@@ -306,7 +396,10 @@ export function applyChange(s, change, now = Date.now()) {
         ? "thursday"
         : change.day;
     requireFact(
-      ["tuesday", "friday", "thursday"].includes(day) &&
+      (kind === "olympic_set"
+        ? ["monday", "tuesday", "thursday", "friday"]
+        : ["tuesday", "friday", "thursday"]
+      ).includes(day) &&
         (!["set", "squat"].includes(kind) || day !== "thursday"),
       "Use B or D for conventional additions.",
     );
@@ -521,6 +614,10 @@ export function reviewTrial(s, id, decision, reason, now = Date.now()) {
     throw Error("Resume in normal F/B after readiness review.");
   if (decision === "resume") {
     requireFact(
+      !failureTrialPending(s.training),
+      "Complete the failure introduction and stable-dose review before resuming additions.",
+    );
+    requireFact(
       !scheduleTrialPending(s.training),
       "Finish the two-week schedule review before resuming an added-dose trial.",
     );
@@ -550,13 +647,17 @@ export function reviewTrial(s, id, decision, reason, now = Date.now()) {
   const count = trialExposures(s, t).length;
   if (
     decision === "retain" &&
-    t.kind === "set" &&
+    ["set", "olympic_set"].includes(t.kind) &&
     new Set(trialExposures(s, t).map((r) => r.weekId)).size < 2
   )
     throw Error(
       "Hold the added weekly set for two normal green weeks before retention.",
     );
-  if (decision === "retain" && count < 4 && t.kind !== "set")
+  if (
+    decision === "retain" &&
+    count < 4 &&
+    !["set", "olympic_set"].includes(t.kind)
+  )
     throw Error(
       "Review early benefit after four comparable exposures; tolerance alone is not benefit.",
     );

@@ -1,5 +1,7 @@
 # App 7.16 · failure amendment audit
 
+**Historical 7.16 record.** Its one-set Olympic allocation and three-stage introduction are superseded by [the 7.17 set-dose review](SET-DOSE-REVIEW.md). Other endpoint/scheduling constraints continue unless explicitly amended there.
+
 Audited September 21, 2026 against the user's clarified scope (loaded working sets only) and endpoint (first missed or technically invalid Olympic rep). The implemented prescription and evidence limits are in [FAILURE-CONSTRAINT-REVIEW.md](FAILURE-CONSTRAINT-REVIEW.md). The unchanged PDF remains the source for unaffected rules.
 
 ## Results

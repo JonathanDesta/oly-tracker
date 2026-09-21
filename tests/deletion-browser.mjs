@@ -53,7 +53,7 @@ try {
   });
   await page.reload();
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.16/);
+  assert.match(await page.locator("main").innerText(), /App 7\.17/);
   await click("Week");
   await page.locator('[data-action="day"][data-day="monday"]').click();
   await click("Start session →");
@@ -140,7 +140,7 @@ try {
   assert.deepEqual(errors, []);
   const result = {
     url,
-    appBuild: "7.16",
+    appBuild: "7.17",
     cancellation: true,
     offlineDeletion: true,
     offlineRestart: true,

@@ -1,5 +1,10 @@
+import { DOSE_VERSION, DOSE_STAGES } from "./dose.js";
 import {
   FAILURE_POLICY,
+  LEGACY_FAILURE_POLICY,
+  failureSetStatus,
+  failureSets,
+  failureReached,
   olympicFailure,
   invalidAttempt,
   migrateFailurePolicy,
@@ -66,7 +71,12 @@ export function validate(data) {
     "pending work-set policy.",
   );
   if (t.workSetPolicy === "all-failure") {
-    assert([1, 2, 3].includes(t.failureEntry), "failure introduction dose.");
+    assert(
+      Number.isInteger(t.failureEntry) &&
+        t.failureEntry >= 1 &&
+        t.failureEntry <= DOSE_STAGES,
+      "failure introduction dose.",
+    );
     assert(
       Array.isArray(t.failureWeeks) &&
         t.failureWeeks.every((w) => typeof w === "string") &&
@@ -79,6 +89,26 @@ export function validate(data) {
     );
     assert(Number.isFinite(t.failureStartedAt), "failure adoption date.");
   }
+  for (const field of ["doseVersion", "nextDoseVersion"])
+    assert(
+      t[field] === undefined || t[field] === DOSE_VERSION,
+      "dose version.",
+    );
+  assert(
+    t.setReductions === undefined ||
+      (Array.isArray(t.setReductions) &&
+        t.setReductions.every(
+          (x) =>
+            object(x) &&
+            ["monday", "tuesday", "thursday", "friday"].includes(x.day) &&
+            Object.hasOwn(EXERCISES, x.exercise) &&
+            Number.isInteger(x.sets) &&
+            finite(x.sets, 1, 19),
+        ) &&
+        new Set(t.setReductions.map((x) => x.day + ":" + x.exercise)).size ===
+          t.setReductions.length),
+    "individual set reductions.",
+  );
   assert(
     t.timing === undefined || validTimeProfile(t.timing),
     "time planning settings.",
@@ -146,10 +176,15 @@ export function validate(data) {
         (x) =>
           object(x) &&
           typeof x.id === "string" &&
-          ["set", "squat", "press", "pause_jerk", "calf_partial"].includes(
-            x.kind,
-          ) &&
-          ["tuesday", "thursday", "friday"].includes(x.day) &&
+          [
+            "set",
+            "olympic_set",
+            "squat",
+            "press",
+            "pause_jerk",
+            "calf_partial",
+          ].includes(x.kind) &&
+          ["monday", "tuesday", "thursday", "friday"].includes(x.day) &&
           Array.isArray(x.reviews),
       ),
     "trials.",
@@ -169,9 +204,18 @@ export function validate(data) {
       "trial status.",
     );
     assert(x.load === undefined || finite(x.load, 1, 2000), "trial load.");
+    if (x.kind === "olympic_set")
+      assert(
+        ["snatch", "cj", "hang", "jerk", "pull"].includes(x.exercise),
+        "Olympic added-set exercise.",
+      );
     if (x.kind === "set")
       assert(
         [
+          "press",
+          "bench",
+          "front_squat",
+          "back_squat",
           "incline",
           "lateral",
           "row",
@@ -543,9 +587,11 @@ export function validate(data) {
         );
       if (e.endpointPolicy !== undefined) {
         assert(
-          e.endpointPolicy === FAILURE_POLICY &&
+          olympicFailure(e) &&
             e.kind === "quality" &&
-            e.sets === 1 &&
+            Number.isInteger(e.sets) &&
+            finite(e.sets, 1, 20) &&
+            (e.endpointPolicy !== LEGACY_FAILURE_POLICY || e.sets === 1) &&
             Array.isArray(e.validRepRange) &&
             e.validRepRange.length === 2 &&
             e.validRepRange.every(
@@ -563,14 +609,20 @@ export function validate(data) {
         );
         const logs = r.sets.filter((x) => x.key === e.key);
         assert(
-          logs.every(
-            (x, i) =>
-              i === 0 ||
-              (!invalidAttempt(logs[i - 1]) &&
-                !["pain", "stop"].includes(logs[i - 1].endpoint) &&
-                x.weight === logs[0].weight),
-          ),
-          "one fixed-load set ending at the first invalid rep.",
+          logs.every((x, i) => {
+            const before = logs.slice(0, i),
+              status = failureSetStatus(e, before);
+            return (
+              !status.done &&
+              (!i || x.weight === logs[0].weight) &&
+              (x.setNumber === undefined ||
+                x.setNumber === status.completedSets + 1) &&
+              (!i ||
+                !failureReached([logs[i - 1]]) ||
+                x.at - logs[i - 1].at >= e.rest * 1000)
+            );
+          }),
+          "fixed-load Olympic sets must end at the first invalid rep, recover fully, and stop at the prescribed count/safety endpoint.",
         );
       }
       if (e.kind === "quality") {

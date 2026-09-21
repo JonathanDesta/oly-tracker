@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-16-failure";
+const CACHE = "oly-groundup-v7-17-dose";
 const FILES = [
   "./",
   "index.html",
@@ -13,6 +13,7 @@ const FILES = [
   "src/catalog.js",
   "src/calendar.js",
   "src/failure-policy.js",
+  "src/dose.js",
   "src/duration.js",
   "src/timeline.js",
   "src/pacing.js",

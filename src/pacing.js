@@ -1,4 +1,8 @@
-import { olympicFailure } from "./failure-policy.js";
+import {
+  olympicFailure,
+  failureSets,
+  failureReached,
+} from "./failure-policy.js";
 import { fixedSession } from "./timeline.js";
 
 const manualStart = (s) =>
@@ -111,10 +115,17 @@ export function syncPacing(w, progress, now = Date.now()) {
     rows: w.session.rows.map((e) => {
       if (!olympicFailure(e)) return e;
       const status = progress[e.key];
-      const reps = status?.done
-        ? Math.max(1, status.count)
-        : Math.max(e.reps, (status?.count || 0) + 1);
-      return { ...e, reps };
+      const sets = failureSets(status?.logs || []);
+      const repSequence = Array.from(
+        { length: status?.done ? Math.max(1, sets.length) : e.sets },
+        (_, i) => {
+          const set = sets[i] || [];
+          return failureReached(set) || status?.done
+            ? Math.max(1, set.length)
+            : Math.max(e.reps, set.length + 1);
+        },
+      );
+      return { ...e, sets: repSequence.length, repSequence };
     }),
   };
   const plan = fixedSession(session, w.timeConfig, w.timeConfig).stages;

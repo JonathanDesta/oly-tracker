@@ -1,3 +1,4 @@
+import { conventionalDose } from "./dose.js";
 import {
   allLoadedFailure,
   olympicFailure,
@@ -428,10 +429,21 @@ function conventional(c, day, phase, one = false) {
   const low = day === "tuesday",
     range = ["F", "P"].includes(phase) ? [4, 6] : [3, 5];
   const rows = [
-    failure(low ? "front_squat" : "back_squat", 1, ...range, 270),
-    failure("bench", 1, ...(low ? [3, 5] : [6, 8]), low ? 270 : 210, {
-      key: low ? "bench_low" : "bench_moderate",
-    }),
+    failure(
+      low ? "front_squat" : "back_squat",
+      conventionalDose(low ? "front_squat" : "back_squat", 1, c, one),
+      ...range,
+      270,
+    ),
+    failure(
+      "bench",
+      conventionalDose("bench", 1, c, one),
+      ...(low ? [3, 5] : [6, 8]),
+      low ? 270 : 210,
+      {
+        key: low ? "bench_low" : "bench_moderate",
+      },
+    ),
   ];
   for (const [id, sets, lo, hi, rest] of ACCESSORIES) {
     const n =
@@ -440,7 +452,8 @@ function conventional(c, day, phase, one = false) {
         : c.entry === 2
           ? { incline: 2, lateral: 3, row: 2 }[id] || 1
           : sets;
-    const e = failure(id, n, lo, hi, rest, { baseSets: n });
+    const count = conventionalDose(id, n, c, one);
+    const e = failure(id, count, lo, hi, rest, { baseSets: count });
     const substitute = SUBSTITUTES[id]?.[c.equipment[id]];
     if (substitute) {
       e.name = substitute;
@@ -896,7 +909,7 @@ export function dayPlan(config, day, ctx = {}) {
     if (c.week === 13 || c.entry === 1) conv.forEach((e) => (e.sets = 1));
     p.notes = [];
     p.notes.push(
-      "September 21 amendment: ALL retained loaded work sets end at failure. Olympic work: one fixed-load set per exercise, ending at the first miss or invalid rep; 15-second resets and at least 5 minutes recovery before the next loaded exercise. Warm-ups, athletics and recovery activities are outside this constraint.",
+      "September 21 amendment: ALL retained loaded work sets end at failure. Olympic work: each prescribed set ends at its first miss or invalid rep; 15-second resets and at least 5 minutes recovery between sets and before the next loaded exercise. Warm-ups, athletics and recovery activities are outside this constraint.",
     );
     if (c.week === 12)
       p.notes.push(
@@ -912,6 +925,17 @@ export function dayPlan(config, day, ctx = {}) {
       );
   }
   const all = [...ol, ...conv];
+  if (allLoadedFailure(c))
+    for (const e of all) {
+      const reduction = (c.setReductions || [])
+        .filter((x) => x.day === day && x.exercise === e.id)
+        .reduce((n, x) => n + x.sets, 0);
+      if (reduction) {
+        const extra = e.trialIds?.length || 0;
+        e.sets = Math.max(1, e.sets - extra - reduction) + extra;
+        if (e.baseSets) e.baseSets = Math.max(1, e.baseSets - reduction);
+      }
+    }
   if (all.length) {
     const i = c.split ? all.findIndex((e) => e.id === "row") : -1;
     if (i >= 0) {
@@ -1267,7 +1291,18 @@ export function restrictions(plan, c, ctx = {}) {
               (c.anchors[e.anchor] * e.range[0]) / 100,
             );
         }
-        if (olympicFailure(e) && verify) e.hold = true;
+        if (olympicFailure(e)) {
+          if (ctx.event === "limited_later" && e.trialIds?.length) {
+            e.sets -= e.trialIds.length;
+            e.trialIds = [];
+          }
+          if (verify || ctx.local) {
+            e.sets = 1;
+            e.hold = true;
+            e.trialIds = [];
+          }
+          if (ctx.event === "larger_later") e.hold = true;
+        }
         if (e.kind === "quality" && !olympicFailure(e) && verify) {
           e.range = e.test
             ? [75, 75]
@@ -1367,7 +1402,7 @@ export function loadRange(e, anchors, slot = 0, increment = 5) {
 }
 export function describe(e) {
   if (olympicFailure(e))
-    return `1 set · first miss/invalid rep · ${e.validRepRange.join("–")} valid ${e.id === "cj" ? "CJ pairs" : "reps"} guides load · 15 s resets`;
+    return `${e.sets} ${e.sets === 1 ? "set" : "sets"} · first miss/invalid rep · ${e.validRepRange.join("–")} valid ${e.id === "cj" ? "CJ pairs" : "reps"} guides load · 15 s resets`;
   if (e.kind === "mobility")
     return `2 × ${e.holdSeconds} s/side · 15 s rests · 5 active reps`;
   if (e.minutes) return `${e.minutes} min · RPE 3–4`;

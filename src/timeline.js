@@ -276,7 +276,7 @@ export function fixedSession(session, config = {}, options = {}) {
               e.kind === "aerobic"
                 ? "Easy moving time · full-sentence talk test"
                 : olympicFailure(e)
-                  ? `Failure set · ${e.id === "cj" ? "CJ pair" : "rep"} ${rep + 1} · record actual outcome`
+                  ? `Failure set ${slot + 1}/${sets} · ${e.id === "cj" ? "CJ pair" : "rep"} ${rep + 1} · record actual outcome`
                   : `Set ${slot + 1}/${sets}${n > 1 ? ` · rep ${rep + 1}/${n}` : ""}`,
               work,
               "work",
@@ -297,7 +297,9 @@ export function fixedSession(session, config = {}, options = {}) {
           const seconds = (e.rest || 0) + p.extraRestSeconds;
           rowStage(
             `rest:${slot}`,
-            "Rest · log result and change load during recovery",
+            olympicFailure(e)
+              ? "Recover before next failure set · keep the planned load"
+              : "Rest · log result and change load during recovery",
             seconds,
             "rest",
             {

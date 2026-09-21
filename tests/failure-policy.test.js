@@ -101,7 +101,7 @@ function completeWeek(s) {
       now += 300000;
       if (olympicFailure(e)) {
         const weight = nextQualityRange(s.active, e)[0];
-        const n = rowStatus(s.active, e).count;
+        const n = rowStatus(s.active, e).currentValidReps;
         attempt(s, now, {
           weight,
           outcome: n >= e.validRepRange[1] ? "miss" : "make",
@@ -124,7 +124,8 @@ function completeWeek(s) {
 
 test("all 52 weeks and readiness/event/regression configurations retain only failure-ended loaded work", () => {
   const s = base();
-  s.training.entry = s.training.failureEntry = 3;
+  s.training.entry = 3;
+  s.training.failureEntry = 4;
   s.training.gate = "R";
   s.training.anchors.jerk = 215;
   const contexts = [
@@ -160,7 +161,7 @@ test("all 52 weeks and readiness/event/regression configurations retain only fai
               for (const e of se.rows) {
                 if (e.kind === "quality") {
                   assert(olympicFailure(e));
-                  assert.equal(e.sets, 1);
+                  assert(e.sets >= 1 && e.sets <= 2);
                   assert.equal(e.effort, 10);
                   assert(!["amber", "red"].includes(ctx.level));
                   assert(!["targeted", "reset"].includes(recovery));
@@ -389,15 +390,17 @@ test("52-week runner completes the amended taper/pivot, all failure endpoints an
     sessions += completeWeek(s);
     assert(consumedBench(s, "bench_low"));
     assert(consumedBench(s, "bench_moderate"));
-    const benches = s.records.flatMap((r) =>
-      r.sets.filter((x) => x.exerciseId === "bench"),
-    );
+    const benches = s.records
+      .map((r) => r.sets.filter((x) => x.exerciseId === "bench"))
+      .filter((sets) => sets.length);
     for (let i = 1; i < benches.length; i++)
-      assert(benches[i].at - benches[i - 1].at >= 48 * 3600000);
+      assert(benches[i][0].at - benches[i - 1].at(-1).at >= 48 * 3600000);
     advanceWeek(s, review);
     if (yearWeek === 1) assert.equal(s.training.failureEntry, 2);
     if (yearWeek === 2) assert.equal(s.training.failureEntry, 3);
-    if (yearWeek === 4) assert.equal(failureTrialPending(s.training), false);
+    if (yearWeek === 3) assert.equal(s.training.failureEntry, 3);
+    if (yearWeek === 4) assert.equal(s.training.failureEntry, 4);
+    if (yearWeek === 6) assert.equal(failureTrialPending(s.training), false);
   }
   assert.equal(sessions, 196);
   assert(s.completed);

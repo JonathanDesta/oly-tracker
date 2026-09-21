@@ -203,7 +203,7 @@ try {
     JSON.stringify(
       {
         url,
-        appBuild: "7.16",
+        appBuild: "7.17",
         fixedTotals: true,
         guidedWarmups: true,
         actualSetEnd: true,

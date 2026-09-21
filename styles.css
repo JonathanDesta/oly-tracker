@@ -1256,3 +1256,32 @@ dialog::backdrop {
 .preparation-run .button {
   margin: 4px 4px 4px 0;
 }
+
+.dose-panel {
+  margin-block: 1rem;
+}
+.dose-scroll {
+  overflow-x: auto;
+  margin-block: 1rem;
+}
+.dose-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.dose-panel th,
+.dose-panel td {
+  padding: 0.65rem;
+  border-bottom: 1px solid var(--line, #ddd);
+  vertical-align: top;
+}
+.dose-panel th small {
+  display: block;
+  font-weight: normal;
+  opacity: 0.75;
+}
+.dose-panel caption {
+  text-align: left;
+  font-weight: bold;
+  padding-bottom: 0.6rem;
+}
