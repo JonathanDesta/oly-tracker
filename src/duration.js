@@ -237,9 +237,11 @@ export function estimateSession(session, config = {}, options = {}) {
   }
   overhead.general =
     session.kind === "lifting"
-      ? session.id === "accessories"
-        ? [180, 300]
-        : [600, 900]
+      ? session.id === "support" && options.continuation
+        ? [0, 0]
+        : session.id === "accessories"
+          ? [180, 300]
+          : [600, 900]
       : session.kind === "athletic"
         ? [540, 780]
         : [0, 0];
@@ -315,6 +317,7 @@ export function estimateSession(session, config = {}, options = {}) {
         (n, i) => n - parts.setup[i],
       );
     }
+    if (!previous && e.entryRecovery) parts.recovery = pair(e.entryRecovery);
     const sets = e.kind === "aerobic" ? 1 : e.sets;
     parts.work = add(
       ...Array.from({ length: sets }, (_, i) => workSet(e, i, p, config)),
@@ -359,7 +362,8 @@ export function estimateDay(plan, config = {}) {
   for (const s of plan.sessions) {
     const continuation =
       hasVisit &&
-      (s.kind === "cardio" ||
+      (s.id === "support" ||
+        s.kind === "cardio" ||
         s.kind === "mobility" ||
         (s.kind === "athletic" && p.athleticsVisit === "same"));
     const estimate = estimateSession(s, config, { continuation });

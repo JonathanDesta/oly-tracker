@@ -1,5 +1,8 @@
 import {
   conventionalDose,
+  allocatedDose,
+  WEEKLY_ALLOCATION,
+  REGIONAL_DOSE_VERSION,
   DOSE_VERSION,
   REGIONAL_ACCESSORIES,
 } from "./dose.js";
@@ -430,6 +433,7 @@ const SUBSTITUTES = {
   },
 };
 function conventional(c, day, phase, one = false) {
+  const allocated = allLoadedFailure(c) && c.doseVersion === DOSE_VERSION;
   const low = day === "tuesday",
     range = ["F", "P"].includes(phase) ? [4, 6] : [3, 5];
   const rows = [
@@ -449,9 +453,19 @@ function conventional(c, day, phase, one = false) {
       },
     ),
   ];
+  if (allocated)
+    rows.splice(
+      0,
+      rows.length,
+      ...rows
+        .filter((e) => WEEKLY_ALLOCATION[day]?.[e.id])
+        .map((e) => ({ ...e, sets: allocatedDose(e.id, day, c, one) })),
+    );
   const menu = [
     ...ACCESSORIES,
-    ...(c.doseVersion === DOSE_VERSION ? REGIONAL_ACCESSORIES : []),
+    ...([DOSE_VERSION, REGIONAL_DOSE_VERSION].includes(c.doseVersion)
+      ? REGIONAL_ACCESSORIES
+      : []),
   ];
   for (const [id, sets, lo, hi, rest] of menu) {
     const n =
@@ -460,7 +474,10 @@ function conventional(c, day, phase, one = false) {
         : c.entry === 2
           ? { incline: 2, lateral: 3, row: 2 }[id] || 1
           : sets;
-    const count = conventionalDose(id, n, c, one);
+    const count = allocated
+      ? allocatedDose(id, day, c, one)
+      : conventionalDose(id, n, c, one);
+    if (!count) continue;
     const e = failure(id, count, lo, hi, rest, {
       baseSets: count,
       ...(REGIONAL_ACCESSORIES.some(([key]) => key === id)
@@ -490,6 +507,12 @@ function conventional(c, day, phase, one = false) {
     }
     rows.push(e);
   }
+  if (allocated)
+    rows.sort(
+      (a, b) =>
+        Object.keys(WEEKLY_ALLOCATION[day] || {}).indexOf(a.id) -
+        Object.keys(WEEKLY_ALLOCATION[day] || {}).indexOf(b.id),
+    );
   for (const t of c.trials.filter(
     (t) => !t.paused && t.day === day && ["F", "B", "R"].includes(phase),
   )) {
@@ -504,7 +527,7 @@ function conventional(c, day, phase, one = false) {
         0,
         failure(t.exercise, 1, 3, 5, 270, { ...props, key: "support_" + t.id }),
       );
-    if (t.kind === "press") {
+    if (t.kind === "press" && rows.some((e) => e.id === "incline")) {
       rows.find((e) => e.id === "incline").sets--;
       rows.splice(
         rows.findIndex((e) => e.id === "bench") + 1,
@@ -519,7 +542,11 @@ function conventional(c, day, phase, one = false) {
         e.trialIds = [...(e.trialIds || []), t.id];
       }
     }
-    if (t.kind === "calf_partial" && !c.equipment.calf) {
+    if (
+      t.kind === "calf_partial" &&
+      !c.equipment.calf &&
+      rows.some((e) => e.id === "calf")
+    ) {
       const i = rows.findIndex((e) => e.id === "calf");
       rows[i].sets--;
       rows.splice(
@@ -909,16 +936,45 @@ export function dayPlan(config, day, ctx = {}) {
         quality("snatch", 4, 1, [60, 70], "snatch", 6, 120),
         quality("cj", 3, "1+1", [60, 70], "cj", 6, 120),
       ];
-    if (["tuesday", "friday"].includes(day))
+    if (
+      ["tuesday", "friday"].includes(day) ||
+      (allLoadedFailure(c) &&
+        c.doseVersion === DOSE_VERSION &&
+        day === "thursday")
+    )
       conv = conventional(c, day, "P", ctx.pivotResidual);
   } else {
-    ol = olympic(c, day, phase);
-    if (["tuesday", "friday"].includes(day))
-      conv = conventional(c, day, phase, c.week === 11 && day === "friday");
+    ol =
+      allLoadedFailure(c) && c.doseVersion === DOSE_VERSION
+        ? ["tuesday", "thursday", "friday"].includes(day)
+          ? olympic(c, "friday", phase).filter((e) =>
+              ["snatch", "cj"].includes(e.id),
+            )
+          : []
+        : olympic(c, day, phase);
+    if (
+      ["tuesday", "friday"].includes(day) ||
+      (allLoadedFailure(c) &&
+        c.doseVersion === DOSE_VERSION &&
+        day === "thursday")
+    )
+      conv = conventional(
+        c,
+        day,
+        phase,
+        c.week === 11 && (c.doseVersion === DOSE_VERSION || day === "friday"),
+      );
   }
+  if (
+    allLoadedFailure(c) &&
+    c.doseVersion === DOSE_VERSION &&
+    day === "tuesday" &&
+    c.week < 12
+  )
+    ol.sort((a, b) => (a.id === "cj" ? -1 : 1) - (b.id === "cj" ? -1 : 1));
   ol = regress(ol, c, day);
   if (allLoadedFailure(c)) {
-    ol = failureOlympics(ol, c, phase, day);
+    ol = failureOlympics(ol, c, phase, day).filter((e) => e.sets > 0);
     if (c.doseVersion === DOSE_VERSION)
       conv.forEach((e) => (e.amendment = true));
     if (c.week === 13 || c.entry === 1) conv.forEach((e) => (e.sets = 1));
@@ -926,6 +982,10 @@ export function dayPlan(config, day, ctx = {}) {
     p.notes.push(
       "September 21 amendment: ALL retained loaded work sets end at failure. Olympic work: each prescribed set ends at its first miss or invalid rep; 15-second resets and at least 5 minutes recovery between sets and before the next loaded exercise. Warm-ups, athletics and recovery activities are outside this constraint.",
     );
+    if (c.doseVersion === DOSE_VERSION && c.week !== 12)
+      p.notes.push(
+        "Whole-week allocation: lift Monday, Wednesday and Friday. Both competition lifts come first on all three days, then the day’s prescribed assistance. Tuesday/Thursday are recovery days. No default hang-snatch, rack-jerk or pull failure sets: extra variants require a demonstrated need and replace work rather than silently adding fatigue. Bench remains Monday and Friday, at least 48 actual hours apart.",
+      );
     if (c.week === 12)
       p.notes.push(
         "Failure-compatible taper: Monday one snatch and one CJ failure set plus low-rep bench; Tuesday/Thursday no loaded work; Friday one fixed-load failure benchmark per lift; moderate bench afterward. This replaces the source three-attempt mock meet and is not a competition total.",
@@ -952,7 +1012,10 @@ export function dayPlan(config, day, ctx = {}) {
       }
     }
   if (all.length) {
-    const i = c.split ? all.findIndex((e) => e.id === "row") : -1;
+    const i =
+      c.split && c.doseVersion !== DOSE_VERSION
+        ? all.findIndex((e) => e.id === "row")
+        : -1;
     if (i >= 0) {
       p.sessions.push(
         session("main", "Visit 1 · priority work", all.slice(0, i)),
@@ -1013,7 +1076,34 @@ export function dayPlan(config, day, ctx = {}) {
             ? s.title
             : s.title.replace("Snatch practice", "Snatch failure sets");
     }
-  p.sessions.push(...athletic(c, day, ctx));
+  const field = athletic(c, day, ctx);
+  // Keep speed work ahead of C assistance, especially hamstrings/calves.
+  let support;
+  if (
+    allLoadedFailure(c) &&
+    c.doseVersion === DOSE_VERSION &&
+    ["tuesday", "thursday"].includes(day) &&
+    field.length &&
+    conv.length
+  ) {
+    const main = p.sessions.find((s) => s.id === "main");
+    if (main) main.rows = main.rows.filter((e) => e.kind !== "failure");
+    p.sessions = p.sessions.filter((s) => s.rows.length);
+    support = session(
+      "support",
+      "Assistance after athletics",
+      conv,
+      "lifting",
+      "Continue the same visit after the athletic module. Complete local preparation before each exercise.",
+    );
+  }
+  p.sessions.push(...field, ...(support ? [support] : []));
+  if (allLoadedFailure(c) && c.doseVersion === DOSE_VERSION && c.week !== 12)
+    for (const s of p.sessions.filter((s) => s.id === "main"))
+      s.title =
+        c.week === 13
+          ? "Pivot · reduced assistance"
+          : "Both lifts + prescribed assistance";
   if (c.cardio.enabled && c.week !== 12) {
     // Main sessions build 20/20 to 30/30. Further minutes are placed as walks.
     const total = c.cardio.minutes,

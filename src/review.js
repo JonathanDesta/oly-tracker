@@ -403,8 +403,8 @@ export function applyChange(s, change, now = Date.now()) {
         ? ["monday", "tuesday", "thursday", "friday"]
         : ["tuesday", "friday", "thursday"]
       ).includes(day) &&
-        (!["set", "squat"].includes(kind) || day !== "thursday"),
-      "Use B or D for conventional additions.",
+        (kind !== "squat" || day !== "thursday"),
+      "Use an existing B, C or D assistance row; support squats remain on B/D.",
     );
     t.trials.push({
       id: uid(),

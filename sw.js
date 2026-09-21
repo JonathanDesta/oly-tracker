@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-18-regions";
+const CACHE = "oly-groundup-v7-19-whole-week";
 const FILES = [
   "./",
   "index.html",

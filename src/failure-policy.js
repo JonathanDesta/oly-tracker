@@ -71,8 +71,13 @@ export function failureSetStatus(e, logs) {
 export function adoptReviewedDose(t) {
   // Introduce the newly allocated work gradually, even after finishing the old ramp.
   if (t.doseVersion && t.doseVersion !== DOSE_VERSION)
-    t.failureEntry = Math.min(t.failureEntry || 1, 3);
+    t.failureEntry = Math.min(t.failureEntry || 1, 2);
   t.doseVersion = DOSE_VERSION;
+  t.split = false;
+  if (t.timing) t.timing.athleticsVisit = "same";
+  if (t.athletics) t.athletics.day = "thursday";
+  // The allocation replaces the prior base; preserve trial records for review.
+  for (const trial of t.trials || []) trial.paused = true;
   delete t.nextDoseVersion;
   t.failureWeeks = [];
   delete t.failureWorkload;
@@ -110,7 +115,12 @@ export function migrateFailurePolicy(s) {
     s.training.doseVersion !== DOSE_VERSION &&
     !s.completed
   ) {
-    if (s.active) s.training.nextDoseVersion = DOSE_VERSION;
+    if (
+      s.active ||
+      s.records.some((r) => r.weekId === s.weekId) ||
+      Object.keys(s.dates || {}).length
+    )
+      s.training.nextDoseVersion = DOSE_VERSION;
     else adoptReviewedDose(s.training);
   }
   return s;

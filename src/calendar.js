@@ -1,4 +1,16 @@
 import { DAYS } from "./catalog.js";
+import { DOSE_VERSION } from "./dose.js";
+export const threeDaySchedule = (c) =>
+  c.workSetPolicy === "all-failure" && c.doseVersion === DOSE_VERSION;
+export const THREE_DAY_ORDER = [
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "monday",
+  "friday",
+  "saturday",
+  "sunday",
+];
 
 // Persisted day keys identify Revision 6 program slots, not civil weekdays.
 // Keeping them stable preserves exercise history and frozen workout records.
@@ -19,22 +31,32 @@ export const WEEKDAY_ORDER = [
 ];
 export const weekdaySchedule = (config) => config.schedule === "weekday";
 export const programDays = (config) =>
-  weekdaySchedule(config) && config.week !== 12 ? WEEKDAY_ORDER : DAYS;
+  config.week !== 12 && threeDaySchedule(config)
+    ? THREE_DAY_ORDER
+    : weekdaySchedule(config) && config.week !== 12
+      ? WEEKDAY_ORDER
+      : DAYS;
 export const slotOffset = (config, slot) => programDays(config).indexOf(slot);
 export const slotLabel = (config, slot) =>
   `${SLOT_LETTERS[slot] ? SLOT_LETTERS[slot] + " · " : ""}${DAYS[slotOffset(config, slot)]}`;
 export const primaryAthleticSlot = (config) =>
-  weekdaySchedule(config) ? "thursday" : "monday";
+  threeDaySchedule(config) || weekdaySchedule(config) ? "thursday" : "monday";
 export const secondaryAthleticSlot = (config) =>
-  weekdaySchedule(config) ? "monday" : "thursday";
+  threeDaySchedule(config)
+    ? "tuesday"
+    : weekdaySchedule(config)
+      ? "monday"
+      : "thursday";
 export const scheduleName = (config) =>
   config.week === 12
     ? config.workSetPolicy === "all-failure"
       ? "Taper · Monday work, Friday failure benchmark, bench afterward"
       : "Test week · Monday bench, Friday test, bench afterward"
-    : weekdaySchedule(config)
-      ? "Weekday plan · Mon B / Tue C / Thu A / Fri D"
-      : "Source plan · Mon A / Tue B / Thu C / Fri D";
+    : threeDaySchedule(config)
+      ? "Three-day plan · Monday / Wednesday / Friday"
+      : weekdaySchedule(config)
+        ? "Weekday plan · Mon B / Tue C / Thu A / Fri D"
+        : "Source plan · Mon A / Tue B / Thu C / Fri D";
 
 export function setSchedule(config, schedule, now = Date.now()) {
   config.schedule = schedule;

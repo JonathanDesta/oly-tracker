@@ -76,13 +76,13 @@ try {
   await page.locator(".dose-panel > summary").click();
   assert.match(
     await page.locator(".dose-panel").innerText(),
-    /3 Olympic \+ 40 conventional/,
+    /4 Olympic \+ 20 conventional/,
   );
-  assert.match(await page.locator(".dose-panel").innerText(), /15 \+ 80/);
+  assert.match(await page.locator(".dose-panel").innerText(), /12 \+ 56/);
   const chest = page
     .locator(".dose-panel tr")
     .filter({ hasText: "Chest (all regions)" });
-  assert.match(await chest.innerText(), /12 direct/);
+  assert.match(await chest.innerText(), /10 direct/);
   assert(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -157,16 +157,16 @@ try {
   });
   await page.reload();
   await page.locator(".dose-panel > summary").click();
-  assert.match(await page.locator(".dose-panel").innerText(), /9 \+ 34/);
+  assert.match(await page.locator(".dose-panel").innerText(), /6 \+ 31/);
   const wrist = page
     .locator(".dose-panel table")
     .first()
     .getByRole("row")
     .filter({ hasText: "Supported dumbbell wrist curl" });
   assert.deepEqual(await wrist.locator("td").allTextContents(), [
-    "1",
+    "0",
     "2",
-    "4",
+    "2",
   ]);
   await page
     .locator(".dose-panel table")
@@ -183,7 +183,7 @@ try {
   await decisions.locator("summary").click();
   assert.match(
     await decisions.innerText(),
-    /Four supported wrist-extension sets/,
+    /Two supported wrist-extension sets/,
   );
   assert.match(await decisions.innerText(), /Zero direct neck-failure sets/);
   await page.screenshot({
@@ -192,13 +192,16 @@ try {
   });
   // Isolated fixture skips preceding work, then exercises the actual new-row UI.
   await page.evaluate(async () => {
-    const { startSession, omitRow, rowStatus } = await import(
+    const { startSession, omitRow, omissionRecord, rowStatus } = await import(
       "./src/training.js"
     );
     const { syncPacing } = await import("./src/pacing.js");
     const { validate } = await import("./src/storage.js");
     const s = JSON.parse(localStorage.getItem("oly_program_v7"));
-    startSession(s, "tuesday", "main", Date.now());
+    for (const day of ["tuesday", "thursday"])
+      omissionRecord(s, day, "main", "Synthetic prerequisite", Date.now());
+    s.dates.friday = "2026-09-21";
+    startSession(s, "friday", "main", Date.now());
     s.active.warmup = true;
     for (const e of s.active.session.rows.filter(
       (e) => !["hammer_curl", "wrist_curl", "wrist_extension"].includes(e.id),
@@ -238,6 +241,88 @@ try {
     const { validate } = await import("./src/storage.js");
     validate(JSON.parse(localStorage.getItem("oly_program_v7")));
   });
+  // The new calendar and post-athletics assistance use the actual mobile runner.
+  await page.clock.setSystemTime(new Date("2026-09-23T15:00:00-05:00"));
+  await page.evaluate(async () => {
+    const { fresh, startSession, omissionRecord, rowStatus } = await import(
+      "./src/training.js"
+    );
+    const { dayPlan } = await import("./src/prescription.js");
+    const s = fresh("2026-09-21", "weekday", "all-failure");
+    Object.assign(s.training, { entry: 3, failureEntry: 4, week: 3 });
+    s.training.athletics.enabled = true;
+    s.readiness = {
+      date: "2026-09-23",
+      level: "green",
+      event: "normal",
+      local: "",
+    };
+    const plan = dayPlan(s.training, "thursday");
+    if (plan.sessions.map((s) => s.id).join(",") !== "main,athletics,support")
+      throw Error("Wrong component order");
+    omissionRecord(
+      s,
+      "tuesday",
+      "main",
+      "Synthetic prerequisite",
+      Date.now() - 2 * 86400000,
+    );
+    omissionRecord(s, "thursday", "main", "Synthetic prerequisite", Date.now());
+    omissionRecord(
+      s,
+      "thursday",
+      "athletics",
+      "Synthetic prerequisite",
+      Date.now(),
+    );
+    startSession(s, "thursday", "support", Date.now());
+    const { syncPacing } = await import("./src/pacing.js");
+    syncPacing(
+      s.active,
+      Object.fromEntries(
+        s.active.session.rows.map((e) => [e.key, rowStatus(s.active, e)]),
+      ),
+      Date.now(),
+    );
+    localStorage.setItem("oly_program_v7", JSON.stringify(s));
+  });
+  await page.reload();
+  if (
+    await page
+      .getByRole("button", { name: "Resume workout", exact: true })
+      .count()
+  )
+    await click("Resume workout");
+  assert(!(await read()).active.warmup);
+  await prep();
+  assert.equal((await stage()).key, "row");
+  await click("Start timed set");
+  await page.clock.fastForward(45000);
+  await click("Set finished · record result");
+  await page.locator('[data-form="set"] [name="weight"]').fill("100");
+  await page.locator('[data-form="set"] [name="reps"]').fill("10");
+  await page
+    .locator('[data-form="set"] [name="endpoint"]')
+    .selectOption("failure");
+  await click("Save set");
+  assert.equal((await stage()).role, "rest");
+  assert.equal((await stage()).seconds, 180);
+  assert.equal((await read()).active.sets.length, 1);
+  await context.setOffline(true);
+  await page.reload();
+  if (
+    await page
+      .getByRole("button", { name: "Resume workout", exact: true })
+      .count()
+  )
+    await click("Resume workout");
+  assert.equal((await stage()).seconds, 180);
+  assert(!(await read()).active.timeConfig.continuation);
+  await page.screenshot({
+    path: "test-results/whole-week-support-mobile.png",
+    fullPage: true,
+  });
+  await context.setOffline(false);
   assert.deepEqual(errors, []);
   console.log(
     "Dose browser: full regional targets, restart doses, forearm runner, muscle/exercise accounting, multi-set failure/rest, reload, offline, undo, mobile layout and storage passed.",

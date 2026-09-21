@@ -20,6 +20,7 @@ const median = (values) => {
 export function prescriptionSignature(session, config = {}) {
   return canonical({
     session: session.id,
+    ...(config.continuation ? { continuation: true } : {}),
     kind: session.kind,
     equipment: config.equipment || {},
     unilateralCable: config.timing?.unilateralCable !== false,
@@ -37,6 +38,7 @@ export function prescriptionSignature(session, config = {}) {
           "sequence",
           "rest",
           "afterRest",
+          "entryRecovery",
           "endpointPolicy",
           "validRepRange",
           "resetSeconds",
@@ -101,7 +103,7 @@ export function forecastSession(state, session, config = state.training) {
         .filter((o) => o.signature === signature)
         .slice(-5),
     );
-  const guideSeconds = fixedSession(session, config).seconds[0];
+  const guideSeconds = fixedSession(session, config, config).seconds[0];
   return {
     signature,
     guideSeconds,
@@ -132,7 +134,9 @@ export function forecastSession(state, session, config = state.training) {
 export function buildPlannerFeed(state, now = Date.now()) {
   const entries = [];
   for (const day of programDays(state.training).filter((d) =>
-    dayPlan(state.training, d).sessions.some((s) => s.id === "main"),
+    dayPlan(state.training, d).sessions.some((s) =>
+      ["main", "support"].includes(s.id),
+    ),
   )) {
     const active = state.active?.day === day ? state.active : null;
     const plan = planFor(
@@ -145,26 +149,32 @@ export function buildPlannerFeed(state, now = Date.now()) {
       .filter((s) => s.kind !== "mobility")
       .map((s) => (active?.session.id === s.id ? active.session : s));
     const dayTiming = fixedDay({ ...plan, sessions: included }, state.training);
-    const sessionForecasts = included.map((s) => ({
+    const sessionForecasts = included.map((s, index) => ({
       session: s,
       ...forecastSession(
         state,
         s,
         active?.session.id === s.id
           ? active.timeConfig || state.training
-          : state.training,
+          : {
+              ...state.training,
+              continuation:
+                included
+                  .slice(0, index)
+                  .some((p) => !p.skipped && p.rows.length) &&
+                (s.id === "support" ||
+                  ["cardio", "mobility"].includes(s.kind) ||
+                  (s.kind === "athletic" &&
+                    state.training.timing?.athleticsVisit === "same")),
+            },
       ),
       ...(s.skipped || !s.rows.length
         ? { forecastSeconds: 0, postChangeSeconds: 0 }
         : {}),
     }));
-    // Continuation overhead from fixedDay is counted once across optional modules.
-    const modelSum = sessionForecasts.reduce((n, f) => n + f.guideSeconds, 0);
-    const seconds = Math.max(
-      0,
-      sessionForecasts.reduce((n, f) => n + f.forecastSeconds, 0) -
-        Math.max(0, modelSum - dayTiming.seconds[0]),
-    );
+    // Each model includes only its own visit overhead; measured continuations
+    // already exclude it. Never subtract hypothetical arrival/breaks from logs.
+    const seconds = sessionForecasts.reduce((n, f) => n + f.forecastSeconds, 0);
     const records = state.records.filter(
       (r) => r.weekId === state.weekId && r.day === day,
     );
@@ -203,7 +213,7 @@ export function buildPlannerFeed(state, now = Date.now()) {
           : null,
       signature: canonical(sessionForecasts.map((f) => f.signature)),
       forecastSeconds: Math.round(seconds),
-      guideSeconds: dayTiming.seconds[0],
+      guideSeconds: sessionForecasts.reduce((n, f) => n + f.guideSeconds, 0),
       postChangeSeconds: sessionForecasts.at(-1)?.postChangeSeconds ?? 600,
       basis: sessionForecasts.every((f) => f.basis !== "model")
         ? sessionForecasts[0].basis

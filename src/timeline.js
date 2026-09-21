@@ -8,7 +8,7 @@ export const targetSeconds = (value) => {
   return Math.max(0, Math.round(n));
 };
 const pair = (n) => [n, n];
-function generalSteps(s) {
+function generalSteps(s, continuation = false) {
   if (s.kind === "athletic")
     return [
       ["Easy walk / jog · RPE 2–3", 270],
@@ -22,7 +22,7 @@ function generalSteps(s) {
       ]),
       ["Rest before jumps / runs", 90, 90],
     ];
-  if (s.kind !== "lifting") return [];
+  if (s.kind !== "lifting" || (s.id === "support" && continuation)) return [];
   if (s.id === "accessories") return [["Easy movement before visit 2", 240]];
   return [
     ["Easy cycle / brisk walk · RPE 2–3", 300],
@@ -172,6 +172,7 @@ export function fixedSession(session, config = {}, options = {}) {
   overhead("transition", "Transition to athletics");
   for (const [i, [label, seconds, minSeconds = 0]] of generalSteps(
     session,
+    options.continuation,
   ).entries()) {
     push(`general:${i}`, label, seconds, { role: "general", minSeconds });
     result.overhead.general[0] += seconds;
@@ -352,7 +353,8 @@ export function fixedDay(plan, config = {}) {
   for (const session of plan.sessions) {
     const continuation =
       hasVisit &&
-      (session.kind === "cardio" ||
+      (session.id === "support" ||
+        session.kind === "cardio" ||
         session.kind === "mobility" ||
         (session.kind === "athletic" && p.athleticsVisit === "same"));
     const t = fixedSession(session, config, { continuation });

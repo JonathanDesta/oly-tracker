@@ -1,6 +1,6 @@
 # Full source-to-app audit
 
-**Scope note:** This is the original PDF-profile audit. Current user-authorized endpoints and regional doses are documented in the [App 7.18 allocation](SET-DOSE-REVIEW.md) and [its release audit](SET-DOSE-AUDIT.md); original prescriptions remain separately regression-tested.
+**Scope note:** This is the original PDF-profile audit. Current user-authorized endpoints and regional doses are documented in the [App 7.19 whole-week allocation](SET-DOSE-REVIEW.md) and [its release audit](SET-DOSE-AUDIT.md); original prescriptions remain separately regression-tested.
 
 App 7.15 adds the user-approved [weekday schedule amendment](SCHEDULE-AMENDMENT.md). The source audit below describes the original profile; its unchanged lifting prescriptions remain tested. The new calendar is an explicit authorized departure from the PDF weekday order, with separate migration, timing, sequence, full-year execution and browser checks. No audit certifies physiological optimality.
 

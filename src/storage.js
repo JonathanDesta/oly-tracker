@@ -92,7 +92,7 @@ export function validate(data) {
   for (const field of ["doseVersion", "nextDoseVersion"])
     assert(
       t[field] === undefined ||
-        [DOSE_VERSION, "reviewed-v1"].includes(t[field]),
+        [DOSE_VERSION, "complete-v2", "reviewed-v1"].includes(t[field]),
       "dose version.",
     );
   assert(
@@ -232,7 +232,8 @@ export function validate(data) {
           "calf",
           "leg_ext",
           "crunch",
-        ].includes(x.exercise) && ["tuesday", "friday"].includes(x.day),
+        ].includes(x.exercise) &&
+          ["tuesday", "thursday", "friday"].includes(x.day),
         "added-set exercise/day.",
       );
     if (x.kind === "squat")
@@ -579,6 +580,10 @@ export function validate(data) {
       "calibration record flags.",
     );
     for (const e of r.session.rows) {
+      assert(
+        e.entryRecovery === undefined || finite(e.entryRecovery, 0, 300),
+        "remaining Olympic recovery.",
+      );
       if (e.kind === "mobility")
         assert(
           e.id === "mobility" &&

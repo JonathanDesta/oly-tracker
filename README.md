@@ -11,7 +11,7 @@ Open [localhost:8766](http://127.0.0.1:8766). Node 22+ is required for the local
 ## Training workflow
 
 1. Check today's readiness and actual sport/alcohol exposure.
-2. Start the next dated session: ordinarily Monday B, Tuesday C, Thursday A, Friday D. A late start rolls later dates; use **Move this day** for planned deferrals.
+2. Start the next dated session: ordinarily Monday, Wednesday and Friday under the current whole-week prescription. A late start rolls later dates; use **Move this day** for planned deferrals.
 3. Complete the general and exercise-specific preparations. Log actual Olympic attempts, or valid conventional reps and their honest endpoint. Misses count. TECH and safety stops do not count as successful failure sets.
 4. Save a next-session follow-up in History. Use the weekly review to repeat, advance, reduce, or restore the dose.
 5. Start optional work or a controlled trial only through a documented eligibility review in Settings. Read the adjacent source pages for the required observations.
@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.18 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.19 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -65,10 +65,14 @@ The amendment starts with reduced conventional volume and a new recovery observa
 
 This is a preference-constrained prescription, **not a demonstrated optimal or equivalent Olympic-training protocol**. Exact dose, resets, loads and taper adjustments are practical inferences. See [the specification and evidence review](docs/FAILURE-CONSTRAINT-REVIEW.md). `fresh()` retains the source policy for baseline fixtures; production journal creation in `loadStore` and migration explicitly select `all-failure`.
 
-## Complete regional allocation · App 7.18
+## Whole-week recommendation · App 7.19
 
-The allocation now explicitly reviews 34 muscle regions, including wrist flexors, wrist extensors, brachioradialis, calf regions and muscles receiving no isolation work. The complete normal-week target is **80 conventional sets and 15 Olympic sets**, with deliberate direct/indirect accounting and no invented Olympic hypertrophy conversion. Supported hammer curls, wrist curls and wrist extensions are prescribed, not merely mentioned as future possibilities. See the [full exercise table, regional decisions, evidence and limitations](docs/SET-DOSE-REVIEW.md).
+The selected routine now uses **Monday, Wednesday and Friday**, one visit each. Both competition lifts lead all three days: six snatch and six CJ working sets weekly at the established dose. This preserves three specific exposures per lift, removes default secondary Olympic failure variants, and gives loaded sessions intervening recovery days.
 
-Starting/restarting progresses through **34 → 42 → 62 → 80 conventional sets** and **9 → 9 → 11 → 15 Olympic sets**, after completed green weeks with normal follow-ups. Each day shows current exercise/muscle counts beside the established target. The app supports the new rows in logging, timing, progression, trials, reductions, storage and Planner sync. Old active workouts and saved records retain their prescriptions; 7.17 dose migration caps the new introduction at stage 3 and resets its observation window.
+**56 conventional sets are distributed 20/16/20**, with every exercise and all 34 muscle-region decisions specified, including forearms and deliberate zero-isolation choices. Priority upper chest, side delts and traps retain dedicated allocations. The [recommendation and alternatives](docs/SET-DOSE-REVIEW.md) explain the evidence, whole-week tradeoffs, regional counts, school-calendar fit and uncertainties.
 
-The full default B/D budgets are approximately **300 and 307 minutes** with all preparation, rests and moderate waiting included. These are material time costs, not evidence that five-hour visits are optimal or verified to fit every school-year date. The exact allocation is a reasoned, constrained prescription, not a demonstrated individual optimum or a claim of simultaneous maximal growth for every muscle. See the [release audit](docs/SET-DOSE-AUDIT.md).
+Restart totals are **31 → 41 → 46 → 56 conventional** and **6 → 6 → 9 → 12 Olympic sets**, advancing only after completed green weeks with normal subsequent-session checks. Existing started weeks retain their saved order until the weekly review; the new routine then begins at no higher than stage 2. Historical/active prescriptions remain intact and old trials pause for review. Empty weeks adopt immediately.
+
+Full Foundation targets with default timing are **225:26 Monday, 169:21 Wednesday and 221:04 Friday**, in minutes:seconds, before optional modules. Preparation, rests, station changes, moderate waiting and miscellaneous time are included. Enabled athletics runs after Olympic work and before assistance in the same visit. Planner receives the actual dated regimen and complete duration. See the [release audit](docs/SET-DOSE-AUDIT.md).
+
+This is the chosen best-current recommendation under the user's failure requirement and combined priorities. Its exact personal optimum and equivalence to unrestricted Olympic programming are not experimentally established.

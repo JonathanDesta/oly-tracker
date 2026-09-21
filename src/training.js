@@ -584,6 +584,9 @@ export function planFor(
     if (
       day === "friday" &&
       s.training.week !== 12 &&
+      weekRecords(s).some(
+        (r) => r.day === "tuesday" && r.session.id === "main",
+      ) &&
       !consumedBench(s, "bench_low")
     ) {
       const b = session.rows.find((e) => e.key === "bench_moderate");
@@ -751,15 +754,31 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
     if (id === "main") {
       const order = programDays(s.training);
       for (const d of order.slice(0, order.indexOf(day))) {
-        const prior = planFor(s, d).sessions.find((x) => x.id === "main");
+        const prior = planFor(s, d).sessions.filter((x) =>
+          ["main", "support"].includes(x.id),
+        );
         if (
-          prior &&
-          !weekRecords(s).some((r) => r.day === d && r.session.id === "main")
+          prior.some(
+            (x) =>
+              !weekRecords(s).some((r) => r.day === d && r.session.id === x.id),
+          )
         )
           throw Error(
             `Resolve ${slotLabel(s.training, d)} first; roll the sequence rather than compressing it.`,
           );
       }
+    }
+    if (id === "support") {
+      const before = planFor(s, day).sessions.filter(
+        (x) => x.id === "main" || x.kind === "athletic",
+      );
+      if (
+        before.some(
+          (x) =>
+            !weekRecords(s).some((r) => r.day === day && r.session.id === x.id),
+        )
+      )
+        throw Error("Resolve Olympic work and athletics before assistance.");
     }
     if (id === "accessories") {
       const first = weekRecords(s).find(
@@ -783,7 +802,11 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
           "This athletic module was already performed this week; relocation cannot duplicate it.",
         );
       const lifting = planFor(s, day).sessions.filter((x) =>
-        ["main", "accessories"].includes(x.id),
+        [
+          "main",
+          "accessories",
+          ...(se.kind === "athletic" ? [] : ["support"]),
+        ].includes(x.id),
       );
       if (
         lifting.some(
@@ -828,6 +851,35 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
     localDate(new Date(now)) > scheduledDate(s, day)
   )
     deferDay(s, day, localDate(new Date(now)));
+  const supportPrepared =
+    id === "support" &&
+    weekRecords(s).some(
+      (r) =>
+        r.day === day &&
+        r.date === localDate(new Date(now)) &&
+        r.warmup &&
+        r.sets.length &&
+        r.endedAt <= now &&
+        now - r.endedAt <= 15 * 60000,
+    );
+  if (id === "support" && se.rows.length) {
+    const lastOlympic = Math.max(
+      0,
+      ...weekRecords(s)
+        .filter((r) => r.day === day)
+        .flatMap((r) =>
+          r.sets
+            .filter((log) =>
+              r.session.rows.some(
+                (e) => e.key === log.key && olympicFailure(e),
+              ),
+            )
+            .map((log) => log.at),
+        ),
+    );
+    const remaining = Math.ceil((lastOlympic + 300000 - now) / 1000);
+    if (remaining > 0) se.rows[0].entryRecovery = remaining;
+  }
   s.active = {
     id: uid(),
     weekId: s.weekId,
@@ -856,7 +908,8 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
       increment: s.training.increment,
       continuation:
         !!p.sessions.slice(0, p.sessions.indexOf(se)).some((x) => !x.skipped) &&
-        (se.kind === "cardio" ||
+        ((se.id === "support" && supportPrepared) ||
+          se.kind === "cardio" ||
           (se.kind === "athletic" &&
             s.training.timing?.athleticsVisit === "same")),
     },
@@ -865,7 +918,7 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
     omissions: [],
     preparations: [],
     notes: "",
-    warmup: ["mobility", "cardio"].includes(se.kind),
+    warmup: supportPrepared || ["mobility", "cardio"].includes(se.kind),
   };
   createPacing(s.active, now);
   s.restEnd = 0;
@@ -1410,6 +1463,7 @@ function nextExposure(s) {
   s.weekId = uid();
   s.athleticDay = null;
   if (s.training.nextSchedule) setSchedule(s.training, s.training.nextSchedule);
+  migrateFailurePolicy(s);
 }
 export function advanceWeek(s, review, now = Date.now()) {
   if (s.active)
@@ -1426,7 +1480,7 @@ export function advanceWeek(s, review, now = Date.now()) {
   ) {
     for (const day of programDays(t))
       for (const se of dayPlan(t, day).sessions.filter((x) =>
-        ["main", "accessories"].includes(x.id),
+        ["main", "accessories", "support"].includes(x.id),
       ))
         if (
           !weekRecords(s).some((r) => r.day === day && r.session.id === se.id)
@@ -1453,7 +1507,9 @@ export function advanceWeek(s, review, now = Date.now()) {
     ]);
     const complete = programDays(t).every((day) =>
       dayPlan(t, day)
-        .sessions.filter((se) => ["main", "accessories"].includes(se.id))
+        .sessions.filter((se) =>
+          ["main", "accessories", "support"].includes(se.id),
+        )
         .every((se) =>
           weekRecords(s).some(
             (r) =>
@@ -1532,7 +1588,9 @@ export function advanceWeek(s, review, now = Date.now()) {
       ![11, 12, 13].includes(t.week) &&
       programDays(t).every((day) =>
         dayPlan(t, day)
-          .sessions.filter((se) => ["main", "accessories"].includes(se.id))
+          .sessions.filter((se) =>
+            ["main", "accessories", "support"].includes(se.id),
+          )
           .every((se) =>
             weekRecords(s).some(
               (r) =>

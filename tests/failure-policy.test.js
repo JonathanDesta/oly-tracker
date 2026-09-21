@@ -148,10 +148,7 @@ test("all 52 weeks and readiness/event/regression configurations retain only fai
         dayPlan(s.training, day).sessions.flatMap((se) => se.rows),
       );
       const olympic = rows.filter((e) => e.kind === "quality");
-      assert.equal(
-        olympic.length,
-        week === 13 ? 0 : week === 12 ? 4 : week >= 9 ? 8 : 9,
-      );
+      assert.equal(olympic.length, week === 13 ? 0 : week === 12 ? 4 : 6);
       for (const ctx of contexts)
         for (const recovery of ["normal", "targeted", "reset", "restore"])
           for (const day of DAYS) {
@@ -402,7 +399,7 @@ test("52-week runner completes the amended taper/pivot, all failure endpoints an
     if (yearWeek === 4) assert.equal(s.training.failureEntry, 4);
     if (yearWeek === 6) assert.equal(failureTrialPending(s.training), false);
   }
-  assert.equal(sessions, 196);
+  assert.equal(sessions, 156);
   assert(s.completed);
   assert(!monitoring(s).some((flag) => flag.includes("below 90%")));
 });
