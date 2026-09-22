@@ -144,7 +144,7 @@ try {
     .waitFor();
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.19/);
+  assert.match(await page.locator("main").innerText(), /App 7\.20/);
   assert.equal(
     await page.locator('[data-form="schedule"] [name="schedule"]').inputValue(),
     "weekday",

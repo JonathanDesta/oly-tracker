@@ -980,7 +980,7 @@ export function dayPlan(config, day, ctx = {}) {
     if (c.week === 13 || c.entry === 1) conv.forEach((e) => (e.sets = 1));
     p.notes = [];
     p.notes.push(
-      "September 21 amendment: ALL retained loaded work sets end at failure. Olympic work: each prescribed set ends at its first miss or invalid rep; 15-second resets and at least 5 minutes recovery between sets and before the next loaded exercise. Warm-ups, athletics and recovery activities are outside this constraint.",
+      "September 21 amendment: ALL retained loaded work sets end at failure. Olympic work: each prescribed set ends at its first miss or invalid rep; 40-second rests between reps and 5 minutes recommended recovery between sets and before the next loaded exercise. Warm-ups, athletics and recovery activities are outside this constraint.",
     );
     if (c.doseVersion === DOSE_VERSION && c.week !== 12)
       p.notes.push(
@@ -1510,7 +1510,7 @@ export function loadRange(e, anchors, slot = 0, increment = 5) {
 }
 export function describe(e) {
   if (olympicFailure(e))
-    return `${e.sets} ${e.sets === 1 ? "set" : "sets"} · first miss/invalid rep · ${e.validRepRange.join("–")} valid ${e.id === "cj" ? "CJ pairs" : "reps"} guides load · 15 s resets`;
+    return `${e.sets} ${e.sets === 1 ? "set" : "sets"} · first miss/invalid rep · ${e.validRepRange.join("–")} valid ${e.id === "cj" ? "CJ pairs" : "reps"} guides load · ${e.resetSeconds} s between reps`;
   if (e.kind === "mobility")
     return `2 × ${e.holdSeconds} s/side · 15 s rests · 5 active reps`;
   if (e.minutes) return `${e.minutes} min · RPE 3–4`;

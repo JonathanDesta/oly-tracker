@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.19 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.20 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -73,6 +73,14 @@ The selected routine now uses **Monday, Wednesday and Friday**, one visit each. 
 
 Restart totals are **31 → 41 → 46 → 56 conventional** and **6 → 6 → 9 → 12 Olympic sets**, advancing only after completed green weeks with normal subsequent-session checks. Existing started weeks retain their saved order until the weekly review; the new routine then begins at no higher than stage 2. Historical/active prescriptions remain intact and old trials pause for review. Empty weeks adopt immediately.
 
-Full Foundation targets with default timing are **225:26 Monday, 169:21 Wednesday and 221:04 Friday**, in minutes:seconds, before optional modules. Preparation, rests, station changes, moderate waiting and miscellaneous time are included. Enabled athletics runs after Olympic work and before assistance in the same visit. Planner receives the actual dated regimen and complete duration. See the [release audit](docs/SET-DOSE-AUDIT.md).
+Full Foundation targets with default timing are **219:20 Monday, 163:06 Wednesday and 214:49 Friday**, in minutes:seconds, before optional modules. Preparation, rests, station changes, moderate waiting and miscellaneous time are included. Enabled athletics runs after Olympic work and before assistance in the same visit. Planner receives the actual dated regimen and complete duration. See the [release audit](docs/SET-DOSE-AUDIT.md).
 
 This is the chosen best-current recommendation under the user's failure requirement and combined priorities. Its exact personal optimum and equivalence to unrestricted Olympic programming are not experimentally established.
+
+## Session usability · App 7.20
+
+Olympic working weights are now self-selected. Enter a weight before the exercise and the app calculates brief warm-up steps from it. Previous weights/results are references, not mandatory percentages. The miss/form-failure requirement and prescribed set counts remain. New sessions recommend 40 seconds between Olympic reps; that is a practical fatigue-management choice, not a validated test of isolated power failure.
+
+The runner offers whole-set rep entry, a separate breathing/burning stop, saved rep-count corrections with the original entry retained, one-tap early rest endings, and a whole-workout list of reps/weights/rest. After Olympic work, an available strength or assistance exercise can move next without dropping the displaced exercise. Wrist work stays after grip-dependent work. The general warm-up runs once; the second Olympic lift receives a shorter, lift-specific preparation. Active sessions retain their saved prescription.
+
+See [the session usability review](docs/SESSION-USABILITY-REVIEW.md) for the rationale and verification scope.

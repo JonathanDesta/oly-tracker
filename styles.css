@@ -1285,3 +1285,31 @@ dialog::backdrop {
   font-weight: bold;
   padding-bottom: 0.6rem;
 }
+
+.workout-list-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line, #d8d8d8);
+}
+.workout-list-row p {
+  margin: 0.35rem 0;
+}
+.workout-list-row .button {
+  flex-shrink: 0;
+}
+.working-load-form,
+.whole-set-entry {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--line, #d8d8d8);
+  border-radius: 0.5rem;
+}
+@media (max-width: 480px) {
+  .workout-list-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

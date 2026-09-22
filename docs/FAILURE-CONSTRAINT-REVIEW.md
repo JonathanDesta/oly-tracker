@@ -1,5 +1,7 @@
 # Loaded-working-set failure amendment
 
+**Historical specification:** the loading, between-rep rests and warm-up flow below are superseded by [App 7.20](SESSION-USABILITY-REVIEW.md). The miss/form-failure requirement remains.
+
 **Historical 7.16 record.** Its one-set Olympic allocation and three-stage introduction are superseded by [the 7.17 set-dose review](SET-DOSE-REVIEW.md). Other endpoint/scheduling constraints continue unless explicitly amended there.
 
 User clarification, September 21, 2026: **loaded working sets only; Olympic endpoint is either a missed attempt or a technically invalid rep.** This later request supersedes contradictory Olympic endpoint, workload and test instructions in the original PDF. The PDF itself remains unchanged. App 7.16 implements the amendment separately from source prescriptions and historic records.

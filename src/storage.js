@@ -551,6 +551,22 @@ export function validate(data) {
         "partial mobility trace.",
       );
     assert(keys.size === r.session.rows.length, "duplicate exercise keys.");
+    if (r.restOverrides !== undefined)
+      assert(
+        Array.isArray(r.restOverrides) &&
+          r.restOverrides.every(
+            (o) =>
+              object(o) &&
+              keys.has(o.key) &&
+              (o.afterAttempt === null ||
+                (Number.isInteger(o.afterAttempt) &&
+                  finite(o.afterAttempt, 0, 10000))) &&
+              finite(o.at, r.startedAt, r.endedAt || 1e15) &&
+              finite(o.recommendedSeconds, 0, 7200) &&
+              finite(o.actualSeconds, 0, 1e15),
+          ),
+        "recorded early rest endings.",
+      );
     assert(
       r.sets.every(
         (e) =>
@@ -608,7 +624,8 @@ export function validate(data) {
             ) &&
             e.validRepRange[0] <= e.validRepRange[1] &&
             e.reps === e.validRepRange[1] + 1 &&
-            e.resetSeconds === 15 &&
+            e.resetSeconds ===
+              (e.endpointPolicy === FAILURE_POLICY ? 40 : 15) &&
             e.recoveryAfter === 300 &&
             e.rest === 300 &&
             e.effort === 10 &&
@@ -628,7 +645,14 @@ export function validate(data) {
                 x.setNumber === status.completedSets + 1) &&
               (!i ||
                 !failureReached([logs[i - 1]]) ||
-                x.at - logs[i - 1].at >= e.rest * 1000)
+                x.at - logs[i - 1].at >= e.rest * 1000 ||
+                (r.restOverrides || []).some(
+                  (o) =>
+                    o.key === e.key &&
+                    o.afterAttempt === i - 1 &&
+                    o.at >= logs[i - 1].at &&
+                    o.at <= x.at,
+                ))
             );
           }),
           "fixed-load Olympic sets must end at the first invalid rep, recover fully, and stop at the prescribed count/safety endpoint.",
@@ -708,8 +732,13 @@ export function validate(data) {
       if (row.kind === "quality")
         assert(
           ["make", "miss", "clean_miss", "jerk_miss"].includes(log.outcome) &&
-            ["A", "B", "C"].includes(log.grade) &&
-            finite(log.effort, 1, 10),
+            ((["A", "B", "C"].includes(log.grade) &&
+              finite(log.effort, 1, 10)) ||
+              (olympicFailure(row) &&
+                log.reportedAsSet === true &&
+                typeof log.reportGroup === "string" &&
+                ["valid", "unrated", "C"].includes(log.grade) &&
+                log.effort === null)),
           "Olympic outcome.",
         );
       if (row.kind === "speed")

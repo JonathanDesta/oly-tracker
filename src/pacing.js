@@ -257,9 +257,26 @@ export function completePaceStage(w, now = Date.now(), skip = false) {
     );
   if (
     skip &&
-    !["ramp", "ramp-rest", "break-pool", "waiting"].includes(stage.role)
+    ![
+      "ramp",
+      "ramp-rest",
+      "rest",
+      "recovery",
+      "break-pool",
+      "waiting",
+    ].includes(stage.role)
   )
     throw Error("This step cannot be skipped.");
+  if (skip && ["rest", "recovery"].includes(stage.role)) {
+    w.restOverrides ||= [];
+    w.restOverrides.push({
+      key: stage.key,
+      afterAttempt: stage.afterAttempt ?? null,
+      at: now,
+      recommendedSeconds: paceMinimum(w, stage),
+      actualSeconds: paceElapsed(w.pacing.timer, now),
+    });
+  }
   record(w, skip ? "not-needed" : "confirmed", now);
 }
 export function takePaceBreak(w, seconds = 120, now = Date.now()) {

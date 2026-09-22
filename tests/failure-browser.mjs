@@ -26,15 +26,23 @@ const currentStage = async () => {
 };
 async function preparation() {
   for (let guard = 0; guard < 100; guard++) {
+    const loadForm = page.locator('[data-form="olympic-load"]');
+    if (
+      (await loadForm.count()) &&
+      !(await loadForm.locator('[name="weight"]').inputValue())
+    ) {
+      await loadForm.locator('[name="weight"]').fill("100");
+      await click("Use this weight");
+    }
     const stage = await currentStage();
     if (stage.role === "work") return;
     await page.clock.fastForward(Math.max(1, stage.seconds) * 1000);
     await click(
       stage.role === "general-check"
-        ? "Confirm general preparation"
+        ? "Warm-up complete"
         : stage.role === "prepare-check"
-          ? "Confirm exercise preparation"
-          : "Continue timer",
+          ? "Ready for this exercise"
+          : "Done · next step",
     );
   }
   throw Error("Did not reach work");
@@ -149,7 +157,7 @@ try {
         T.logSet(
           s,
           {
-            weight: T.nextQualityRange(s.active, e)[0],
+            weight: T.nextQualityRange(s.active, e)?.[0] || 100,
             outcome: T.rowStatus(s.active, e).count ? "miss" : "make",
             grade: "A",
             effort: 8,

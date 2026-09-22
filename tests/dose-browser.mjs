@@ -25,15 +25,23 @@ const stage = async () => {
 };
 async function prep() {
   for (let i = 0; i < 100; i++) {
+    const loadForm = page.locator('[data-form="olympic-load"]');
+    if (
+      (await loadForm.count()) &&
+      !(await loadForm.locator('[name="weight"]').inputValue())
+    ) {
+      await loadForm.locator('[name="weight"]').fill("100");
+      await click("Use this weight");
+    }
     const s = await stage();
     if (s.role === "work") return;
     await page.clock.fastForward(Math.max(1, s.seconds) * 1000);
     await click(
       s.role === "general-check"
-        ? "Confirm general preparation"
+        ? "Warm-up complete"
         : s.role === "prepare-check"
-          ? "Confirm exercise preparation"
-          : "Continue timer",
+          ? "Ready for this exercise"
+          : "Done · next step",
     );
   }
   throw Error("Work stage was not reached");

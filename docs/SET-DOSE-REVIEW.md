@@ -1,8 +1,10 @@
-# Whole-week recommendation · App 7.19 · September 21, 2026
+# Whole-week recommendation · App 7.20 · September 21, 2026
 
 **Selected routine: Monday, Wednesday and Friday, one visit per day. Both competition lifts start each visit. The established normal-week allocation is 12 Olympic and 56 conventional working sets.** This is the strongest current recommendation I can justify for the combined goals and constraints, replacing the separate muscle-by-muscle accumulation in 7.18.
 
 This decision is an evidence-informed prescription, not an experimentally identified personal optimum. The evidence supports the components and the reasoning below; it cannot prove equal or superior outcomes for this exact athlete. That uncertainty is a reason to use a coherent starting prescription and defined response checks, not to leave the allocation unfinished.
+
+The [7.20 session amendment](SESSION-USABILITY-REVIEW.md) replaces percentage-based Olympic starting estimates with self-selected weights, uses shorter warm-ups and recommends 40 seconds between reps. The set allocation below is unchanged.
 
 ## Requirements and priority order
 
@@ -83,10 +85,10 @@ The tables below are generated from the implemented normal Foundation prescripti
 
 | Restart stage |       Monday |    Wednesday |       Friday |
 | ------------- | -----------: | -----------: | -----------: |
-| 1             | 169 min 38 s | 124 min 15 s | 169 min 17 s |
-| 2             | 188 min 53 s | 131 min 43 s | 187 min 45 s |
-| 3             |  203 min 2 s | 145 min 40 s | 198 min 40 s |
-| 4             | 225 min 26 s | 169 min 21 s |  221 min 4 s |
+| 1             | 160 min 12 s | 114 min 40 s | 159 min 42 s |
+| 2             | 179 min 27 s |  122 min 8 s | 178 min 10 s |
+| 3             | 195 min 16 s | 137 min 45 s | 190 min 45 s |
+| 4             | 219 min 20 s |  163 min 6 s | 214 min 49 s |
 
 ## Regional workload and explicit decisions
 

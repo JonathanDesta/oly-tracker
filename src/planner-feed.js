@@ -40,6 +40,8 @@ export function prescriptionSignature(session, config = {}) {
           "afterRest",
           "entryRecovery",
           "endpointPolicy",
+          "warmupVersion",
+          "selfSelectedLoad",
           "validRepRange",
           "resetSeconds",
           "recoveryAfter",

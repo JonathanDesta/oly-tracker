@@ -180,7 +180,11 @@ export function nextQualityRange(w, e) {
   if (olympicFailure(e))
     return logs.length
       ? [logs[0].weight, logs[0].weight]
-      : loadRange(e, w.anchors, 0, w.increment);
+      : e.selfSelectedLoad
+        ? e.workingLoad
+          ? [e.workingLoad, e.workingLoad]
+          : null
+        : loadRange(e, w.anchors, 0, w.increment);
   if (e.assessment && last) {
     const increase = e.id === "clean" ? 10 : last.effort <= 6 ? 20 : 10;
     return [last.weight, last.weight + increase];
@@ -284,11 +288,86 @@ export function rowStatus(w, e) {
 export function nextRow(w) {
   return w.session.rows.find((e) => !rowStatus(w, e).done);
 }
+export function moveExerciseNext(s, key, now = Date.now()) {
+  const w = s.active,
+    current = w && nextRow(w),
+    target = w?.session.rows.find((e) => e.key === key);
+  if (!current || !target || rowStatus(w, target).done)
+    throw Error("Choose an unfinished exercise.");
+  if (!w.warmup) throw Error("Finish the general warm-up first.");
+  if (current.key === key) return;
+  if (rowStatus(w, current).logs.length)
+    throw Error(
+      "Finish this exercise's remaining sets, or record why you stopped it, before moving another exercise next.",
+    );
+  if (
+    w.pacing?.breakRun ||
+    (w.pacing?.timer &&
+      ["work", "work-part"].includes(
+        w.pacing.plan.find((p) => p.id === w.pacing.currentId)?.role,
+      ))
+  )
+    throw Error("Finish and log your current set before switching exercises.");
+  if (
+    target.kind !== "failure" ||
+    w.session.rows.some((e) => e.kind === "quality" && !rowStatus(w, e).done)
+  )
+    throw Error(
+      "Finish the Olympic lifts first. You can then move an available strength or assistance exercise next.",
+    );
+  if (
+    ["wrist_curl", "wrist_extension"].includes(target.id) &&
+    w.session.rows.some(
+      (e) =>
+        [
+          "row",
+          "pulldown",
+          "shrug",
+          "curl",
+          "hammer_curl",
+          "front_squat",
+          "back_squat",
+        ].includes(e.id) && !rowStatus(w, e).done,
+    )
+  )
+    throw Error(
+      "Keep wrist work after your remaining squats, pulls and curls so it does not tire your grip first.",
+    );
+  interruptPreparation(s, now);
+  const from = w.session.rows.indexOf(target),
+    to = w.session.rows.indexOf(current);
+  w.session.rows.splice(from, 1);
+  w.session.rows.splice(to, 0, target);
+  w.orderChanges ||= [];
+  w.orderChanges.push({ key, before: current.key, at: now });
+  if (w.pacing) {
+    w.pacing.currentId = null;
+    w.pacing.timer = null;
+    w.pacing.workEndedAt = null;
+  }
+}
+export function chooseOlympicLoad(s, key, weight) {
+  const w = s.active,
+    e = w?.session.rows.find((e) => e.key === key);
+  if (!e || !olympicFailure(e) || !e.selfSelectedLoad)
+    throw Error("This saved workout uses its original loading rules.");
+  if (!(Number.isFinite(weight) && weight > 0 && weight <= 2000))
+    throw Error("Enter the working weight you intend to use.");
+  if (rowStatus(w, e).logs.length)
+    throw Error("Keep the same weight once the work sets have started.");
+  e.workingLoad = weight;
+  // A new load needs a fresh check. Keep already-performed light preparation.
+  if (w.preparations.includes(key))
+    w.preparations = w.preparations.filter((k) => k !== key);
+}
 export function exposureHistory(state, e) {
   return state.records
     .flatMap((r) => {
       const comparableDay =
-        e.kind !== "quality" || !e.comparisonDay || r.day === e.comparisonDay;
+        e.kind !== "quality" ||
+        olympicFailure(e) ||
+        !e.comparisonDay ||
+        r.day === e.comparisonDay;
       const comparableVisit =
         !e.comparisonVisit ||
         (r.session.id === "accessories" ? "second" : "first") ===
@@ -635,12 +714,38 @@ export function planFor(
           s.training.recovery !== "normal" ||
           !!context.local ||
           ["verification", "larger_later"].includes(context.event);
+        e.calibrationAllowed =
+          !e.benchmark &&
+          !e.checkpoint &&
+          ![9, 10, 11, 12, 13].includes(s.training.week) &&
+          s.training.recovery === "normal" &&
+          !context.local &&
+          !["verification", "larger_later"].includes(context.event);
         const suggestion = failureProgression(
           e,
           exposureHistory(s, e),
           s.training.increment,
         );
-        if (suggestion.weight) e.workingLoad = suggestion.weight;
+        if (!exposureHistory(s, e).length) {
+          const previous = s.records
+            .slice()
+            .reverse()
+            .flatMap((r) =>
+              r.session.rows
+                .filter((row) => row.id === e.id && olympicFailure(row))
+                .map((row) => ({
+                  row,
+                  logs: r.sets.filter((x) => x.key === row.key),
+                })),
+            )
+            .find((h) => h.logs.length);
+          if (previous)
+            suggestion.text += ` Previously used: ${previous.logs[0].weight} lb, with ${validReps(failureSets(previous.logs)[0] || [])} good reps logged in the first set. The rest protocol has changed, so this is a reference, not a comparable progression test.`;
+        }
+        if (suggestion.weight) {
+          e.workingLoad = suggestion.weight;
+          e.loadIsEstimate = false;
+        }
         e.progressionNote = suggestion.text;
         continue;
       }
@@ -1052,6 +1157,146 @@ export function completeMobilityStep(s, now = Date.now()) {
     run.stepStartedAt = now;
   }
 }
+// A whole-set report stores the user's stated reps, without invented per-rep
+// effort ratings or individual timestamps. Each entry shares a report group.
+export function olympicSetReport(e, data, now, already = 0) {
+  if (!olympicFailure(e)) throw Error("Choose an Olympic work set.");
+  if (!Number.isInteger(data.reps) || data.reps < already || data.reps > 100)
+    throw Error(
+      `Enter the total good reps in this set, at least ${already} already logged.`,
+    );
+  if (
+    ![
+      "miss",
+      "clean_miss",
+      "jerk_miss",
+      "form",
+      "fatigue",
+      "pain",
+      "stop",
+    ].includes(data.finish)
+  )
+    throw Error("Choose what ended the set.");
+  if (!(data.weight > 0 && data.weight <= 2000))
+    throw Error("Enter the weight used.");
+  const group = uid(),
+    base = {
+      weight: data.weight,
+      effort: null,
+      reportedAsSet: true,
+      reportGroup: group,
+    };
+  const good = Array.from({ length: data.reps - already }, () => ({
+    ...base,
+    outcome: "make",
+    grade: "valid",
+  }));
+  const interrupted = ["fatigue", "pain", "stop"].includes(data.finish);
+  return [
+    ...good,
+    {
+      ...base,
+      outcome: data.finish === "form" || interrupted ? "make" : data.finish,
+      grade: data.finish === "form" ? "C" : "unrated",
+      fault:
+        data.finish === "form"
+          ? data.fault?.trim() || "Form changed before the next good rep"
+          : data.fault || "",
+      ...(interrupted ? { endpoint: data.finish } : {}),
+      reportReps: data.reps,
+    },
+  ];
+}
+export function logOlympicSet(s, data, now = Date.now()) {
+  const next = copy(s),
+    e = next.active && nextRow(next.active);
+  if (!e || !olympicFailure(e)) throw Error("No Olympic set is ready to log.");
+  const reports = olympicSetReport(
+    e,
+    data,
+    now,
+    rowStatus(next.active, e).currentValidReps,
+  );
+  let last;
+  for (const report of reports) last = logSet(next, report, now);
+  Object.assign(s.active, next.active);
+  s.restEnd = next.restEnd;
+  return last;
+}
+export function correctOlympicSet(
+  s,
+  recordId,
+  key,
+  setNumber,
+  data,
+  now = Date.now(),
+) {
+  if (s.active)
+    throw Error("Finish the active workout before correcting an older log.");
+  const r = s.records.find((r) => r.id === recordId),
+    e = r?.session.rows.find((e) => e.key === key);
+  if (!e || !olympicFailure(e)) throw Error("Choose a saved Olympic exercise.");
+  const groups = failureSets(r.sets.filter((x) => x.key === key));
+  if (
+    !Number.isInteger(setNumber) ||
+    setNumber < 1 ||
+    setNumber > groups.length
+  )
+    throw Error("Choose a set that was already logged.");
+  const old = groups[setNumber - 1],
+    at = old.at(-1).at;
+  if (groups.length > 1 && data.weight !== old[0].weight)
+    throw Error(
+      "Correct the rep count at the saved weight; a multi-set exercise keeps one working weight.",
+    );
+  const reports = olympicSetReport(e, data, at).map((x) => ({
+    ...x,
+    id: uid(),
+    key,
+    exerciseId: e.id,
+    at,
+    reps: e.id === "cj" ? "1+1" : 1,
+    setNumber,
+    failurePolicy: e.endpointPolicy,
+    validRep: x.outcome === "make" && x.grade !== "C" && !x.endpoint,
+    terminal: (x.outcome !== "make" || x.grade === "C") && !x.endpoint,
+    overCap: old.some((x) => x.overCap),
+  }));
+  const revised = groups
+    .map((g, i) => (i === setNumber - 1 ? reports : g))
+    .flat();
+  for (let i = 1; i < revised.length; i++)
+    if (failureSetStatus(e, revised.slice(0, i)).done)
+      throw Error(
+        "This ending would stop the exercise before later saved reps. Correct the later entries first.",
+      );
+  r.corrections ||= [];
+  r.corrections.push({
+    at: now,
+    key,
+    setNumber,
+    previous: copy(old),
+    previousOmissions: copy(r.omissions.filter((o) => o.key === key)),
+    note: "User corrected the completed-set report",
+  });
+  const ids = new Set(old.map((x) => x.id)),
+    index = r.sets.findIndex((x) => ids.has(x.id));
+  r.sets = r.sets.filter((x) => !ids.has(x.id));
+  r.sets.splice(index, 0, ...reports);
+  const oldEnd =
+    groups.slice(0, setNumber).reduce((n, g) => n + g.length, 0) - 1;
+  for (const override of r.restOverrides || [])
+    if (
+      override.key === key &&
+      override.afterAttempt !== null &&
+      override.afterAttempt >= oldEnd
+    )
+      override.afterAttempt += reports.length - old.length;
+  if (failureSetStatus(e, revised).endpointReached)
+    r.omissions = r.omissions.filter((o) => o.key !== key);
+  r.status = sessionCompletionStatus(r);
+  r.updatedAt = now;
+}
 export function logSet(s, data, now = Date.now()) {
   const w = s.active,
     e = w && nextRow(w);
@@ -1110,8 +1355,15 @@ export function logSet(s, data, now = Date.now()) {
   if (e.kind === "quality") {
     if (
       !["make", "miss", "clean_miss", "jerk_miss"].includes(r.outcome) ||
-      !["A", "B", "C"].includes(r.grade) ||
-      !(r.effort >= 1 && r.effort <= 10)
+      (!(
+        r.reportedAsSet &&
+        olympicFailure(e) &&
+        typeof r.reportGroup === "string" &&
+        ["valid", "unrated", "C"].includes(r.grade) &&
+        r.effort === null
+      ) &&
+        (!["A", "B", "C"].includes(r.grade) ||
+          !(r.effort >= 1 && r.effort <= 10)))
     )
       throw Error("Record outcome, quality grade and technical effort.");
     r.reps = e.id === "cj" ? "1+1" : 1;
@@ -1139,14 +1391,21 @@ export function logSet(s, data, now = Date.now()) {
       if (
         progress.completedSets &&
         !progress.current.length &&
-        now - logs.at(-1).at < e.rest * 1000
+        now - logs.at(-1).at < e.rest * 1000 &&
+        !(w.restOverrides || []).some(
+          (r) =>
+            r.key === e.key &&
+            r.afterAttempt === logs.length - 1 &&
+            r.at >= logs.at(-1).at,
+        )
       )
         throw Error(
           "Recover at least 5 minutes before beginning the next Olympic set.",
         );
       r.failurePolicy = e.endpointPolicy;
-      r.validRep = r.outcome === "make" && r.grade !== "C";
-      r.terminal = !r.validRep && !["pain", "stop"].includes(r.endpoint);
+      r.validRep = r.outcome === "make" && r.grade !== "C" && !r.endpoint;
+      r.terminal =
+        !r.validRep && !["pain", "stop", "fatigue"].includes(r.endpoint);
       if (logs.length && r.weight !== logs[0].weight)
         throw Error(
           "Keep the same load within this failure set. End or omit it if a change is needed; no drop sets or retry.",
@@ -1155,7 +1414,15 @@ export function logSet(s, data, now = Date.now()) {
     const reductionCap = qualityStatus(e, logs).cap;
     r.overCap =
       r.effort > effortCap ||
-      !!(range && r.weight > range[1] + 0.001) ||
+      !!(
+        range &&
+        !(
+          olympicFailure(e) &&
+          (e.selfSelectedLoad || e.loadIsEstimate) &&
+          !logs.length
+        ) &&
+        r.weight > range[1] + 0.001
+      ) ||
       !!(reductionCap && r.weight > reductionCap + 0.001);
     // Preserve an honest log, then end unsafe/unprescribed escalation.
     if (r.overCap)
@@ -1243,18 +1510,8 @@ export function logSet(s, data, now = Date.now()) {
         });
   return r;
 }
-export function finishSession(s, notes = "", now = Date.now()) {
-  const w = s.active;
-  if (!w) throw Error("No active session.");
-  if (nextRow(w))
-    throw Error(
-      "Resolve remaining rows, or end early with an omission reason.",
-    );
-  closePacing(w, now);
-  w.notes = notes;
-  w.endedAt = now;
-  w.status =
-    w.omissions.length ||
+function sessionCompletionStatus(w) {
+  return w.omissions.length ||
     w.session.rows.some((e) => {
       const status = rowStatus(w, e);
       return (
@@ -1270,8 +1527,20 @@ export function finishSession(s, notes = "", now = Date.now()) {
         )
       );
     })
-      ? "partial"
-      : "complete";
+    ? "partial"
+    : "complete";
+}
+export function finishSession(s, notes = "", now = Date.now()) {
+  const w = s.active;
+  if (!w) throw Error("No active session.");
+  if (nextRow(w))
+    throw Error(
+      "Resolve remaining rows, or end early with an omission reason.",
+    );
+  closePacing(w, now);
+  w.notes = notes;
+  w.endedAt = now;
+  w.status = sessionCompletionStatus(w);
   s.records.push(w);
   for (const e of w.session.rows.filter(
     (e) => e.kind === "quality" && !e.regression,
@@ -1281,6 +1550,7 @@ export function finishSession(s, notes = "", now = Date.now()) {
         r.key === e.key &&
         r.outcome === "make" &&
         r.grade !== "C" &&
+        !["fatigue", "pain", "stop"].includes(r.endpoint) &&
         !r.overCap &&
         !r.preparation &&
         ((olympicFailure(e) &&
@@ -1708,7 +1978,9 @@ export function reassessActive(s, now = Date.now()) {
         updated.repSequence = updated.repSequence.slice(0, updated.sets);
       if (updated.sequence)
         updated.sequence = updated.sequence.slice(0, updated.sets);
+      const chosenWeight = e.selfSelectedLoad && e.workingLoad;
       Object.assign(e, updated);
+      if (chosenWeight) e.workingLoad = chosenWeight;
     }
   }
 }
@@ -1839,7 +2111,13 @@ export function monitoringTotals(s) {
         : x.exerciseId === "cj"
           ? "cj"
           : null;
-      if (id && r.anchors?.[id] && x.weight > r.anchors[id] * 0.9) heavy[id]++;
+      if (
+        id &&
+        r.anchors?.[id] &&
+        x.weight > r.anchors[id] * 0.9 &&
+        !(x.reportedAsSet && ["fatigue", "pain", "stop"].includes(x.endpoint))
+      )
+        heavy[id]++;
     }
     const measured = r.sets.find(
       (x) =>

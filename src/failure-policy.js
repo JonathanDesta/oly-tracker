@@ -2,18 +2,22 @@
 // not a protocol demonstrated superior (or equivalent) in intervention trials.
 import { DOSE_VERSION, DOSE_STAGES, olympicDose } from "./dose.js";
 export const LEGACY_FAILURE_POLICY = "first-invalid-v1";
-export const FAILURE_POLICY = "first-invalid-v2";
+export const PREVIOUS_FAILURE_POLICY = "first-invalid-v2";
+export const FAILURE_POLICY = "first-invalid-v3";
 export const allLoadedFailure = (c) => c?.workSetPolicy === "all-failure";
 export const olympicFailure = (e) =>
-  [FAILURE_POLICY, LEGACY_FAILURE_POLICY].includes(e?.endpointPolicy);
+  [FAILURE_POLICY, PREVIOUS_FAILURE_POLICY, LEGACY_FAILURE_POLICY].includes(
+    e?.endpointPolicy,
+  );
 export const invalidAttempt = (r) => r.outcome !== "make" || r.grade === "C";
 export const failureReached = (logs) =>
   !!logs.length &&
   invalidAttempt(logs.at(-1)) &&
-  !["pain", "stop"].includes(logs.at(-1).endpoint);
+  !["pain", "stop", "fatigue"].includes(logs.at(-1).endpoint);
 export const validReps = (logs) =>
   logs.filter(
-    (r) => !invalidAttempt(r) && !["pain", "stop"].includes(r.endpoint),
+    (r) =>
+      !invalidAttempt(r) && !["pain", "stop", "fatigue"].includes(r.endpoint),
   ).length;
 
 // A terminal attempt closes one set, not every set of a multi-set exercise.
@@ -32,11 +36,12 @@ export function failureSetStatus(e, logs) {
     sets.length && !failureReached(sets.at(-1)) ? sets.at(-1) : [];
   const terminals = sets.filter(failureReached).map((s) => s.at(-1));
   const unsafe = logs.some((r) => ["pain", "stop"].includes(r.endpoint));
+  const fatigued = logs.some((r) => r.endpoint === "fatigue");
   const zero =
-    e.endpointPolicy === FAILURE_POLICY &&
+    e.endpointPolicy !== LEGACY_FAILURE_POLICY &&
     sets.some((s) => failureReached(s) && validReps(s) === 0);
   const repeated =
-    e.endpointPolicy === FAILURE_POLICY &&
+    e.endpointPolicy !== LEGACY_FAILURE_POLICY &&
     terminals.some(
       (r, i) =>
         i > 0 &&
@@ -44,7 +49,7 @@ export function failureSetStatus(e, logs) {
         r.fault.trim().toLowerCase() ===
           terminals[i - 1].fault?.trim().toLowerCase(),
     );
-  const stop = unsafe || zero || repeated;
+  const stop = unsafe || fatigued || zero || repeated;
   return {
     sets,
     completedSets,
@@ -52,20 +57,22 @@ export function failureSetStatus(e, logs) {
     currentSet: Math.min(e.sets, completedSets + 1),
     done: stop || completedSets >= e.sets,
     stop,
-    endpointReached: completedSets === e.sets && !unsafe,
+    endpointReached: completedSets === e.sets && !unsafe && !fatigued,
     validReps: validReps(logs),
     currentValidReps: validReps(current),
     reason: unsafe
       ? "Safety stop; incomplete exercise. Review before resuming."
-      : zero
-        ? "No valid rep in a set: end this exercise and review the load/technique before the next exposure."
-        : repeated
-          ? "The same material fault ended two sets: end this exercise; review technique before the next exposure."
-          : completedSets >= e.sets
-            ? "Every prescribed set ended at its first miss/invalid rep."
-            : completedSets && !current.length
-              ? "Set ended. Recover at least 5 minutes before the next prescribed set; no extra retry sets."
-              : "Keep this set at one fixed load until the first miss or invalid rep; the rep window is not a stopping rule.",
+      : fatigued
+        ? "Stopped because breathing or muscle burning limited the set. This is not logged as a missed rep. Review the load and recovery before the next session."
+        : zero
+          ? "No valid rep in a set: end this exercise and review the load/technique before the next exposure."
+          : repeated
+            ? "The same material fault ended two sets: end this exercise; review technique before the next exposure."
+            : completedSets >= e.sets
+              ? "Every prescribed set ended at its first miss/invalid rep."
+              : completedSets && !current.length
+                ? "Set ended. Recover at least 5 minutes before the next prescribed set; no extra retry sets."
+                : "Keep this set at one fixed load until the first miss or invalid rep; the rep window is not a stopping rule.",
   };
 }
 export function adoptReviewedDose(t) {
@@ -137,7 +144,6 @@ export function failureOlympics(rows, c, phase, day) {
     return [];
   const effectivePhase = ["T", "P"].includes(phase) ? c.gate : phase;
   const targets = { F: [2, 4], B: [1, 3], R: [1, 2] }[effectivePhase];
-  const start = { F: 80, B: 85, R: 88 }[effectivePhase];
   const hasPause = rows.some((e) => e.id === "pause_jerk");
   return rows
     .filter(
@@ -155,22 +161,16 @@ export function failureOlympics(rows, c, phase, day) {
     )
     .map((e) => {
       const range = e.id === "pull" ? [3, 5] : [...targets];
-      const percent =
-        e.id === "hang"
-          ? start - 10
-          : e.id === "pull"
-            ? start + 10
-            : ["jerk", "pause_jerk"].includes(e.id) && !c.anchors.jerk
-              ? 65
-              : start;
       const row = {
         ...e,
         endpointPolicy: FAILURE_POLICY,
         sets: olympicDose(e.id, day, c),
         validRepRange: range,
         reps: range[1] + 1,
-        range: [percent, percent],
-        resetSeconds: 15,
+        resetSeconds: 40,
+        loadIsEstimate: !(c.week === 12 && day === "friday"),
+        selfSelectedLoad: true,
+        warmupVersion: "brief-v1",
         recoveryAfter: 300,
         rest: 300,
         effort: 10,
@@ -182,9 +182,12 @@ export function failureOlympics(rows, c, phase, day) {
         benchmark: c.week === 12 && day === "friday",
         test: c.week === 12 && day === "friday",
         assessment: false,
-        note: "Each prescribed set uses one fixed load. After each valid rep (a complete clean AND jerk for CJ), reset 15 seconds and repeat. The FIRST miss or technically invalid rep ends that set. Recover at least 5 minutes before the next prescribed set; never add retries or replacement sets. End the exercise after a zero-valid-rep set or the same material fault in two sets; stop the session for pain/unsafe symptoms. The rep window guides future load, never the endpoint. Exact Olympic failure set counts are a monitored inference, not a proven optimum.",
+        warmup:
+          "Do the general warm-up once. For the first Olympic lift: a short light-bar check, then 50%, 70% and 85% of today's working weight for one rep each. For the second lift: check its catch with a light bar, then 60% and 85% for one rep each. Each clean & jerk rep includes both lifts. Skip duplicate loads, add a light step if needed, and rest until ready. Warm-ups should prepare you, not tire you out.",
+        note: "Use one weight for the whole set. Catch every snatch and clean in a full squat; each clean & jerk rep includes a jerk. Put the bar down and rest 40 seconds between reps. End at the first miss OR change that breaks the prescribed form, including switching to a power catch because you are tired. Do not keep going to chase a miss. If breathing or burning stops you first, record that honestly. Rest 5 minutes between work sets. Stop for pain; no extra retry sets.",
       };
       for (const field of [
+        "range",
         "sequence",
         "repSequence",
         "finalEffort",
@@ -215,11 +218,16 @@ export function failureProgression(e, history, increment = 5) {
   if (!last)
     return {
       weight: null,
-      text: "First exposure: use the starting estimate only if warm-ups are secure. Count valid reps before the first miss or invalid rep. Review a zero-valid-rep set; do not retry.",
+      text: `Choose your working weight. Aim for a weight that allows about ${e.validRepRange.join("–")} good reps before the first miss or form breakdown. That range guides weight selection; it is not a required stopping point. Use warm-ups to check the weight, and do not turn the set into a conditioning test.`,
     };
   const weight = last.sets[0]?.weight;
   if (!weight)
     return { weight: null, text: "No comparable loaded exposure yet." };
+  if (last.sets.some((r) => ["fatigue", "pain", "stop"].includes(r.endpoint)))
+    return {
+      weight,
+      text: "The previous set stopped for fatigue, pain or another interruption. This does not establish a power limit or earn an automatic increase. Choose the next weight after checking recovery and warm-ups.",
+    };
   const count = validReps(failureSets(last.sets)[0] || []);
   if (count < e.validRepRange[0])
     return {
@@ -228,6 +236,18 @@ export function failureProgression(e, history, increment = 5) {
         Math.floor((weight * 0.925) / increment) * increment,
       ),
       text: "Below the valid-rep window: reduce about 5–10% next exposure and review technique/recovery. Do not add retry sets.",
+    };
+  const complete = failureSetStatus(last.row || e, last.sets);
+  const eligible =
+    last.normal &&
+    complete.endpointReached &&
+    !complete.stop &&
+    !last.record.omissions.some((o) => o.key === e.key) &&
+    last.sets.every((r) => !r.overCap && r.weight === weight);
+  if (e.calibrationAllowed && eligible && count > e.validRepRange[1])
+    return {
+      weight: weight + Math.min(5, increment),
+      text: `You completed ${count} good reps before the set ended, above the ${e.validRepRange.join("–")} target. Try one small increase next time, only if warm-ups and recovery are normal. This corrects the starting estimate; it does not add sets.`,
     };
   if (e.hold || e.checkpoint)
     return {

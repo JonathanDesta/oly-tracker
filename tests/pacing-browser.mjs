@@ -50,10 +50,10 @@ async function continuePrep() {
     await page.clock.fastForward(Math.max(1, x.seconds) * 1000);
     await click(
       x.role === "general-check"
-        ? "Confirm general preparation"
+        ? "Warm-up complete"
         : x.role === "prepare-check"
-          ? "Confirm exercise preparation"
-          : "Continue timer",
+          ? "Ready for this exercise"
+          : "Done · next step",
     );
   }
   throw Error("Preparation did not reach work");
@@ -97,7 +97,7 @@ try {
   assert.equal(await page.locator("#pace-clock").innerText(), "0:10");
   assert.equal(await page.locator("#pace-next").isEnabled(), false);
   await page.clock.fastForward(10000);
-  await click("Continue timer");
+  await click("Done · next step");
   await click("Start timed set");
   await page.clock.fastForward(3000);
   await click("Pause countdown");
@@ -153,7 +153,7 @@ try {
     assert.equal(x.step, i);
     await page.clock.fastForward(x.seconds * 1000);
     await click(
-      i === 7 ? "Active reps complete · save timed drill" : "Continue timer",
+      i === 7 ? "Active reps complete · save timed drill" : "Done · next step",
     );
   }
   assert.equal((await read()).active.sets[0].holds, 4);
@@ -203,7 +203,7 @@ try {
     JSON.stringify(
       {
         url,
-        appBuild: "7.19",
+        appBuild: "7.20",
         fixedTotals: true,
         guidedWarmups: true,
         actualSetEnd: true,

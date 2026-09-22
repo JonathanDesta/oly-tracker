@@ -10,6 +10,8 @@ import {
   allLoadedFailure,
   olympicFailure,
   failureTrialPending,
+  failureSets,
+  validReps,
 } from "./failure-policy.js";
 import {
   programDays,
@@ -54,6 +56,10 @@ import {
   slotAt,
   nextQualityRange,
   logSet,
+  logOlympicSet,
+  correctOlympicSet,
+  moveExerciseNext,
+  chooseOlympicLoad,
   omitRow,
   finishSession,
   deleteSession,
@@ -112,7 +118,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.19";
+const APP_BUILD = "7.20";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -552,12 +558,12 @@ function pacingCard(w) {
     else
       controls += btn(
         stage.role === "general-check"
-          ? "Confirm general preparation"
+          ? "Warm-up complete"
           : stage.role === "prepare-check"
-            ? "Confirm exercise preparation"
+            ? "Ready for this exercise"
             : stage.role === "mobility" && stage.step === 7
               ? "Active reps complete · save timed drill"
-              : "Continue timer",
+              : "Done · next step",
         "pace-next",
         `id="pace-next" ${paceElapsed(p.timer) < paceMinimum(w, stage) ? "disabled" : ""}`,
         "primary button",
@@ -573,13 +579,26 @@ function pacingCard(w) {
       !p.workEndedAt
     )
       controls += btn("Add 1 minute", "pace-add", "", "quiet");
-    if (["ramp", "waiting", "break-pool"].includes(stage.role))
+    if (
+      [
+        "ramp",
+        "ramp-rest",
+        "rest",
+        "recovery",
+        "waiting",
+        "break-pool",
+      ].includes(stage.role)
+    )
       controls += btn(
         stage.role === "ramp"
-          ? "Ramp not needed at this load"
-          : stage.role === "waiting"
-            ? "Equipment available"
-            : "Release unused break allowance",
+          ? "Skip this warm-up set"
+          : stage.role === "ramp-rest"
+            ? "Ready · skip warm-up rest"
+            : ["rest", "recovery"].includes(stage.role)
+              ? "End rest early"
+              : stage.role === "waiting"
+                ? "Equipment available"
+                : "Release unused break allowance",
         "pace-skip",
         "",
         "quiet",
@@ -587,13 +606,64 @@ function pacingCard(w) {
     if (stage.role !== "break-pool")
       controls += btn("Take a 2-minute break", "pace-break", "", "quiet");
   }
-  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(p.sound ? "Timer sound on" : "Enable timer sound", "pace-sound", "", "quiet")}</div><p class="fine-print">Zero is a cue, not a completed set. Follow the current exercise’s endpoint and record the real outcome. For Olympic failure sets, keep going at the same load until the first miss or invalid rep; the planned rep count is only a time estimate. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; skip only unnecessary ramps or unused waiting/break time.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
+  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(p.sound ? "Timer sound on" : "Enable timer sound", "pace-sound", "", "quiet")}</div><p class="fine-print">Zero is a cue, not a completed set. Follow the current exercise’s endpoint and record the real outcome. For Olympic failure sets, keep going at the same load until the first miss or invalid rep; the planned rep count is only a time estimate. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; Use the rest target as a recommendation. If you end it early, the actual rest is recorded. Skip a warm-up set only when you are already prepared for that weight.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
     .filter((step) => !p.completed.some((x) => x.id === step.id))
     .map(
       (step) =>
         `<li>${esc(step.exercise ? step.exercise + " · " : "")}${esc(step.label)} <strong>${time(paceSeconds(w, step))}</strong></li>`,
     )
     .join("")}</ol></details></section>`;
+}
+function workoutList(w) {
+  const current = nextRow(w);
+  return `<details class="panel workout-list"><summary>All exercises · reps, weights & change order</summary><p>See the whole workout here. After the Olympic lifts, use “Do next” when a station is occupied. Finish and record a set before switching.</p>${w.session.rows
+    .map((e) => {
+      const status = rowStatus(w, e);
+      const suggested =
+        e.kind === "quality"
+          ? nextQualityRange(w, e)?.[0]
+          : e.kind === "failure"
+            ? nextLoad(e, exposureHistory(state, e), w.increment).weight
+            : null;
+      const used = status.logs.at(-1)?.weight;
+      return `<article class="workout-list-row" data-exercise="${e.key}"><div><strong>${esc(e.name)}</strong><p>${esc(describe(e))}</p><p class="muted">${used || suggested ? `${fmt(used || suggested)} lb ${used ? "used" : "suggested"} · ` : "Choose weight after an easy warm-up · "}Rest ${time(e.rest || 0)}${status.done ? " · Finished" : current?.key === e.key ? " · Current exercise" : ""}</p></div>${!status.done && current?.key !== e.key && e.kind === "failure" ? btn("Do next", "exercise-next", `data-key="${e.key}" aria-label="Do ${esc(e.name)} next"`, "button") : ""}</article>`;
+    })
+    .join("")}</details>`;
+}
+function reportedFinish(log) {
+  return ["fatigue", "pain", "stop"].includes(log.endpoint)
+    ? log.endpoint
+    : log.grade === "C"
+      ? "form"
+      : ["clean_miss", "jerk_miss"].includes(log.outcome)
+        ? log.outcome
+        : "miss";
+}
+function olympicReportFields(
+  e,
+  reps = "",
+  weight = "",
+  finish = "miss",
+  fault = "",
+) {
+  return `<p>Count only completed reps with the prescribed form. For clean & jerk, count complete clean + jerk pairs. Do not count the failed rep. For example: six good reps, then a miss = <b>6</b>.</p><div class="input-grid">${input("Weight used · lb", "weight", weight, "number", 'min="0.1" max="2000" step="any" required inputmode="decimal"')}${input("Good reps completed in this set", "reps", reps, "number", 'min="0" max="100" step="1" required inputmode="numeric"')}${select(
+    "What ended the set?",
+    "finish",
+    {
+      miss: "The next rep missed",
+      ...(e.id === "cj"
+        ? {
+            clean_miss: "The clean missed",
+            jerk_miss: "The clean succeeded; the jerk missed",
+          }
+        : {}),
+      form: "Form changed · no further reps counted",
+      fatigue: "Breathing / burning stopped me before a miss",
+      pain: "Pain · stopped",
+      ...(finish === "stop" ? { stop: "Other interruption · stopped" } : {}),
+    },
+    finish,
+  )}</div>${input("Details (optional)", "fault", fault, "text", 'placeholder="e.g. changed to a power catch, or jerk missed"')}<p class="fine-print">This records your set total. It does not invent individual rep times or effort ratings. A miss or form change is not a measurement of power output.</p>`;
 }
 function workoutView() {
   const w = state.active;
@@ -624,7 +694,7 @@ function workoutView() {
       w.session.title,
       `${dateLabel(w.date)} · Started ${stamp(w.startedAt)}`,
     ) +
-    `<div class="progress-line"><span style="width:${(done / w.session.rows.length) * 100}%"></span></div><p class="muted">${done} of ${w.session.rows.length} ${w.session.kind === "mobility" ? "mobility drills" : "exercises"} resolved. ${w.session.kind === "mobility" ? "Complete the scheduled holds, rests and active reps, or record an early stop." : "Log actual outcomes, including misses and safety stops."}</p><p class="session-budget">Starting session budget: <strong>${minutesText(originalTiming.seconds)}</strong> · includes prep, rest and breaks; fixed targets.</p>${pacingCard(w)}${timingDetails(originalTiming)}`;
+    `<div class="progress-line"><span style="width:${(done / w.session.rows.length) * 100}%"></span></div><p class="muted">${done} of ${w.session.rows.length} ${w.session.kind === "mobility" ? "mobility drills" : "exercises"} resolved. ${w.session.kind === "mobility" ? "Complete the scheduled holds, rests and active reps, or record an early stop." : "Log actual outcomes, including misses and safety stops."}</p><p class="session-budget">Starting session budget: <strong>${minutesText(originalTiming.seconds)}</strong> · includes prep, rest and breaks; fixed targets.</p>${workoutList(w)}${pacingCard(w)}${timingDetails(originalTiming)}`;
   if (w.warmup && w.session.kind === "lifting" && e)
     body += `<details ${w.preparationTimer?.key === "rewarm" ? "open" : ""}><summary>Preparation after an interruption</summary><p>If idle more than 15 minutes: 2 minutes easy movement, then two brief ascending rehearsals before resuming.</p>${preparationControls("rewarm", [180, 300], "Re-warm-up complete")}</details>`;
   if (!w.warmup && w.session.kind !== "cardio")
@@ -672,9 +742,9 @@ function workoutView() {
             .filter((v, i, a) => i === 0 || v !== a[0])
             .join(
               "–",
-            )}<small> lb</small></strong><span>${olympicFailure(e) ? "Starting load · keep fixed within this set; stop at first miss or invalid rep." : "Rounded down · secure positions and effort cap govern."}</span></div>`
+            )}<small> lb</small></strong><span>${olympicFailure(e) ? "Selected / previous weight · you can choose your starting weight below. Keep it fixed once work begins." : "Rounded down · secure positions and effort cap govern."}</span></div>`
         : ""
-    }${status.reason ? notice(status.reason, "warning") : ""}<p>${esc(e.note)} ${rowSource(e)}</p>${suggestion ? notice(suggestion.text) : e.progressionNote ? notice(e.progressionNote) : ""}<details ${prepared ? "" : "open"}><summary>Prepare this exercise · rest ${time(e.rest || 0)}</summary><p>${esc(e.warmup || "Full preparation and smooth rehearsals first.")}</p><p>All retained conventional work sets use strict-form failure. Olympic failure sets stop at the first miss or invalid rep. Preparation stays easy. A rep-window error is logged honestly; no extra failure test to fix it.</p>${
+    }${status.reason ? notice(status.reason, "warning") : ""}${e.selfSelectedLoad && !status.count ? `<form data-form="olympic-load" data-key="${e.key}" class="working-load-form"><h3>Choose your working weight</h3><p>You choose the weight. Saving it updates the lighter warm-up steps. Your last comparable weight, when available, is a reference rather than a limit.</p>${input("Working weight · lb", "weight", e.workingLoad || "", "number", 'min="0.1" max="2000" step="any" inputmode="decimal" required')}<p class="form-error" role="alert"></p>${submit("Use this weight")}</form>` : ""}<p>${esc(e.note)} ${rowSource(e)}</p>${suggestion ? notice(suggestion.text) : e.progressionNote ? notice(e.progressionNote) : ""}<details ${prepared ? "" : "open"}><summary>Prepare this exercise · rest ${time(e.rest || 0)}</summary><p>${esc(e.warmup || "Full preparation and smooth rehearsals first.")}</p><p>All retained conventional work sets use strict-form failure. Olympic failure sets stop at the first miss or invalid rep. Preparation stays easy. A rep-window error is logged honestly; no extra failure test to fix it.</p>${
       !prepared
         ? preparationControls(
             e.key,
@@ -694,6 +764,8 @@ function workoutView() {
         : ""
     }</details>`;
     if (prepared) {
+      if (olympicFailure(e))
+        body += `<section class="whole-set-entry"><h3>Finished the whole set?</h3><p>Enter the total reps once. You do not have to log each rep separately.</p>${btn("Log completed set · enter reps", "olympic-report", `data-key="${e.key}"`, "primary button")}<p class="muted">Or use the individual-rep form below.</p></section>`;
       body += `<form data-form="set"><div class="input-grid">`;
       if (["quality", "failure"].includes(e.kind))
         body += input(
@@ -713,17 +785,17 @@ function workoutView() {
             'min="0" max="200" step="1" inputmode="numeric" required',
           ) +
           select(
-            "Endpoint",
+            "What ended the set?",
             "endpoint",
             {
-              failure: "Strict-form failure · 0 RIR",
-              tech: "TECH · position ended set",
+              failure: "No more reps possible with the same form",
+              tech: "Form changed · stopped",
               pain: "Pain · stop session",
               stop: "Other unsafe symptoms · stop",
             },
             "failure",
           ) +
-          check("An unsuccessful concentric attempt occurred", "failed");
+          check("I attempted another rep and could not finish it", "failed");
       if (e.kind === "quality")
         body +=
           select(
@@ -745,21 +817,21 @@ function workoutView() {
             "Technical quality",
             "grade",
             {
-              A: "A · secure, repeatable",
-              B: "B · acceptable, small correction",
-              C: "C · material fault",
+              A: "A · smooth and controlled",
+              B: "B · completed with a small correction",
+              C: "C · form broke down",
             },
             "A",
           ) +
           input(
-            "Technical effort · 1–10, not RIR",
+            "How difficult was the lift? · 1 easy, 10 maximum",
             "effort",
             Math.min(e.effort, 7),
             "number",
             'min="1" max="10" step="0.5" required',
           ) +
           input(
-            "Recurring fault / one cue",
+            "What went wrong, or what helped? (optional)",
             "fault",
             "",
             "text",
@@ -834,6 +906,8 @@ function workoutView() {
   return body;
 }
 function setText(x) {
+  if (x.reportedAsSet)
+    return `${x.setNumber ? "Set " + x.setNumber + " · " : ""}${fmt(x.weight)} lb · ${x.validRep ? (x.exerciseId === "cj" ? "completed clean + jerk" : "completed rep") : x.endpoint === "fatigue" ? "stopped for breathing / burning" : x.endpoint === "pain" ? "stopped for pain" : x.endpoint === "stop" ? "stopped for an interruption" : x.grade === "C" ? "form changed" : x.outcome === "jerk_miss" ? "jerk missed" : "rep missed"} · reported with set total${x.fault ? " · " + esc(x.fault) : ""}`;
   if (x.failurePolicy)
     return `${x.setNumber ? "Set " + x.setNumber + " · " : ""}${fmt(x.weight)} lb · ${x.validRep ? (x.exerciseId === "cj" ? "valid CJ pair" : "valid rep") : x.terminal ? "terminal attempt · 0 valid reps" : "interrupted attempt"} · ${esc(x.outcome)} · ${esc(x.grade)} / effort ${fmt(x.effort)}${x.fault ? " · " + esc(x.fault) : ""}`;
   if (x.exerciseId === "aerobic")
@@ -846,7 +920,11 @@ function historyView() {
   const totals = monitoringTotals(state);
   const sets = state.records.flatMap((r) => r.sets),
     failureCount = sets.filter((s) => s.endpoint === "failure").length,
-    ol = sets.filter((s) => s.grade),
+    ol = sets.filter(
+      (s) =>
+        s.grade &&
+        !(s.reportedAsSet && ["fatigue", "pain", "stop"].includes(s.endpoint)),
+    ),
     good = ol.filter(
       (s) => s.outcome === "make" && s.grade !== "C" && !s.overCap,
     ).length;
@@ -872,7 +950,7 @@ function historyView() {
             .reverse()
             .map(
               (r) =>
-                `<button data-action="record" data-id="${r.id}"><span class="record-date">${dateLabel(r.date)}<small>C${r.cycle} · W${r.week}</small></span><span><strong>${esc(r.session.title)}</strong><small>${r.sets.length} entries · ${r.status} · ${r.followup ? `next session ${r.followup.normal ? "normal" : "needs review"}` : "follow-up pending"}</small></span><span>↗</span></button>`,
+                `<button data-action="record" data-id="${r.id}"><span class="record-date">${dateLabel(r.date)}<small>C${r.cycle} · W${r.week}</small></span><span><strong>${esc(r.session.title)}</strong><small>${r.sets.length} log entries · ${r.status} · ${r.followup ? `next session ${r.followup.normal ? "normal" : "needs review"}` : "follow-up pending"}</small></span><span>↗</span></button>`,
             )
             .join("")}</div>`
         : '<div class="empty-card"><h3>Your first session starts the record.</h3><p>Loads, outcomes, technique and the next-session response will live here.</p></div>'
@@ -932,13 +1010,14 @@ const guideTitles = [
 function failureGuide() {
   return `<section class="panel" id="failure-amendment"><h2>September 21 · loaded working sets to failure</h2>
   <p>Your amendment supersedes the PDF wherever endpoints or workload conflict. It applies to loaded working sets, including Olympic lifts and pulls. Warm-ups, unloaded rehearsal, athletics, aerobic work and mobility retain their original endpoints. The original PDF remains available as the unchanged source.</p>
-  <p><strong>Olympic endpoint:</strong> each prescribed work set uses a fixed load. Complete a valid rep, reset 15 seconds, then repeat. A clean-and-jerk rep requires BOTH lifts to be valid. The first miss or grade-C technically invalid rep ends the set immediately. Recover at least five minutes before the next prescribed set. No extra retry sets, drop sets or escalating attempts. Zero valid reps in a set, or the same material fault ending two sets, ends the exercise. Log every attempt. Effort 1–10 describes the attempt; it is not an early stopping cap. Pain or an unsafe situation ends work and is recorded as incomplete, never disguised as failure.</p>
-  <p><strong>Load selection:</strong> Foundation aims for 2–4 valid reps, Build 1–3, Realization 1–2; pulls use 3–5. These windows guide the next load, never force the current set to end. Initial estimates are 80%, 85% and 88% of the appropriate demonstrated reference; hang snatch uses 10 percentage points less, pulls 10 more. An unassessed rack jerk starts at 65% CJ. Round down; reduce if preparation is insecure. If no load permits secure preparation, defer the work. The app repeats the previous comparable load, reduces about 5–10% below the window, and adds one plate increment only after every prescribed set in two normal comparable exposures reaches its top with normal subsequent recovery. Holds apply during introduction, checkpoints, Realization and taper.</p>
+  <p><strong>Olympic endpoint:</strong> each prescribed work set uses a fixed load. Complete a valid rep, rest 40 seconds, then repeat. A clean-and-jerk rep requires BOTH lifts to be valid. The first miss or rep that loses the prescribed form ends the set immediately. The recommended recovery before the next prescribed set is five minutes. No extra retry sets, drop sets or escalating attempts. Zero valid reps in a set, or the same material fault ending two sets, ends the exercise. Use “Log completed set” to enter the total good reps and what ended it, or record each rep individually. A catch-style change or miss does not measure power output. Pain or an unsafe situation ends work and is recorded as incomplete, never disguised as failure.</p>
+  <p><strong>Choosing weight:</strong> choose your own working weight, as you do for the other lifts. The app does not prescribe a percentage-based Olympic starting weight. Foundation uses about 2–4 good reps, Build 1–3 and Realization 1–2 as weight-selection guides. Your previous comparable weight and result are shown for reference. A completed clean & jerk rep includes both lifts. A higher catch is not evidence that you ran out of power; log any form change or breathing/burning limit honestly. An above-range set can prompt a small load correction during introduction once the next-session recovery check is normal. No additional failure test is required.</p>
+  <p><strong>Warm-ups:</strong> perform the general warm-up once per visit. The first Olympic lift uses a short light-bar check and three single-rep steps at 50%, 70% and 85% of your selected working weight. The second uses its own light-bar check and two single-rep steps at 60% and 85%. These are adjustable preparation guides, not proven unique optima. Use “Ready · skip warm-up rest” when ready, or add time if needed. Work-set recovery still has a recommended target; ending it early is recorded.</p>
   <p><strong>Dose and calendar:</strong> the whole-week allocation uses Monday, Wednesday and Friday. Both competition lifts lead each visit; assistance follows. Each competition lift still has three weekly exposures, with recovery days between loaded sessions. The restart has four stages: an ordinary Foundation week has 31/41/46/56 conventional sets and 6/6/9/12 Olympic sets. Each complete green weekly review may advance one stage, with next-session follow-ups required. Good historical recovery supports trying the progression; it does not skip observation. Record the next-session checks in History. Then review two full green weeks at a stable workload before optional additions. A controlled addition can now add one weekly Olympic or conventional set to a selected existing exercise. Source heavy-slot and bounded-assessment rules remain superseded. Existing logs and active sessions keep their original prescription.</p>
-  <p><strong>Recovery:</strong> at least five minutes after each Olympic failure set before the next set or loaded exercise, plus any next-exercise ramp. Amber/global fatigue, targeted/reset weeks and sport later that day omit Olympic failure work. A technical restriction omits the affected work; no submaximal working-set substitute. Week 12 has Monday Olympic failure sets plus low-rep bench, no Tuesday/Thursday loading, Friday fixed-load failure benchmarks, and moderate bench afterward. The benchmark is not a three-attempt competition total. Week 13 has no Olympic loading and one set per retained conventional exercise. Actual bench exposures still require at least 48 hours.</p>
-  <p><strong>Timing:</strong> the initial Olympic budget assumes the upper valid-rep target plus one terminal attempt. Each valid extra rep adds its work/reset countdown; an early endpoint removes unused attempts. Timers never decide whether a rep was valid or a set reached failure. Preparation, equipment changes, moderate waiting and miscellaneous time remain included. The full Foundation allocation budgets about 225 minutes Monday, 169 Wednesday and 221 Friday before optional modules. Your current stage's actual plan and time appear on each day.</p>
-  <p><strong>Regional coverage:</strong> the full target adds supported hammer curls (two sets/week), wrist curls and wrist extensions (four each/week), placed after grip-dependent lifting. Wrist training research supports additional specific strength benefits, but does not establish these precise hypertrophy doses: <a href="https://pubmed.ncbi.nlm.nih.gov/15320673/" target="_blank" rel="noopener">Szymanski et al. (2004)</a>. Seated hamstring curls, knee-extended calf raises and overhead triceps extensions retain regional coverage supported by <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7969179/" target="_blank" rel="noopener">Maeo et al. (2021)</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/38156065/" target="_blank" rel="noopener">Kinoshita et al. (2023)</a> and <a href="https://pubmed.ncbi.nlm.nih.gov/35819335/" target="_blank" rel="noopener">Maeo et al. (2023)</a>. <a href="https://pubmed.ncbi.nlm.nih.gov/31230110/" target="_blank" rel="noopener">Kubo et al. (2019)</a> supports adductor/glute coverage from deep squats. None establishes the exact combined weekly allocation. See the regional decisions in each day's set table for every included region and every zero-isolation choice.</p>
-  <p>Volume review: <a href="https://link.springer.com/article/10.1007/s40279-025-02344-w" target="_blank" rel="noopener">Pelland et al. (2026)</a> supports a dose response with diminishing returns and fractional accounting as a heuristic; <a href="https://pubmed.ncbi.nlm.nih.gov/41843416/" target="_blank" rel="noopener">ACSM (2026)</a> supports multiple sets and higher muscle-building volume. Neither establishes these exact counts or a failure-set conversion for Olympic lifting. See the day’s set table and review landmarks.</p><p><strong>Evidence limits:</strong> failure is not established as superior for strength or power. Closer-to-failure conventional resistance work can support hypertrophy, but that does not validate repeated snatches or clean-and-jerks to technical failure. The exact per-exercise set allocation, starting percentages, resets, recovery period and taper/pivot changes above are practical inferences under your preference, not proven optimal or equivalent to the original plan. See <a href="https://pubmed.ncbi.nlm.nih.gov/33555822/" target="_blank" rel="noopener">Vieira et al., 2021</a>, <a href="https://rke.abertay.ac.uk/en/publications/exploring-the-dose-response-relationship-between-estimated-resist/" target="_blank" rel="noopener">Robinson et al., 2024</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/27038416/" target="_blank" rel="noopener">Pareja-Blanco et al., 2017</a> and <a href="https://pubmed.ncbi.nlm.nih.gov/23121475/" target="_blank" rel="noopener">Hardee et al., 2013</a>.</p></section>`;
+  <p><strong>Recovery:</strong> the recommended target is five minutes after each Olympic failure set before the next set or loaded exercise, plus any next-exercise ramp. Amber/global fatigue, targeted/reset weeks and sport later that day omit Olympic failure work. A technical restriction omits the affected work; no submaximal working-set substitute. Week 12 has Monday Olympic failure sets plus low-rep bench, no Tuesday/Thursday loading, Friday fixed-load failure benchmarks, and moderate bench afterward. The benchmark is not a three-attempt competition total. Week 13 has no Olympic loading and one set per retained conventional exercise. Actual bench exposures still require at least 48 hours.</p>
+  <p><strong>Timing:</strong> the initial Olympic budget assumes the upper valid-rep target plus one terminal attempt. Each valid extra rep adds its work/reset countdown; an early endpoint removes unused attempts. Timers never decide whether a rep was valid or a set reached failure. Preparation, equipment changes, moderate waiting and miscellaneous time remain included. The budget uses your current warm-up steps and work/rest targets; selecting a weight or changing exercise order updates the remaining steps. Your current stage's actual plan and time appear on each day.</p>
+  <p><strong>Regional coverage:</strong> the full target includes one hammer-curl set per week and two sets each of wrist curls and wrist extensions, placed after grip-dependent lifting. Wrist training research supports additional specific strength benefits, but does not establish these precise hypertrophy doses: <a href="https://pubmed.ncbi.nlm.nih.gov/15320673/" target="_blank" rel="noopener">Szymanski et al. (2004)</a>. Seated hamstring curls, knee-extended calf raises and overhead triceps extensions retain regional coverage supported by <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7969179/" target="_blank" rel="noopener">Maeo et al. (2021)</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/38156065/" target="_blank" rel="noopener">Kinoshita et al. (2023)</a> and <a href="https://pubmed.ncbi.nlm.nih.gov/35819335/" target="_blank" rel="noopener">Maeo et al. (2023)</a>. <a href="https://pubmed.ncbi.nlm.nih.gov/31230110/" target="_blank" rel="noopener">Kubo et al. (2019)</a> supports adductor/glute coverage from deep squats. None establishes the exact combined weekly allocation. See the regional decisions in each day's set table for every included region and every zero-isolation choice.</p>
+  <p>Volume review: <a href="https://link.springer.com/article/10.1007/s40279-025-02344-w" target="_blank" rel="noopener">Pelland et al. (2026)</a> supports a dose response with diminishing returns and fractional accounting as a heuristic; <a href="https://pubmed.ncbi.nlm.nih.gov/41843416/" target="_blank" rel="noopener">ACSM (2026)</a> supports multiple sets and higher muscle-building volume. Neither establishes these exact counts or a failure-set conversion for Olympic lifting. See the day’s set table and review landmarks.</p><p><strong>Evidence limits:</strong> failure is not established as superior for strength or power. Closer-to-failure conventional resistance work can support hypertrophy, but that does not validate repeated snatches or clean-and-jerks to technical failure. The exact per-exercise set allocation, between-rep rests, recovery period and taper/pivot changes above are practical inferences under your preference, not proven optimal or equivalent to the original plan. See <a href="https://pubmed.ncbi.nlm.nih.gov/33555822/" target="_blank" rel="noopener">Vieira et al., 2021</a>, <a href="https://rke.abertay.ac.uk/en/publications/exploring-the-dose-response-relationship-between-estimated-resist/" target="_blank" rel="noopener">Robinson et al., 2024</a>, <a href="https://pubmed.ncbi.nlm.nih.gov/27038416/" target="_blank" rel="noopener">Pareja-Blanco et al., 2017</a> and <a href="https://pubmed.ncbi.nlm.nih.gov/23121475/" target="_blank" rel="noopener">Hardee et al., 2013</a>.</p></section>`;
 }
 function guideView() {
   const page = pages?.[guidePage - 1];
@@ -1172,7 +1251,9 @@ function openRecord(id) {
           `<details open><summary>${esc(e.name)} · ${esc(describe(e))}</summary><ol>${r.sets
             .filter((x) => x.key === e.key)
             .map((x) => `<li>${setText(x)}</li>`)
-            .join("")}</ol>${r.omissions
+            .join(
+              "",
+            )}</ol>${olympicFailure(e) && r.sets.some((x) => x.key === e.key) ? btn("Correct rep count", "correct-olympic", `data-id="${r.id}" data-key="${e.key}"`, "button") : ""}${r.omissions
             .filter((x) => x.key === e.key)
             .map((x) => `<p>Omitted: ${esc(x.reason)}</p>`)
             .join("")}</details>`,
@@ -1205,6 +1286,41 @@ async function action(el) {
   if (a === "review") return openReview();
   if (a === "change") return openChange();
   if (a === "record") return openRecord(id);
+  if (a === "exercise-next")
+    return transact(
+      (s) => moveExerciseNext(s, key),
+      "Exercise moved next. Your remaining work is still in the workout list.",
+    );
+  if (a === "olympic-report") {
+    const w = state.active,
+      e = nextRow(w),
+      status = rowStatus(w, e);
+    return formModal(
+      "Log the completed Olympic set",
+      "olympic-report",
+      olympicReportFields(
+        e,
+        status.currentValidReps || "",
+        status.logs[0]?.weight ||
+          e.workingLoad ||
+          nextQualityRange(w, e)?.[0] ||
+          "",
+      ),
+      "Save completed set",
+    );
+  }
+  if (a === "correct-olympic") {
+    const r = state.records.find((r) => r.id === id),
+      e = r.session.rows.find((e) => e.key === key);
+    const groups = failureSets(r.sets.filter((x) => x.key === key)),
+      last = groups.at(-1);
+    return formModal(
+      "Correct saved Olympic reps",
+      "correct-olympic",
+      `<input type="hidden" name="record" value="${id}"><input type="hidden" name="key" value="${key}">${select("Saved set", "setNumber", Object.fromEntries(groups.map((g, i) => [i + 1, `Set ${i + 1} · ${validReps(g)} good reps saved`])), groups.length)}<div class="correction-fields">${olympicReportFields(e, validReps(last), last[0].weight, reportedFinish(last.at(-1)), last.at(-1).fault || "")}</div><p>The original entry is retained in the correction history. Select the intended set and enter its actual total.</p>`,
+      "Save correction",
+    );
+  }
   if (a === "delete-session") {
     const r = state.records.find((r) => r.id === id);
     if (!r) throw Error("This saved session no longer exists.");
@@ -1387,6 +1503,8 @@ async function action(el) {
       if (stage.role === "general-check") finishPreparation(s, "general", now);
       if (stage.role === "prepare-check") finishPreparation(s, stage.key, now);
       completePaceStage(w, now, a === "pace-skip");
+      if (a === "pace-skip" && ["rest", "recovery"].includes(stage.role))
+        s.restEnd = 0;
       if (a === "pace-skip" && stage.role === "ramp") {
         const next =
           w.pacing.plan[w.pacing.plan.findIndex((x) => x.id === stage.id) + 1];
@@ -1631,6 +1749,40 @@ function values(form) {
 function handleForm(form) {
   const f = values(form),
     type = form.dataset.form;
+  if (["olympic-report", "correct-olympic"].includes(type)) {
+    const data = {
+      weight: f.num("weight"),
+      reps: f.num("reps"),
+      finish: f.get("finish"),
+      fault: f.get("fault"),
+    };
+    transact(
+      (s) => {
+        if (type === "olympic-report")
+          logOlympicSet(s, data, s.active.pacing?.workEndedAt ?? Date.now());
+        else
+          correctOlympicSet(
+            s,
+            f.get("record"),
+            f.get("key"),
+            f.num("setNumber"),
+            data,
+          );
+      },
+      type === "olympic-report"
+        ? "Set saved with your completed rep count."
+        : "Rep count corrected. The original entry is preserved.",
+    );
+    close();
+    return;
+  }
+  if (type === "olympic-load") {
+    transact(
+      (s) => chooseOlympicLoad(s, form.dataset.key, f.num("weight")),
+      "Working weight saved. Warm-up weights updated.",
+    );
+    return;
+  }
   if (type === "set") {
     const e = nextRow(state.active),
       data = {};
@@ -1973,6 +2125,24 @@ document.addEventListener("submit", (e) => {
   }
 });
 document.addEventListener("change", async (e) => {
+  if (
+    e.target.name === "setNumber" &&
+    e.target.form?.dataset.form === "correct-olympic"
+  ) {
+    const form = e.target.form,
+      r = state.records.find((r) => r.id === form.elements.record.value),
+      row = r.session.rows.find((row) => row.key === form.elements.key.value),
+      group = failureSets(r.sets.filter((x) => x.key === row.key))[
+        Number(e.target.value) - 1
+      ];
+    form.querySelector(".correction-fields").innerHTML = olympicReportFields(
+      row,
+      validReps(group),
+      group[0].weight,
+      reportedFinish(group.at(-1)),
+      group.at(-1).fault || "",
+    );
+  }
   if (e.target.name === "guide-page") {
     guidePage = Number(e.target.value);
     render();
@@ -2126,8 +2296,21 @@ function tick() {
       w.pacing.breakRun ||
       paceStage(w)?.role === "mobility")
   );
-  buttons[1].dataset.action = paced ? "pace-show" : "rest-end";
-  buttons[1].textContent = paced ? "Timer" : "Done";
+  const skippableRest =
+    paced &&
+    !w.pacing.breakRun &&
+    !w.pacing.workEndedAt &&
+    ["ramp-rest", "rest", "recovery"].includes(paceStage(w)?.role);
+  buttons[1].dataset.action = skippableRest
+    ? "pace-skip"
+    : paced
+      ? "pace-show"
+      : "rest-end";
+  buttons[1].textContent = skippableRest
+    ? "Skip rest"
+    : paced
+      ? "Timer"
+      : "Done";
 }
 setInterval(tick, 1000);
 window.addEventListener("storage", (e) => {

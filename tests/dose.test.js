@@ -78,7 +78,7 @@ function rep(s, at, extra = {}) {
   return logSet(
     s,
     {
-      weight: nextQualityRange(s.active, nextRow(s.active))[0],
+      weight: nextQualityRange(s.active, nextRow(s.active))?.[0] || 100,
       outcome: "make",
       grade: "A",
       effort: 8,
@@ -528,6 +528,7 @@ test("new dose migration freezes a legacy active prescription and invalidates ol
   ])
     for (const row of session.rows.filter((e) => e.endpointPolicy)) {
       row.endpointPolicy = LEGACY_FAILURE_POLICY;
+      row.resetSeconds = 15;
       row.sets = 1;
     }
   const frozen = copy(s.active),
@@ -548,6 +549,7 @@ test("new dose migration freezes a legacy active prescription and invalidates ol
     .filter((e) => e.endpointPolicy)
     .forEach((e) => {
       e.endpointPolicy = LEGACY_FAILURE_POLICY;
+      e.resetSeconds = 15;
       e.sets = 1;
     });
   assert.notEqual(

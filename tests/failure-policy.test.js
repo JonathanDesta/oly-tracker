@@ -100,7 +100,7 @@ function completeWeek(s) {
       s.active.preparations.push(e.key);
       now += 300000;
       if (olympicFailure(e)) {
-        const weight = nextQualityRange(s.active, e)[0];
+        const weight = nextQualityRange(s.active, e)?.[0] || 100;
         const n = rowStatus(s.active, e).currentValidReps;
         attempt(s, now, {
           weight,
@@ -218,7 +218,7 @@ test("rep targets and timers cannot complete Olympic work; first miss or C ends 
     assert(
       w.pacing.plan.some(
         (step) =>
-          step.id === `${e.key}:within:${e.reps + 1}` && step.seconds === 15,
+          step.id === `${e.key}:within:${e.reps + 1}` && step.seconds === 40,
       ),
     );
     attempt(s, now + 600000, end);

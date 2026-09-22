@@ -110,6 +110,35 @@ function ramps(e, previous, config) {
   }
   const cj = family(e) === "cj",
     reference = config.anchors?.[cj ? "cj" : "snatch"];
+  if (e.warmupVersion === "brief-v1") {
+    const warm =
+      previous && ["snatch", "cj", "jerk"].includes(family(previous));
+    const work =
+      e.workingLoad ||
+      e.heldLoads?.[0] ||
+      (reference * (e.range?.[0] || 0)) / 100;
+    const increment = config.increment || 5;
+    stage(
+      cj
+        ? "Light bar: 2 clean + jerk reps; check the squat catch and overhead position"
+        : "Light bar: 2 snatch reps; check the squat catch and overhead position",
+      cj ? 50 : 35,
+      45,
+    );
+    let prior = 0;
+    const percentages = warm ? [60, 85] : [50, 70, 85];
+    percentages.forEach((percent, i) => {
+      const load = Math.floor((work * percent) / 100 / increment) * increment;
+      if (work && (!load || load === prior || load >= work)) return;
+      prior = load;
+      stage(
+        `${work ? load + " lb · " : ""}${percent}% of your working weight × ${cj ? "1 clean + 1 jerk" : "1 snatch"}`,
+        cj ? 25 : 16,
+        i === percentages.length - 1 ? 120 : 60,
+      );
+    });
+    return steps;
+  }
   const actual = e.heldLoads?.[0] || e.workingLoad;
   const pct =
     actual && reference
