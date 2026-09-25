@@ -59,6 +59,7 @@ export function family(e) {
   return e.id;
 }
 function station(e, c) {
+  if (e.id === "row" && e.loadUnit === "per dumbbell") return "dumbbell-bench";
   if (["hammer_curl", "wrist_curl", "wrist_extension"].includes(e.id))
     return "dumbbell-bench";
   if (e.kind === "mobility") return "mobility";

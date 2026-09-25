@@ -61,6 +61,13 @@
       <button data-action="rest-add">+30 s</button
       ><button data-action="rest-end">Done</button>
     </aside>
+    <aside id="alarm-status" role="status" hidden>
+      <span id="alarm-message"></span>
+      <button class="button" data-action="alarm-dismiss">Silence alarm</button>
+      <button class="button" data-action="alarm-resume">
+        Resume alarm audio
+      </button>
+    </aside>
     <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
     <div id="toast" role="status" hidden></div>
     <noscript

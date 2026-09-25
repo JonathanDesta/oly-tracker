@@ -420,7 +420,10 @@ const SUBSTITUTES = {
     db: "Incline dumbbell press · 30–45°",
   },
   lateral: { db: "Dumbbell lateral raise" },
-  row: { machine: "Supported machine row" },
+  row: {
+    machine: "Supported machine row",
+    db: "Chest-supported dumbbell row · incline bench",
+  },
   leg_curl: { lying: "Lying leg curl" },
   calf: {
     press: "Supported knee-extended calf press",
@@ -487,6 +490,7 @@ function conventional(c, day, phase, one = false) {
     const substitute = SUBSTITUTES[id]?.[c.equipment[id]];
     if (substitute) {
       e.name = substitute;
+      if (id === "row" && c.equipment.row === "db") e.loadUnit = "per dumbbell";
       e.note =
         (id === "calf"
           ? "2 seconds down, 1-second bottom pause, full rise; no bouncing. "
@@ -497,7 +501,9 @@ function conventional(c, day, phase, one = false) {
               : id === "incline"
                 ? "Use a comfortable 30–45° incline and stable deep range. "
                 : id === "row"
-                  ? "Keep chest on support, full comfortable reach, no trunk heave. "
+                  ? c.equipment.row === "db"
+                    ? "Use a 30–45° incline bench with room for both dumbbells. Row both arms together; keep chest on the pad and allow a full comfortable reach. No trunk heave. Log the weight of ONE dumbbell. "
+                    : "Keep chest on support, full comfortable reach, no trunk heave. "
                   : id === "lateral"
                     ? "Slightly forward arm plane, about shoulder height; no torso swing or shortened-ROM finishers. "
                     : id === "crunch"

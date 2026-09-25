@@ -21,6 +21,7 @@ export function createPacing(w, now = Date.now()) {
     breakRun: null,
     workEndedAt: null,
     enabledAt: now,
+    sound: true,
   };
   return w.pacing;
 }

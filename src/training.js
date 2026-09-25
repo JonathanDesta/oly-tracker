@@ -1328,6 +1328,7 @@ export function logSet(s, data, now = Date.now()) {
   if (!w.preparations.includes(e.key))
     throw Error("Confirm the exercise warm-up, setup and readiness first.");
   const r = { ...data, id: uid(), key: e.key, exerciseId: e.id, at: now };
+  if (e.loadUnit) r.loadUnit = e.loadUnit;
   if (
     ["quality", "failure"].includes(e.kind) &&
     !(Number.isFinite(r.weight) && r.weight > 0 && r.weight <= 2000)

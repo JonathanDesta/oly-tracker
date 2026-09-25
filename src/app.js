@@ -24,6 +24,7 @@ import {
   setSchedule,
 } from "./calendar.js";
 import { installPlannerIntegration } from "./planner-integration.js";
+import { TimerAlerts, currentAlarm } from "./timer-alerts.js";
 import {
   DAYS,
   PHASE_NAMES,
@@ -118,7 +119,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.20";
+const APP_BUILD = "7.21";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -172,6 +173,13 @@ try {
   storageError = e.message;
 }
 if (state?.active) view = "workout";
+const timerAlerts = new TimerAlerts({
+  document,
+  navigator,
+  URL,
+  Blob,
+  storage: localStorage,
+});
 if (state)
   selected =
     programDays(state.training).find(
@@ -606,7 +614,7 @@ function pacingCard(w) {
     if (stage.role !== "break-pool")
       controls += btn("Take a 2-minute break", "pace-break", "", "quiet");
   }
-  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(p.sound ? "Timer sound on" : "Enable timer sound", "pace-sound", "", "quiet")}</div><p class="fine-print">Zero is a cue, not a completed set. Follow the current exercise’s endpoint and record the real outcome. For Olympic failure sets, keep going at the same load until the first miss or invalid rep; the planned rep count is only a time estimate. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; Use the rest target as a recommendation. If you end it early, the actual rest is recorded. Skip a warm-up set only when you are already prepared for that weight.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
+  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(timerAlerts.preferences.enabled ? "Alarm sound on · mute" : "Alarm sound off · enable", "pace-sound", "", "quiet")}</div><p class="fine-print" data-alarm-state></p><p class="fine-print">Sound uses your phone’s media volume. Background playback can be interrupted by other audio, calls, or the phone; closing the app stops its audio. Try Settings → Alarms → Test with phone locked before relying on it.</p><p class="fine-print">Zero is a cue, not a completed set. Follow the current exercise’s endpoint and record the real outcome. For Olympic failure sets, keep going at the same load until the first miss or invalid rep; the planned rep count is only a time estimate. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; Use the rest target as a recommendation. If you end it early, the actual rest is recorded. Skip a warm-up set only when you are already prepared for that weight.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
     .filter((step) => !p.completed.some((x) => x.id === step.id))
     .map(
       (step) =>
@@ -769,7 +777,9 @@ function workoutView() {
       body += `<form data-form="set"><div class="input-grid">`;
       if (["quality", "failure"].includes(e.kind))
         body += input(
-          "Actual load · lb",
+          e.loadUnit === "per dumbbell"
+            ? "Each dumbbell · lb"
+            : "Actual load · lb",
           "weight",
           proposed,
           "number",
@@ -914,7 +924,7 @@ function setText(x) {
     return `${fmt(x.minutes)} min moving · ${x.shortened ? "shortened bout" : "recorded"}${x.timingMethod === "timed-confirmed" ? ` · ${time(x.timedSeconds)} unpaused / ${time(x.pausedSeconds)} paused; actual minutes confirmed` : " · actual minutes confirmed"}`;
   if (x.exerciseId === "mobility")
     return `${x.holds} × ${x.holdSeconds} s holds · ${x.activeReps} active reps · ${time(x.elapsedSeconds)} elapsed`;
-  return `${x.weight ? fmt(x.weight) + " lb · " : ""}${esc(x.reps ?? x.minutes)} ${x.exerciseId === "aerobic" ? "min" : x.reps === "1+1" ? "pair" : "reps"} · ${esc(x.endpoint || x.outcome || x.quality || "recorded")}${x.grade ? " · " + x.grade + " / effort " + x.effort : ""}${x.fault ? " · " + esc(x.fault) : ""}${x.failed ? " · unsuccessful attempt" : ""}${x.preparation ? " · preparation attempt, included in heavy dose" : ""}${x.reviewFlag ? " · " + esc(x.reviewFlag) : ""}${x.seconds ? " · " + fmt(x.seconds) + " s" : ""}${x.heights?.length ? " · heights " + x.heights.map(fmt).join(", ") + " · mean " + fmt(x.heights.reduce((n, h) => n + h, 0) / x.heights.length) : ""}`;
+  return `${x.weight ? fmt(x.weight) + (x.loadUnit === "per dumbbell" ? " lb per dumbbell · " : " lb · ") : ""}${esc(x.reps ?? x.minutes)} ${x.exerciseId === "aerobic" ? "min" : x.reps === "1+1" ? "pair" : "reps"} · ${esc(x.endpoint || x.outcome || x.quality || "recorded")}${x.grade ? " · " + x.grade + " / effort " + x.effort : ""}${x.fault ? " · " + esc(x.fault) : ""}${x.failed ? " · unsuccessful attempt" : ""}${x.preparation ? " · preparation attempt, included in heavy dose" : ""}${x.reviewFlag ? " · " + esc(x.reviewFlag) : ""}${x.seconds ? " · " + fmt(x.seconds) + " s" : ""}${x.heights?.length ? " · heights " + x.heights.map(fmt).join(", ") + " · mean " + fmt(x.heights.reduce((n, h) => n + h, 0) / x.heights.length) : ""}`;
 }
 function historyView() {
   const totals = monitoringTotals(state);
@@ -1042,8 +1052,9 @@ function settingsView() {
       "Use reviewed changes for workload progression. Setup changes start a new load comparison.",
     ) +
     `<section class="panel"><h2>App & offline updates</h2><p>App ${APP_BUILD} · complete session timing. Each browser/device keeps an offline copy; connect Google below to sync your journal and setup.</p>${btn("Check for updates", "check-update", "", "quiet")}<p>Updates preserve saved records. Save form changes and finish any active session before using the update banner.</p></section>` +
+    `<section class="panel"><h2>Alarms</h2><p>Sound starts automatically when you begin a session. A louder three-beep pattern repeats for up to one minute or until silenced. Preferences are saved on this device.</p><form data-form="alarms">${check("Alarm sound on", "enabled", timerAlerts.preferences.enabled)}${select("Alarm volume", "volume", { 1: "Loud · 100%", 0.75: "Medium · 75%", 0.5: "Lower · 50%" }, timerAlerts.preferences.volume)}${submit("Save alarm settings")}</form><p data-alarm-state></p><div class="actions">${btn("Test alarm sound", "alarm-test")}${btn("Test with phone locked · 10 seconds", "alarm-test-away")}</div><p>Use your phone’s <strong>media volume</strong> and check its speaker/headphone output. Background audio may pause music from another app. Test with your normal headphones, music and locked-screen setup.</p><p>The countdown and sound play as one audio track, so switching apps does not require a new sound to start at zero. The phone can still interrupt or stop playback; force-closing the app stops alarms. This is not a native phone alarm. Until your locked-screen test succeeds, keep the app visible or use your phone’s Clock timer.</p></section>` +
     `<section class="panel"><h2>Weekly schedule</h2><p>${esc(scheduleName(t))}</p>${t.doseVersion === DOSE_VERSION ? "<p>The selected whole-week prescription uses Monday, Wednesday and Friday. Both lifts come first, with assistance distributed across the three visits. Week 12 retains its special taper/benchmark calendar. Use Move this day for a real conflict; later dates roll to preserve recovery.</p>" : `<p>This saved week keeps its existing calendar until reviewed. The pending whole-week update will then apply.</p><form data-form="schedule">${select("Training calendar", "schedule", { weekday: "Weekday plan · Mon B / Tue C / Thu A / Fri D", source: "Original PDF order · Mon A / Tue B / Thu C / Fri D" }, t.nextSchedule || t.schedule)}<p class="form-error" role="alert"></p>${submit("Save training calendar")}</form>`}</section>` +
-    `<section class="panel"><h2>Schedule & equipment</h2><form data-form="equipment"><div class="input-grid">${select("Visits on B/D", "split", t.doseVersion === DOSE_VERSION ? { single: "One visit per lifting day" } : { single: "Single visit", split: "Split after incline + laterals (≥3 h)" }, t.split ? "split" : "single")}${select("Smallest barbell increment · lb", "increment", { 2.5: "2.5 lb", 5: "5 lb" }, t.increment)}${select("Incline press", "incline", { default: "Machine · 30–45°", smith: "Smith · safeties", db: "Dumbbells · safe endpoint" }, t.equipment.incline || "default")}${select("Lateral raise", "lateral", { default: "Cable", db: "Dumbbell" }, t.equipment.lateral || "default")}${select("Supported row", "row", { default: "Chest-supported row", machine: "Supported machine row" }, t.equipment.row || "default")}${select("Leg curl", "leg_curl", { default: "Seated leg curl", lying: "Lying leg curl" }, t.equipment.leg_curl || "default")}${select("Calves", "calf", { default: "Standing, knees extended", press: "Supported knee-extended press", seated: "Seated · individualized fallback" }, t.equipment.calf || "default")}${select("Leg extension", "leg_ext", { default: "Supported reclined · ~40° hip flexion", upright: "Upright · equipment fallback" }, t.equipment.leg_ext || "default")}${select("Abdominals", "crunch", { default: "Machine crunch", cable: "Cable crunch" }, t.equipment.crunch || "default")}${select("Triceps", "triceps", { default: "Overhead cable extension", pressdown: "Pressdown · intolerance/interference" }, t.equipment.triceps || "default")}</div><p class="muted">Substitutions retain sets, reps and endpoint. Bench requires a flat barbell, safeties and competent spotting. No glute isolation.</p><p class="form-error" role="alert"></p>${submit("Save schedule & equipment")}</form></section>` +
+    `<section class="panel"><h2>Schedule & equipment</h2><form data-form="equipment"><div class="input-grid">${select("Visits on B/D", "split", t.doseVersion === DOSE_VERSION ? { single: "One visit per lifting day" } : { single: "Single visit", split: "Split after incline + laterals (≥3 h)" }, t.split ? "split" : "single")}${select("Smallest barbell increment · lb", "increment", { 2.5: "2.5 lb", 5: "5 lb" }, t.increment)}${select("Incline press", "incline", { default: "Machine · 30–45°", smith: "Smith · safeties", db: "Dumbbells · safe endpoint" }, t.equipment.incline || "default")}${select("Lateral raise", "lateral", { default: "Cable", db: "Dumbbell" }, t.equipment.lateral || "default")}${select("Supported row", "row", { default: "Chest-supported row · unspecified", db: "Dumbbells · chest on incline bench", machine: "Supported machine row" }, t.equipment.row || "default")}${select("Leg curl", "leg_curl", { default: "Seated leg curl", lying: "Lying leg curl" }, t.equipment.leg_curl || "default")}${select("Calves", "calf", { default: "Standing, knees extended", press: "Supported knee-extended press", seated: "Seated · individualized fallback" }, t.equipment.calf || "default")}${select("Leg extension", "leg_ext", { default: "Supported reclined · ~40° hip flexion", upright: "Upright · equipment fallback" }, t.equipment.leg_ext || "default")}${select("Abdominals", "crunch", { default: "Machine crunch", cable: "Cable crunch" }, t.equipment.crunch || "default")}${select("Triceps", "triceps", { default: "Overhead cable extension", pressdown: "Pressdown · intolerance/interference" }, t.equipment.triceps || "default")}</div><p class="muted">Substitutions retain sets, reps and endpoint. Bench requires a flat barbell, safeties and competent spotting. No glute isolation.</p><p class="form-error" role="alert"></p>${submit("Save schedule & equipment")}</form></section>` +
     `<section class="panel"><h2>Time planning</h2><p>These allowances set the displayed times and guided countdowns. Training doses stay the same; extra recovery extends the prescribed rest.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 30 seconds", moderate: "Moderate · 2 minutes", busy: "Busy · 4 minutes" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", t.doseVersion === DOSE_VERSION ? { same: "Same visit · after Olympic lifts, before assistance" } : { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use your selected times. Countdown targets include prescribed rest plus your extra recovery allowance. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
     `<section class="panel"><h2>Technical references</h2><p>SN ${t.anchors.snatch} lb · CJ ${t.anchors.cj} lb · CL ${t.anchors.clean || "unassessed"} · RJ ${t.anchors.jerk || "unassessed"}. Power clean never loads full CJ.</p>${btn("Record a demonstrated reference", "anchor")}${sourceLink(27)}</section>` +
     `<section class="panel"><h2>Technique & interference</h2><form data-form="technique"><div class="input-grid">${["snatch", "clean", "jerk"].map((k) => select(pretty(k), k, allLoadedFailure(t) ? { none: "Ordinary failure prescription", receive: "Defer affected failure work for technique / receiving review", ...(t.technique[k] !== "none" && t.technique[k] !== "receive" ? { [t.technique[k]]: "Existing technique issue · affected work deferred" } : {}) } : k === "jerk" ? { none: "Ordinary prescription", stance: "Light split stance/recovery", dip: "Light pause-dip regression" } : { none: "Ordinary prescription", receive: "Unsafe receiving · technique-bar rehearsal", return: "Secure return · 4 singles at 40–60%", turnover: "High-hang turnover replacement", balance: "First two sets knee-pause" }, t.technique[k])).join("")}</div>${t.doseVersion === DOSE_VERSION ? "" : check(allLoadedFailure(t) ? "Omit A snatch failure set: repeated next-session cost" : "Reduce A snatch doubles to 4 × 2: repeated next-session cost", "reduceA", t.reduceA)}${t.doseVersion === DOSE_VERSION ? "" : check(allLoadedFailure(t) ? "Omit C jerk failure set while reviewing recovery" : "One fewer C jerk set for two exposures; suspend C assistance", "reduceJerk", t.reduceJerk)}${check("Lower-block fatigue: curls/calves 1; omit extensions/crunch", "lowerDose", t.lowerDose)}${check("Omit week-11 D affected lower work for slow recovery", "omitLastLower", t.omitLastLower)}${t.doseVersion === DOSE_VERSION ? "" : check("Omit provisional C pulls after target/cost review", "omitPull", t.omitPull)}${textarea("Observed issue / target and return review", "reason", "", "required")}<p class="form-error" role="alert"></p>${submit("Save technical prescription")}</form>${sourceLink(16)}${sourceLink(34)}</section>` +
@@ -1350,6 +1361,7 @@ async function action(el) {
   }
   if (a === "start") {
     try {
+      timerAlerts.acknowledge();
       transact((s) => startSession(s, day, id));
       nav("workout");
       try {
@@ -1444,13 +1456,31 @@ async function action(el) {
       s.active.pacing.plannedSeconds = paceStatus(s.active).remaining;
     });
   if (a === "pace-sound") {
-    primeTimerSound();
-    return transact((s) => {
-      s.active.pacing.sound = !s.active.pacing.sound;
-    });
+    timerAlerts.save({ enabled: !timerAlerts.preferences.enabled });
+    refreshAlerts(true);
+    return render();
+  }
+  if (a === "alarm-dismiss") {
+    timerAlerts.acknowledge();
+    refreshAlerts();
+    return;
+  }
+  if (a === "alarm-resume") {
+    refreshAlerts(true);
+    return;
+  }
+  if (a === "alarm-test" || a === "alarm-test-away") {
+    if (state.active)
+      throw Error(
+        "Test the alarm between workouts so the test cannot replace a session alarm.",
+      );
+    if (!timerAlerts.preferences.enabled)
+      throw Error("Turn alarm sound on before testing.");
+    timerAlerts.test(a === "alarm-test-away" ? 10 : 0);
+    refreshAlerts();
+    return;
   }
   if (a === "pace-start") {
-    if (state.active.pacing.sound) primeTimerSound();
     return transact((s) => {
       const w = s.active,
         stage = paceStage(w);
@@ -1535,6 +1565,7 @@ async function action(el) {
         p.rewarmResume = true;
       }
       startPreparation(s, key);
+      s.active.preparationTimer.manualCountdown = true;
     });
   if (a === "check-update") return $("check-update").click();
   if (a === "prep-pause") return transact((s) => pausePreparation(s));
@@ -1749,6 +1780,13 @@ function values(form) {
 function handleForm(form) {
   const f = values(form),
     type = form.dataset.form;
+  if (type === "alarms") {
+    timerAlerts.save({ enabled: f.has("enabled"), volume: f.num("volume") });
+    refreshAlerts(true);
+    render();
+    toast("Alarm preferences saved on this device.");
+    return;
+  }
   if (["olympic-report", "correct-olympic"].includes(type)) {
     const data = {
       weight: f.num("weight"),
@@ -2106,6 +2144,7 @@ function handleForm(form) {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  refreshAlerts(true);
   if (b.dataset.nav) return nav(b.dataset.nav);
   if (b.dataset.action)
     Promise.resolve(action(b)).catch((e) => toast(e.message));
@@ -2114,6 +2153,7 @@ document.addEventListener("submit", (e) => {
   const form = e.target.closest("[data-form]");
   if (!form) return;
   e.preventDefault();
+  refreshAlerts(true);
   try {
     handleForm(form);
   } catch (err) {
@@ -2205,17 +2245,34 @@ document.addEventListener("input", (e) => {
       : "";
   }
 });
-let timerAudio, lastTimerCue;
-function primeTimerSound() {
-  try {
-    timerAudio ||= new (window.AudioContext || window.webkitAudioContext)();
-    timerAudio.resume();
-  } catch {
-    toast("Timer sound is unavailable here; the countdown remains visible.");
-  }
+function refreshAlerts(gesture = false, resuming = false) {
+  timerAlerts.sync(currentAlarm(state), { gesture, resuming });
+  const target = timerAlerts.target,
+    box = $("alarm-status"),
+    blocked = ["blocked", "interrupted"].includes(timerAlerts.status),
+    due = target && target.deadline <= Date.now();
+  box.hidden = !target || !(blocked || due || timerAlerts.testTarget);
+  $("alarm-message").textContent = blocked
+    ? "Alarm audio needs a tap to resume. Keep the app open until sound is working."
+    : due
+      ? `${target.label} · timer finished. Record the actual work; the alarm does not complete a set.`
+      : "Test alarm in 10 seconds. Switch apps or lock your phone now to check background sound.";
+  box.querySelector('[data-action="alarm-resume"]').hidden = !blocked;
+  box.querySelector('[data-action="alarm-dismiss"]').textContent = due
+    ? "Silence alarm"
+    : "Cancel alarm";
+  for (const node of document.querySelectorAll("[data-alarm-state]"))
+    node.textContent = !timerAlerts.preferences.enabled
+      ? "Alarm sound is off on this device."
+      : blocked
+        ? "Sound needs a tap: use Resume alarm audio."
+        : target && timerAlerts.status === "playing"
+          ? "Alarm audio is playing for this countdown."
+          : "Alarm sound is on. Starting a session enables audio.";
 }
 function tick() {
   if (!state) return;
+  refreshAlerts();
   if (state.active?.pacing && $("pace-clock")) {
     const w = state.active,
       p = w.pacing,
@@ -2228,25 +2285,6 @@ function tick() {
     if ($("pace-next"))
       $("pace-next").disabled =
         paceElapsed(p.timer) < paceMinimum(w, display.info.stage);
-    const cue = `${w.id}:${p.currentId}:${p.timer?.startedAt}:${p.additions[p.currentId] || 0}:${p.breakRun?.startedAt || ""}`;
-    if (
-      (p.timer || p.breakRun) &&
-      display.seconds <= 0 &&
-      lastTimerCue !== cue
-    ) {
-      lastTimerCue = cue;
-      if (p.sound && timerAudio?.state === "running") {
-        const tone = timerAudio.createOscillator(),
-          gain = timerAudio.createGain();
-        tone.frequency.value = 660;
-        gain.gain.value = 0.15;
-        tone.connect(gain);
-        gain.connect(timerAudio.destination);
-        tone.start();
-        tone.stop(timerAudio.currentTime + 0.25);
-        navigator.vibrate?.(150);
-      }
-    }
   }
   const prep = state.active?.preparationTimer;
   const aerobic = state.active?.aerobicRun;
@@ -2313,6 +2351,20 @@ function tick() {
       : "Done";
 }
 setInterval(tick, 1000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    refreshAlerts(false, true);
+    if (state?.active && (!wakeLock || wakeLock.released))
+      navigator.wakeLock
+        ?.request("screen")
+        .then((lock) => {
+          wakeLock = lock;
+        })
+        .catch(() => {});
+    tick();
+  }
+});
+window.addEventListener("pageshow", () => refreshAlerts(false, true));
 window.addEventListener("storage", (e) => {
   if (e.key === KEY)
     toast(

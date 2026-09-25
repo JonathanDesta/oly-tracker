@@ -303,7 +303,7 @@ export function validate(data) {
   const equipment = {
     incline: ["", "smith", "db"],
     lateral: ["", "db"],
-    row: ["", "machine"],
+    row: ["", "machine", "db"],
     leg_curl: ["", "lying"],
     calf: ["", "press", "seated"],
     leg_ext: ["", "upright"],

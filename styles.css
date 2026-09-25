@@ -678,6 +678,10 @@ textarea {
   min-width: 0;
   font-size: 14px;
 }
+select {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 textarea {
   min-height: 95px;
   resize: vertical;
@@ -1306,6 +1310,27 @@ dialog::backdrop {
   padding: 1rem;
   border: 1px solid var(--line, #d8d8d8);
   border-radius: 0.5rem;
+}
+#alarm-status {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 100;
+  max-width: min(32rem, calc(100vw - 1.5rem));
+  padding: 1rem;
+  background: #fff2cd;
+  color: #173e36;
+  border: 2px solid #866a20;
+  border-radius: 0.6rem;
+  box-shadow: 0 4px 18px #0003;
+}
+#alarm-status span {
+  display: block;
+  margin-bottom: 0.6rem;
+}
+#alarm-status[hidden],
+#alarm-status button[hidden] {
+  display: none;
 }
 @media (max-width: 480px) {
   .workout-list-row {

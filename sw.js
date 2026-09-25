@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-20-session-usability";
+const CACHE = "oly-groundup-v7-21-alarms-dumbbell-row";
 const FILES = [
   "./",
   "index.html",
@@ -17,6 +17,7 @@ const FILES = [
   "src/duration.js",
   "src/timeline.js",
   "src/pacing.js",
+  "src/timer-alerts.js",
   "src/routines.js",
   "src/prescription.js",
   "src/training.js",

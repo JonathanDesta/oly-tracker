@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.20 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.21 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -84,3 +84,11 @@ Olympic working weights are now self-selected. Enter a weight before the exercis
 The runner offers whole-set rep entry, a separate breathing/burning stop, saved rep-count corrections with the original entry retained, one-tap early rest endings, and a whole-workout list of reps/weights/rest. After Olympic work, an available strength or assistance exercise can move next without dropping the displaced exercise. Wrist work stays after grip-dependent work. The general warm-up runs once; the second Olympic lift receives a shorter, lift-specific preparation. Active sessions retain their saved prescription.
 
 See [the session usability review](docs/SESSION-USABILITY-REVIEW.md) for the rationale and verification scope.
+
+## Dumbbell rows and alarms · App 7.21
+
+The September 25 equipment amendment selects chest-supported dumbbell rows on a 30–45° incline bench for future sessions, preserving row sets/reps/rests. Log each dumbbell's weight. Historical and active prescriptions remain frozen; later equipment choices remain selectable.
+
+Alarm sound defaults on, with a louder repeating three-beep pattern, device-local volume/mute settings, and a Silence control. An audio track contains the current countdown and its alert, so page timer callbacks are not needed to start the sound at zero. Skipping, pausing, extending, ending and resuming reschedule or cancel that track. Alarms also operate while viewing another app page.
+
+Background audio is still subject to iPhone/browser media policies: other audio, calls, closing the app or device interruptions can stop playback. It may pause music from another app. Settings → Alarms includes a 10-second locked-phone test. This is not a native scheduled alarm or a claim of guaranteed iPhone lock-screen delivery. See [the implementation and verification review](docs/ALARMS-AND-ROW.md).

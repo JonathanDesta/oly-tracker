@@ -75,7 +75,7 @@ The tables below are generated from the implemented normal Foundation prescripti
 | Overhead cable triceps extension   |      1 |         0 |      1 |      2 | 10–15 / 2:30                   |
 | Reverse pec deck                   |      1 |         1 |      0 |      2 | 12–20 / 2:30                   |
 | Supported machine or DB shrug      |      1 |         2 |      1 |      4 | 10–15 / 2:30                   |
-| Chest-supported row                |      0 |         4 |      0 |      4 | 8–12 / 3:00                    |
+| Chest-supported dumbbell row       |      0 |         4 |      0 |      4 | 8–12 / 3:00                    |
 | Lat pulldown                       |      0 |         4 |      0 |      4 | 8–12 / 3:00                    |
 | Cable curl · arms beside torso     |      0 |         1 |      0 |      1 | 8–12 / 2:30                    |
 | Supported dumbbell wrist curl      |      0 |         1 |      1 |      2 | 12–20 / 2:00                   |
