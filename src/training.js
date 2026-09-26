@@ -294,12 +294,7 @@ export function moveExerciseNext(s, key, now = Date.now()) {
     target = w?.session.rows.find((e) => e.key === key);
   if (!current || !target || rowStatus(w, target).done)
     throw Error("Choose an unfinished exercise.");
-  if (!w.warmup) throw Error("Finish the general warm-up first.");
   if (current.key === key) return;
-  if (rowStatus(w, current).logs.length)
-    throw Error(
-      "Finish this exercise's remaining sets, or record why you stopped it, before moving another exercise next.",
-    );
   if (
     w.pacing?.breakRun ||
     (w.pacing?.timer &&
@@ -308,31 +303,6 @@ export function moveExerciseNext(s, key, now = Date.now()) {
       ))
   )
     throw Error("Finish and log your current set before switching exercises.");
-  if (
-    target.kind !== "failure" ||
-    w.session.rows.some((e) => e.kind === "quality" && !rowStatus(w, e).done)
-  )
-    throw Error(
-      "Finish the Olympic lifts first. You can then move an available strength or assistance exercise next.",
-    );
-  if (
-    ["wrist_curl", "wrist_extension"].includes(target.id) &&
-    w.session.rows.some(
-      (e) =>
-        [
-          "row",
-          "pulldown",
-          "shrug",
-          "curl",
-          "hammer_curl",
-          "front_squat",
-          "back_squat",
-        ].includes(e.id) && !rowStatus(w, e).done,
-    )
-  )
-    throw Error(
-      "Keep wrist work after your remaining squats, pulls and curls so it does not tire your grip first.",
-    );
   interruptPreparation(s, now);
   const from = w.session.rows.indexOf(target),
     to = w.session.rows.indexOf(current);
@@ -617,6 +587,7 @@ export function planFor(
   actual = false,
   now = Date.now(),
   unrestricted = false,
+  includeCompleted = false,
 ) {
   const observed = contextFor(s, now);
   const context = actual
@@ -653,6 +624,7 @@ export function planFor(
   for (const session of p.sessions) {
     session.rows = session.rows.filter(
       (e) =>
+        includeCompleted ||
         e.id !== "bench" ||
         (!consumedBench(s, e.key) &&
           !s.benchReservations.some(
@@ -774,55 +746,81 @@ export function planFor(
   }
   return unrestricted ? p : restrictions(p, s.training, context);
 }
-export function deferDay(s, day, date) {
+export function deferDay(s, day, date, { rollLater = true } = {}) {
   if (
     !DAYS.includes(day) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-    addDays(date, 0) !== date ||
-    date < scheduledDate(s, day)
+    addDays(date, 0) !== date
   )
-    throw Error("Choose a date on or after the current scheduled date.");
+    throw Error("Choose a valid calendar date.");
   const delta = Math.round(
     (new Date(date + "T12:00:00Z") -
       new Date(scheduledDate(s, day) + "T12:00:00Z")) /
       86400000,
   );
   const order = programDays(s.training);
-  for (const d of order.slice(order.indexOf(day))) {
-    if (!weekRecords(s).some((r) => r.day === d && r.session.id === "main"))
+  for (const d of rollLater ? order.slice(order.indexOf(day)) : [day]) {
+    if (
+      d === day ||
+      !weekRecords(s).some((r) => r.day === d && r.session.id === "main")
+    )
       s.dates[d] = addDays(scheduledDate(s, d), delta);
   }
+}
+export function workoutWarnings(s, day, se, now = Date.now()) {
+  const ctx = contextFor(s, now),
+    warnings = [];
+  if (ctx.level === "unchecked")
+    warnings.push(
+      "Readiness has not been recorded today. You can train and log your actual work without completing a check-in.",
+    );
+  if (
+    (ctx.level !== "green" && ctx.level !== "unchecked") ||
+    ctx.event === "unsafe" ||
+    ["game", "game_defer"].includes(sportEvent(ctx))
+  )
+    warnings.push(
+      "Your readiness or event notes recommend reducing or deferring this workout. You control whether to proceed.",
+    );
+  if (
+    ctx.noProtection &&
+    se.rows.some((e) => ["bench", "front_squat", "back_squat"].includes(e.id))
+  )
+    warnings.push(
+      "Use appropriate safeties or spotting for barbell bench and squats. Your notes say protection is unavailable.",
+    );
+  if (
+    se.rows.some((e) => e.id === "bench") &&
+    !benchWindow({ ...s, active: null }, now).ready
+  )
+    warnings.push(
+      "The program recommends at least 48 hours between bench exposures. This workout is closer to the previous exposure; starting and logging remain available.",
+    );
+  const previous = s.records
+    .filter(
+      (r) => r.session.kind === "lifting" && r.sets.length && r.endedAt <= now,
+    )
+    .at(-1);
+  if (previous && now - previous.endedAt < 48 * 3600000)
+    warnings.push(
+      "You trained within the last 48 hours. Check recovery and adjust today's effort as needed; this does not lock the workout.",
+    );
+  if (scheduledDate(s, day) !== localDate(new Date(now)))
+    warnings.push(
+      `This slot was planned for ${scheduledDate(s, day)}. The log will use today's actual date.`,
+    );
+  return warnings;
 }
 export function startSession(s, day, id, now = Date.now(), options = {}) {
   if (!DAYS.includes(day)) throw Error("Choose a scheduled program day.");
   if (s.active) throw Error("Finish the active session first.");
-  if (s.completed)
-    throw Error("The 52-week program is complete. Review the year in History.");
   const ctx = contextFor(s, now);
-  if (ctx.level === "unchecked")
-    throw Error("Record today’s readiness before starting.");
-  let p = planFor(s, day, true, now),
+  let p = planFor(s, day, true, now, !!options.fullPlan, true),
     se = p.sessions.find((x) => x.id === id);
   if (options.rescue) {
     const slot = options.rescue;
     if (!["bench_low", "bench_moderate"].includes(slot))
       throw Error("Choose a prescribed bench slot.");
-    if (consumedBench(s, slot))
-      throw Error("This bench slot already has an exposure. Do not repeat it.");
-    if (slot === "bench_moderate" && !consumedBench(s, "bench_low"))
-      throw Error("The low-rep bench slot comes first.");
-    if (
-      ctx.level !== "green" ||
-      ctx.local === "upper" ||
-      ctx.noProtection ||
-      ctx.event === "unsafe" ||
-      sportEvent(ctx) !== "normal"
-    )
-      throw Error("Bench is deferred until readiness and protection permit.");
-    if (s.training.week === 12 && ctx.event === "larger_later")
-      throw Error(
-        "Taper moderate bench moves after the larger/unfamiliar event.",
-      );
     se = session(
       "rescue-" + slot,
       "Deferred " + (slot === "bench_low" ? "low-rep" : "moderate") + " bench",
@@ -847,115 +845,28 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
       .at(-1);
     if (e.hold && prior) e.heldWeight = prior.sets.at(-1).weight;
   } else {
-    if (!se || se.skipped) throw Error(se?.reason || "No eligible work.");
-    if (weekRecords(s).some((r) => r.day === day && r.session.id === id))
+    if (!se || se.skipped || !se.rows.length)
       throw Error(
-        "This session is already resolved. Omitted work is not replayed.",
+        se?.reason ||
+          "No planned work in this session. Choose another workout or use the full planned workout.",
       );
-    if (localDate(new Date(now)) < scheduledDate(s, day))
-      throw Error(
-        "This session is scheduled later. Preserve the rolling sequence and recovery days.",
-      );
-    if (id === "main") {
-      const order = programDays(s.training);
-      for (const d of order.slice(0, order.indexOf(day))) {
-        const prior = planFor(s, d).sessions.filter((x) =>
-          ["main", "support"].includes(x.id),
-        );
-        if (
-          prior.some(
-            (x) =>
-              !weekRecords(s).some((r) => r.day === d && r.session.id === x.id),
-          )
-        )
-          throw Error(
-            `Resolve ${slotLabel(s.training, d)} first; roll the sequence rather than compressing it.`,
-          );
-      }
-    }
-    if (id === "support") {
-      const before = planFor(s, day).sessions.filter(
-        (x) => x.id === "main" || x.kind === "athletic",
-      );
-      if (
-        before.some(
-          (x) =>
-            !weekRecords(s).some((r) => r.day === day && r.session.id === x.id),
-        )
-      )
-        throw Error("Resolve Olympic work and athletics before assistance.");
-    }
-    if (id === "accessories") {
-      const first = weekRecords(s).find(
-        (r) => r.day === day && r.session.id === "main",
-      );
-      if (!first || now - first.endedAt < 3 * 3600000)
-        throw Error(
-          "Visit 2 requires visit 1 and at least 3 hours since it ended.",
-        );
-      if (first.date !== localDate(new Date(now)))
-        throw Error(
-          "Visit 2 belongs to the same day as visit 1. Later omitted blocks are dropped, never replayed.",
-        );
-    }
-    if (["athletic", "cardio", "mobility"].includes(se.kind)) {
-      if (
-        se.kind === "athletic" &&
-        weekRecords(s).some((r) => r.session.id === id && r.sets.length)
-      )
-        throw Error(
-          "This athletic module was already performed this week; relocation cannot duplicate it.",
-        );
-      const lifting = planFor(s, day).sessions.filter((x) =>
-        [
-          "main",
-          "accessories",
-          ...(se.kind === "athletic" ? [] : ["support"]),
-        ].includes(x.id),
-      );
-      if (
-        lifting.some(
-          (x) =>
-            !weekRecords(s).some((r) => r.day === day && r.session.id === x.id),
-        )
-      )
-        throw Error("Complete priority lifting before optional work.");
-    }
-  }
-  if (se.rows.some((e) => e.id === "bench")) {
-    if (!benchWindow(s, now).ready) {
-      if (!options.deferBench)
-        throw Error(
-          `Bench is eligible after ${new Date(benchWindow(s, now).eligibleAt).toLocaleString()}. You can start the other work with bench deferred.`,
-        );
-      se.rows = se.rows.filter((e) => e.id !== "bench");
-      se.note +=
-        " Bench deferred for actual 48-hour spacing; rescue only the unperformed bench slot.";
-      if (!se.rows.length)
-        throw Error("Bench remains deferred; no other work in this session.");
-    }
     if (
-      s.training.week === 12 &&
-      se.rows.some((e) => e.key === "bench_moderate") &&
-      !weekRecords(s).some(
-        (r) =>
-          r.day === "friday" &&
-          r.session.id === "main" &&
-          ["snatch", "cj"].every((id) =>
-            r.sets.some((e) => e.exerciseId === id),
-          ),
-      )
+      !options.repeat &&
+      weekRecords(s).some((r) => r.day === day && r.session.id === id)
     )
       throw Error(
-        "Complete the Olympic test or technical benchmark before moderate bench.",
+        "This session is already resolved. Choose Repeat session to create a separate log.",
       );
   }
-  if (
-    !options.rescue &&
-    id === "main" &&
-    localDate(new Date(now)) > scheduledDate(s, day)
-  )
-    deferDay(s, day, localDate(new Date(now)));
+  const warnings = workoutWarnings(s, day, se, now);
+  if (options.deferBench) {
+    se.rows = se.rows.filter((e) => e.id !== "bench");
+    if (!se.rows.length)
+      throw Error("No work remains after leaving out bench.");
+  }
+  // Starting changes only this slot's displayed date, never the rest of the week.
+  if (!options.rescue && !options.repeat && id === "main")
+    s.dates[day] = localDate(new Date(now));
   const supportPrepared =
     id === "support" &&
     weekRecords(s).some(
@@ -998,7 +909,9 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
     baseSession: options.rescue
       ? copy(se)
       : copy(
-          planFor(s, day, true, now, true).sessions.find((x) => x.id === id),
+          planFor(s, day, true, now, true, true).sessions.find(
+            (x) => x.id === id,
+          ),
         ),
     anchors: copy(s.training.anchors),
     increment: s.training.increment,
@@ -1012,13 +925,28 @@ export function startSession(s, day, id, now = Date.now(), options = {}) {
       anchors: copy(s.training.anchors),
       increment: s.training.increment,
       continuation:
-        !!p.sessions.slice(0, p.sessions.indexOf(se)).some((x) => !x.skipped) &&
+        !!p.sessions
+          .slice(0, p.sessions.indexOf(se))
+          .some((x) =>
+            weekRecords(s).some(
+              (r) =>
+                r.day === day &&
+                r.session.id === x.id &&
+                r.date === localDate(new Date(now)) &&
+                r.sets.length &&
+                r.endedAt <= now &&
+                now - r.endedAt <= 15 * 60000,
+            ),
+          ) &&
         ((se.id === "support" && supportPrepared) ||
           se.kind === "cardio" ||
           (se.kind === "athletic" &&
             s.training.timing?.athleticsVisit === "same")),
     },
     initialContext: copy(ctx),
+    warnings,
+    fullPlan: !!options.fullPlan,
+    repeated: !!options.repeat,
     sets: [],
     omissions: [],
     preparations: [],
@@ -1301,27 +1229,13 @@ export function logSet(s, data, now = Date.now()) {
   const w = s.active,
     e = w && nextRow(w);
   if (!e) throw Error("No unresolved work remains.");
-  const current = contextFor(s, now);
-  if (current.level === "unchecked")
-    throw Error("Record today’s readiness before continuing this session.");
-  if (
-    current.level === "red" ||
-    current.event === "unsafe" ||
-    ["game", "game_defer"].includes(sportEvent(current))
-  )
-    throw Error(
-      "Current readiness/event defers loaded work. Reassess or end this session.",
-    );
-  if (
-    (e.kind === "failure" || olympicFailure(e)) &&
-    (current.level === "amber" ||
-      sportEvent(current) === "game_later" ||
-      (current.noProtection &&
-        ["bench", "front_squat", "back_squat"].includes(e.id)))
-  )
-    throw Error(
-      "This failure set is deferred by current readiness or protection.",
-    );
+  // Recommendations must never prevent recording work the user actually did.
+  w.warnings = [
+    ...new Set([
+      ...(w.warnings || []),
+      ...workoutWarnings(s, w.day, w.session, now),
+    ]),
+  ];
   if (!w.warmup) throw Error("Complete the general warm-up first.");
   if (w.preparationTimer)
     throw Error("Finish the running preparation before logging work.");
@@ -1348,8 +1262,6 @@ export function logSet(s, data, now = Date.now()) {
     )
       r.reviewFlag = `First-exposure load estimate needs review: fewer than ${estimate.minimum} valid reps. Adjust next exposure; no extra calibration set (p.5).`;
     if (e.id === "bench") {
-      if (!benchWindow({ ...s, active: null }, now).ready)
-        throw Error("Actual bench spacing is under 48 hours; defer this set.");
       r.benchSlot = e.key;
     }
   }
@@ -1389,20 +1301,6 @@ export function logSet(s, data, now = Date.now()) {
         );
       const progress = failureSetStatus(e, logs);
       r.setNumber = progress.completedSets + 1;
-      if (
-        progress.completedSets &&
-        !progress.current.length &&
-        now - logs.at(-1).at < e.rest * 1000 &&
-        !(w.restOverrides || []).some(
-          (r) =>
-            r.key === e.key &&
-            r.afterAttempt === logs.length - 1 &&
-            r.at >= logs.at(-1).at,
-        )
-      )
-        throw Error(
-          "Recover at least 5 minutes before beginning the next Olympic set.",
-        );
       r.failurePolicy = e.endpointPolicy;
       r.validRep = r.outcome === "make" && r.grade !== "C" && !r.endpoint;
       r.terminal =
@@ -1955,6 +1853,10 @@ export function reassessActive(s, now = Date.now()) {
     ...(w.readinessChanges || []),
     { at: now, context: copy(ctx) },
   ];
+  if (w.fullPlan) {
+    w.warnings = workoutWarnings(s, w.day, w.session, now);
+    return;
+  }
   for (const e of w.session.rows) {
     if (rowStatus(w, e).done) continue;
     const updated = next.skipped
@@ -1984,6 +1886,22 @@ export function reassessActive(s, now = Date.now()) {
       if (chosenWeight) e.workingLoad = chosenWeight;
     }
   }
+}
+export function useFullWorkout(s, now = Date.now()) {
+  const w = s.active;
+  if (!w) throw Error("No active workout.");
+  const full = copy(w.baseSession || w.originalSession || w.session);
+  const chosen = new Map(w.session.rows.map((e) => [e.key, e.workingLoad]));
+  for (const e of full.rows)
+    if (e.selfSelectedLoad && chosen.get(e.key))
+      e.workingLoad = chosen.get(e.key);
+  w.session = full;
+  w.fullPlan = true;
+  w.fullPlanSelectedAt = now;
+  w.omissions = w.omissions.filter(
+    (o) => o.reason !== "Omitted after updated readiness/event assessment.",
+  );
+  w.warnings = workoutWarnings(s, w.day, w.session, now);
 }
 export function omissionRecord(s, day, id, reason, now = Date.now()) {
   if (!reason?.trim()) throw Error("Record an omission reason.");

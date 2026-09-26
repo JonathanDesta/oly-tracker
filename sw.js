@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-21-alarms-dumbbell-row";
+const CACHE = "oly-groundup-v7-22-user-schedule-control";
 const FILES = [
   "./",
   "index.html",

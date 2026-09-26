@@ -10,13 +10,13 @@ Open [localhost:8766](http://127.0.0.1:8766). Node 22+ is required for the local
 
 ## Training workflow
 
-1. Check today's readiness and actual sport/alcohol exposure.
-2. Start the next dated session: ordinarily Monday, Wednesday and Friday under the current whole-week prescription. A late start rolls later dates; use **Move this day** for planned deferrals.
+1. Optionally record today's readiness and actual sport/alcohol exposure. Recommendations remain visible without locking session starts.
+2. Choose any workout tab and start it today, including on consecutive days or out of order. Monday, Wednesday and Friday remain the suggested calendar. **Move this day** accepts earlier or later dates; other days move only when you select the option to shift them.
 3. Complete the general and exercise-specific preparations. Log actual Olympic attempts, or valid conventional reps and their honest endpoint. Misses count. TECH and safety stops do not count as successful failure sets.
 4. Save a next-session follow-up in History. Use the weekly review to repeat, advance, reduce, or restore the dose.
 5. Start optional work or a controlled trial only through a documented eligibility review in Settings. Read the adjacent source pages for the required observations.
 
-Bench is tracked as separate low- and moderate-rep exposures, with at least 48 actual hours between attempts, including legacy records. Only unperformed bench slots can be rescued. Taper moderate bench follows the Olympic test. An omitted block is never replayed as catch-up work.
+Bench is tracked as separate low- and moderate-rep exposures. The source recommends at least 48 actual hours between bench exposures, priority lifting before assistance, and dropping omitted blocks. App 7.22 treats these as guidance: starts, bench logging, exercise order and explicit repeat sessions remain available. Readiness reductions offer a **Full planned workout** override without changing the recorded check-in to green. See [the user-control amendment](docs/WORKOUT-CONTROL.md).
 
 ## Data
 
@@ -41,13 +41,13 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.21 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.22 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
 ## Removing test sessions
 
-Open History → select a session → Delete session, then confirm. You can also use View log on the day tab. Deleting a saved test, partial, completed or omitted session removes its entries and progression credit and reopens its slot in the current week. Ordinary readiness, sequence and bench-spacing rules still apply to remaining work. Earlier-week deletion does not rewind the program. Finish any active workout before deleting saved history. Export a backup first if you may want the record later.
+Open History → select a session → Delete session, then confirm. You can also use View log on the day tab. Deleting a saved test, partial, completed or omitted session removes its entries and progression credit and reopens its slot in the current week. You can also choose **Repeat session** to keep the existing log and create another one. Dates, readiness and bench spacing do not lock session starts. Earlier-week deletion does not rewind the program. Finish any active workout before deleting saved history. Export a backup first if you may want the record later.
 
 ## Planner and private device sync
 

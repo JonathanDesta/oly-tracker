@@ -380,7 +380,7 @@ test("muscle accounting separates direct, indirect and unquantified contribution
   assert(verified.exercises.every((e) => e.sets === 1));
 });
 
-test("multiple Olympic failure sets keep independent endpoints and enforced recovery, variable pacing and undo", () => {
+test("multiple Olympic failure sets keep independent endpoints and recommended recovery, variable pacing and undo", () => {
   const s = start(),
     e = nextRow(s.active);
   assert.equal(e.sets, 2);
@@ -391,7 +391,7 @@ test("multiple Olympic failure sets keep independent endpoints and enforced reco
   assert.equal(rowStatus(s.active, e).completedSets, 1);
   assert.equal(nextRow(s.active).key, e.key);
   assert.equal(s.restEnd, now + 331000);
-  assert.throws(() => rep(s, now + 32000), /5 minutes/);
+  assert.doesNotThrow(() => rep(structuredClone(s), now + 32000));
   const rest = s.active.pacing.plan.find((x) => x.id === "cj:rest:0");
   assert.equal(rest.seconds, 300);
   assert.equal(rest.afterAttempt, 1);

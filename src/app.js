@@ -45,6 +45,7 @@ import {
   consumedBench,
   benchWindow,
   startSession,
+  useFullWorkout,
   startMobility,
   completeMobilityStep,
   startAerobic,
@@ -119,7 +120,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.21";
+const APP_BUILD = "7.22";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -268,14 +269,24 @@ function readinessCard() {
       green: "Green · normal",
       amber: "Amber · global fatigue",
       red: "Red · stop",
-      unchecked: "Check in before training",
+      unchecked: "Optional readiness check",
     };
   return `<section class="readiness-strip"><div><span class="status-dot ${r.level}"></span><strong>${labels[r.level]}</strong><p>${r.level === "unchecked" ? "Use today’s positions, coordination and familiar warm-ups." : `${r.local ? "Local " + r.local + " issue · " : ""}${r.event.replaceAll("_", " ")}${sportEvent(r) !== "normal" ? " · " + sportEvent(r).replaceAll("_", " ") : ""} · ${dateLabel(r.date)}`}</p></div>${btn(r.level === "unchecked" ? "Check readiness" : "Update readiness", "readiness", "", "button")}</section>`;
+}
+function workoutRowsDiffer(a, b) {
+  const comparable = (rows) =>
+    JSON.stringify(rows, (key, value) =>
+      key === "trialIds" && Array.isArray(value) && !value.length
+        ? undefined
+        : value,
+    );
+  return comparable(a) !== comparable(b);
 }
 function weekView() {
   const t = state.training,
     phase = phaseFor(t),
-    p = planFor(state, selected, scheduledDate(state, selected) <= localDate()),
+    p = planFor(state, selected, true, Date.now(), false, true),
+    full = planFor(state, selected, true, Date.now(), true, true),
     year = (t.cycle - 1) * 13 + t.week,
     timing = estimateDay(p, t);
   const plans = DAYS.map((d) => dayPlan(t, d)),
@@ -293,6 +304,9 @@ function weekView() {
       `Cycle ${t.cycle} · Week ${t.week}/13 · ${PHASE_NAMES[phase.phase]}${t.entry < 3 ? " · Entry dose " + t.entry : ""}`,
     ) +
     notice(scheduleName(t)) +
+    notice(
+      "You control the schedule. Choose any workout tab and start it today, including on consecutive days. Dates, workout order and recovery intervals are recommendations.",
+    ) +
     (allLoadedFailure(t)
       ? notice(
           `Loaded work: failure endpoint. Olympic sets end at the first miss or invalid rep. Introduction ${t.failureEntry}/${DOSE_STAGES} · ${t.failureWeeks.length}/2 stable green weeks reviewed. New dose additions wait for this review.`,
@@ -326,7 +340,7 @@ function weekView() {
     (state.active
       ? `<div class="resume-banner"><span>Session in progress · ${esc(state.active.session.title)}</span>${btn("Resume workout", "resume", "", "primary button")}</div>`
       : "") +
-    `<div class="overview"><article><small>PRIORITY</small><strong>01 <span>Weightlifting</span></strong><p>Then hypertrophy, athleticism, longevity.</p></article><article><small>PLANNED THIS WEEK</small><strong>${failureSets} <span>failure sets</span></strong><p>${allLoadedFailure(t) ? "Includes Olympic and conventional loaded work." : "Separate from quality-limited Olympic work."}</p></article><article><small>BENCH CONTINUITY</small><strong>${["bench_low", "bench_moderate"].filter((k) => consumedBench(state, k)).length}<span> / 2 exposures</span></strong><p>Low 3–5 · moderate 6–8 · ≥48 actual hours.</p></article></div>` +
+    `<div class="overview"><article><small>PRIORITY</small><strong>01 <span>Weightlifting</span></strong><p>Then hypertrophy, athleticism, longevity.</p></article><article><small>PLANNED THIS WEEK</small><strong>${failureSets} <span>failure sets</span></strong><p>${allLoadedFailure(t) ? "Includes Olympic and conventional loaded work." : "Separate from quality-limited Olympic work."}</p></article><article><small>BENCH CONTINUITY</small><strong>${["bench_low", "bench_moderate"].filter((k) => consumedBench(state, k)).length}<span> / 2 exposures</span></strong><p>Low 3–5 · moderate 6–8 · 48 hours recommended.</p></article></div>` +
     readinessCard() +
     `<section class="week-section"><div class="section-label"><h2>The week ahead</h2><span>Phase first. Readiness second.</span></div><div class="week-days">${programDays(
       t,
@@ -336,13 +350,30 @@ function weekView() {
           `<button data-action="day" data-day="${d}" class="day ${selected === d ? "selected" : ""}" aria-pressed="${selected === d}"><small>${calendarWeekday(d, true)}</small><strong>${threeDaySchedule(t) && t.week !== 12 && d === "monday" ? "—" : SLOT_LETTERS[d] || "—"}</strong><span>${dateLabel(scheduledDate(state, d))}</span>${resolved(d, "main") ? '<i aria-label="Resolved">✓</i>' : ""}</button>`,
       )
       .join("")}</div></section>` +
-    `<section class="day-content"><div class="section-label"><div><div class="eyebrow">${calendarWeekday(selected)} / ${dateLabel(scheduledDate(state, selected))}</div><h2>${selected === "wednesday" || selected === "sunday" || (threeDaySchedule(t) && t.week !== 12 && selected === "monday") ? "Recovery & readiness" : PHASE_NAMES[p.phase]}</h2></div>${btn("Move this day", "defer", `data-day="${selected}"`, "quiet")}</div>${p.notes.map((s) => notice(s)).join("")}${dayTime(timing)}${dosePanel(p)}${p.sessions.map((s, i) => preview(s, p, timing.sessions[i])).join("")}${!p.sessions.length ? '<div class="empty-card"><span>↘</span><h3>Space to recover.</h3><p>Off or targeted mobility. Optional easy walking; no missed-volume debt.</p></div>' : ""}${mobilityCard(p, timing)}</section>` +
+    `<section class="day-content"><div class="section-label"><div><div class="eyebrow">${calendarWeekday(selected)} / ${dateLabel(scheduledDate(state, selected))}</div><h2>${selected === "wednesday" || selected === "sunday" || (threeDaySchedule(t) && t.week !== 12 && selected === "monday") ? "Recovery & readiness" : PHASE_NAMES[p.phase]}</h2></div>${btn("Move this day", "defer", `data-day="${selected}"`, "quiet")}</div>${p.notes.map((s) => notice(s)).join("")}${dayTime(timing)}${dosePanel(p)}${p.sessions
+      .map((s, i) => {
+        const ordinary = full.sessions.find((x) => x.id === s.id);
+        const alternative =
+          ordinary &&
+          !ordinary.skipped &&
+          ordinary.rows.length &&
+          (s.skipped || workoutRowsDiffer(ordinary.rows, s.rows));
+        return (
+          preview(s, p, timing.sessions[i]) +
+          (alternative
+            ? `<details class="panel"><summary>Full planned workout · optional override</summary><p>The check-in recommends the adjusted plan above. You can choose the full plan below; the original readiness notes remain in your log.</p>${preview(ordinary, full, estimateSession(ordinary, t, t), true)}</details>`
+            : "")
+        );
+      })
+      .join(
+        "",
+      )}${!p.sessions.length ? '<div class="empty-card"><span>↘</span><h3>Space to recover.</h3><p>Off or targeted mobility is recommended. To train today, choose any workout tab above; its date will not block you.</p></div>' : ""}${mobilityCard(p, timing)}</section>` +
     `<div class="week-actions">${btn("Weekly review", "review", "", "primary button")}${btn("Rescue a bench slot", "rescue")}${t.athletics.enabled ? btn(`Relocate athletics to ${SLOT_LETTERS[secondaryAthleticSlot(t)]} · ${calendarWeekday(secondaryAthleticSlot(t))}`, "relocate", "", "quiet") : ""}</div>` +
     `${monitoring(state)
       .map((s) => notice(s, "warning"))
       .join(
         "",
-      )}<p class="fine-print">Day letters stay with the session when dates move; tabs show the actual weekday. To move the whole week, select its first unresolved session and use Move this day. Later dates follow the current order. ${allLoadedFailure(t) && t.week === 12 ? "Monday work, Friday benchmark, then moderate bench" : threeDaySchedule(t) ? "B–rest–C–rest–D–rest–rest" : allLoadedFailure(t) && t.week === 13 ? "B–rest–rest–rest–D–rest–rest" : weekdaySchedule(t) && t.week !== 12 ? "B–C–rest–A–D–rest–rest" : "A–B–rest–C–D–rest–rest"}; at most two consecutive normal Olympic days. Test week keeps its separate taper and post-test bench. ${sourceLink(23)}</p>`
+      )}<p class="fine-print">Day letters stay with the session when dates move; tabs show the actual weekday. To move the whole week, select its first unresolved session and use Move this day. Later dates move only when you select that option. ${allLoadedFailure(t) && t.week === 12 ? "Monday work, Friday benchmark, then moderate bench" : threeDaySchedule(t) ? "B–rest–C–rest–D–rest–rest" : allLoadedFailure(t) && t.week === 13 ? "B–rest–rest–rest–D–rest–rest" : weekdaySchedule(t) && t.week !== 12 ? "B–C–rest–A–D–rest–rest" : "A–B–rest–C–D–rest–rest"}; the source recommends at most two consecutive normal Olympic days. These are planning recommendations, not start restrictions. Test week keeps its separate taper and post-test bench. ${sourceLink(23)}</p>`
   );
 }
 function dosePanel(p) {
@@ -447,18 +478,18 @@ function mobilityCard(p, timing) {
     return "";
   return `<section class="session-card mobility-card" aria-label="Targeted mobility and stretch times"><div class="session-head"><div><span class="pill">TARGETED MOBILITY</span><h3>Stretches & active movement</h3></div><div class="duration">${minutesText(timing.mobility)}<small>included in day total</small></div></div>${timing.mobilityRows.length ? timing.mobilityRows.map((r) => `<div class="mobility-row"><strong>${minutesText(r.seconds)} per restriction</strong><p>${esc(r.description)}</p></div>`).join("") + '<p class="fine-print">Includes holds on both sides, 15-second rests, five slow active reps, setup and side changes.</p>' : "<p>No targeted stretches are scheduled: no mobility restrictions are selected. Choose up to two restrictions you actually have in Settings. The program omits extra stretching when the relevant positions are comfortable.</p>"}${btn("Choose mobility restrictions", "mobility-settings", "", "quiet")}${sourceLink(22)}</section>`;
 }
-function mobilityPreview(s, p, timing) {
+function mobilityPreview(s, p, timing, fullPlan = false) {
   const done = resolved(p.day, s.id);
-  return `<article class="session-card mobility-card"><div class="session-head"><div><span class="pill">TARGETED MOBILITY</span><h3>${esc(s.title)}</h3></div><div class="duration">${s.skipped ? "—" : minutesText(timing.seconds)}<small>included in day total</small></div></div><p>${esc(s.note)}</p>${s.skipped ? notice(s.reason) : ""}${s.rows.map((e) => `<div class="mobility-row">${!s.skipped ? `<strong>${minutesText(timing.rows.find((r) => r.key === e.key).seconds)} per restriction</strong>` : ""}<p>${esc(e.note)}</p></div>`).join("")}<p class="fine-print">Includes holds on both sides, 15-second rests, five slow active reps, setup and side changes.</p><div class="session-bottom">${!done && !s.skipped ? btn("Start session →", "start", `data-day="${p.day}" data-id="${s.id}" ${state.active ? "disabled" : ""}`, "primary button") : ""}${!done ? btn("Omit", "omit-session", `data-day="${p.day}" data-id="${s.id}"`, "quiet") : btn("View log", "record", `data-id="${done.id}"`, "quiet")}</div>${!s.skipped ? timingDetails(timing) : ""}${sourceLink(22)}</article>`;
+  return `<article class="session-card mobility-card"><div class="session-head"><div><span class="pill">TARGETED MOBILITY</span><h3>${esc(s.title)}</h3></div><div class="duration">${s.skipped ? "—" : minutesText(timing.seconds)}<small>included in day total</small></div></div><p>${esc(s.note)}</p>${s.skipped ? notice(s.reason) : ""}${s.rows.map((e) => `<div class="mobility-row">${!s.skipped ? `<strong>${minutesText(timing.rows.find((r) => r.key === e.key).seconds)} per restriction</strong>` : ""}<p>${esc(e.note)}</p></div>`).join("")}<p class="fine-print">Includes holds on both sides, 15-second rests, five slow active reps, setup and side changes.</p><div class="session-bottom">${!done && !s.skipped ? btn(fullPlan ? "Start full planned workout" : "Start session →", "start", `data-day="${p.day}" data-id="${s.id}" data-full="${fullPlan ? "1" : "0"}"`, "primary button") : ""}${!done ? btn("Omit", "omit-session", `data-day="${p.day}" data-id="${s.id}"`, "quiet") : btn("View log", "record", `data-id="${done.id}"`, "quiet") + btn("Repeat session", "start", `data-day="${p.day}" data-id="${s.id}" data-repeat="1" data-full="1"`, "button")}</div>${!s.skipped ? timingDetails(timing) : ""}${sourceLink(22)}</article>`;
 }
-function preview(s, p, timing) {
-  if (s.kind === "mobility") return mobilityPreview(s, p, timing);
+function preview(s, p, timing, fullPlan = false) {
+  if (s.kind === "mobility") return mobilityPreview(s, p, timing, fullPlan);
   const done = resolved(p.day, s.id),
     summary = s.rows.reduce(
       (n, e) => n + (e.kind === "failure" ? e.sets : 0),
       0,
     );
-  return `<article class="session-card"><div class="session-head"><div><span class="pill">${esc(done ? done.status : s.kind === "lifting" ? "PRIORITY SESSION" : s.kind === "athletic" ? "QUALITY / OPTIONAL" : "EASY / OPTIONAL")}</span><h3>${esc(s.title)}</h3></div><div class="duration">${s.skipped ? "—" : minutesText(timing.seconds)}<small>planned total</small></div></div>${s.note ? `<p class="muted">${esc(s.note)}</p>` : ""}${s.skipped ? notice(s.reason) : ""}<div class="exercise-table">${s.rows.map((e, i) => `<div><span class="row-index">${String(i + 1).padStart(2, "0")}</span><span>${esc(e.name)}</span><strong>${esc(describe(e))}${!s.skipped ? `<small class="exercise-duration">${minutesText(timing.rows[i].seconds)} including prep & rest</small>` : ""}</strong></div>`).join("")}</div><div class="session-bottom"><span>${summary ? `${summary} conventional work sets · strict-form failure` : s.kind === "cardio" ? "Count actual moving minutes. Full-sentence talk test." : s.rows.some(olympicFailure) ? "Each Olympic work set ends at its first miss/invalid rep." : "Short sets. Secure positions. No failure."}</span><div>${!done && !s.skipped ? btn("Start session →", "start", `data-day="${p.day}" data-id="${s.id}" ${state.active ? "disabled" : ""}`, "button primary") : ""}${!done ? btn("Omit", "omit-session", `data-day="${p.day}" data-id="${s.id}"`, "quiet") : btn("View log", "record", `data-id="${done.id}"`, "quiet")}</div></div><details><summary>Warm-up & execution</summary><p>${esc(s.warmup)}</p>${s.rows.map((e) => `<p><b>${esc(e.name)}</b><br>${esc(e.note)} ${rowSource(e)}<br><span class="muted">${esc(e.warmup || "")} Rest ${time(e.rest || 0)}.</span></p>`).join("")}</details>${sessionMuscles(s, p)}${!s.skipped ? timingDetails(timing) : ""}</article>`;
+  return `<article class="session-card"><div class="session-head"><div><span class="pill">${esc(done ? done.status : s.kind === "lifting" ? "PRIORITY SESSION" : s.kind === "athletic" ? "QUALITY / OPTIONAL" : "EASY / OPTIONAL")}</span><h3>${esc(s.title)}</h3></div><div class="duration">${s.skipped ? "—" : minutesText(timing.seconds)}<small>planned total</small></div></div>${s.note ? `<p class="muted">${esc(s.note)}</p>` : ""}${s.skipped ? notice(s.reason) : ""}<div class="exercise-table">${s.rows.map((e, i) => `<div><span class="row-index">${String(i + 1).padStart(2, "0")}</span><span>${esc(e.name)}</span><strong>${esc(describe(e))}${!s.skipped ? `<small class="exercise-duration">${minutesText(timing.rows[i].seconds)} including prep & rest</small>` : ""}</strong></div>`).join("")}</div><div class="session-bottom"><span>${summary ? `${summary} conventional work sets · strict-form failure` : s.kind === "cardio" ? "Count actual moving minutes. Full-sentence talk test." : s.rows.some(olympicFailure) ? "Each Olympic work set ends at its first miss/invalid rep." : "Short sets. Secure positions. No failure."}</span><div>${!done && !s.skipped ? btn(fullPlan ? "Start full planned workout" : "Start session →", "start", `data-day="${p.day}" data-id="${s.id}" data-full="${fullPlan ? "1" : "0"}"`, "button primary") : ""}${!done ? btn("Omit", "omit-session", `data-day="${p.day}" data-id="${s.id}"`, "quiet") : btn("View log", "record", `data-id="${done.id}"`, "quiet") + btn("Repeat session", "start", `data-day="${p.day}" data-id="${s.id}" data-repeat="1" data-full="1"`, "button")}</div></div><details><summary>Warm-up & execution</summary><p>${esc(s.warmup)}</p>${s.rows.map((e) => `<p><b>${esc(e.name)}</b><br>${esc(e.note)} ${rowSource(e)}<br><span class="muted">${esc(e.warmup || "")} Rest ${time(e.rest || 0)}.</span></p>`).join("")}</details>${sessionMuscles(s, p)}${!s.skipped ? timingDetails(timing) : ""}</article>`;
 }
 function preparationControls(key, budget, label) {
   const timer = state.active.preparationTimer,
@@ -624,7 +655,7 @@ function pacingCard(w) {
 }
 function workoutList(w) {
   const current = nextRow(w);
-  return `<details class="panel workout-list"><summary>All exercises · reps, weights & change order</summary><p>See the whole workout here. After the Olympic lifts, use “Do next” when a station is occupied. Finish and record a set before switching.</p>${w.session.rows
+  return `<details class="panel workout-list"><summary>All exercises · reps, weights & change order</summary><p>See the whole workout here. Use “Do next” to choose any unfinished lift when a station is occupied. Olympic work first is a recommendation. Finish and record a set before switching.</p>${w.session.rows
     .map((e) => {
       const status = rowStatus(w, e);
       const suggested =
@@ -634,7 +665,7 @@ function workoutList(w) {
             ? nextLoad(e, exposureHistory(state, e), w.increment).weight
             : null;
       const used = status.logs.at(-1)?.weight;
-      return `<article class="workout-list-row" data-exercise="${e.key}"><div><strong>${esc(e.name)}</strong><p>${esc(describe(e))}</p><p class="muted">${used || suggested ? `${fmt(used || suggested)} lb ${used ? "used" : "suggested"} · ` : "Choose weight after an easy warm-up · "}Rest ${time(e.rest || 0)}${status.done ? " · Finished" : current?.key === e.key ? " · Current exercise" : ""}</p></div>${!status.done && current?.key !== e.key && e.kind === "failure" ? btn("Do next", "exercise-next", `data-key="${e.key}" aria-label="Do ${esc(e.name)} next"`, "button") : ""}</article>`;
+      return `<article class="workout-list-row" data-exercise="${e.key}"><div><strong>${esc(e.name)}</strong><p>${esc(describe(e))}</p><p class="muted">${used || suggested ? `${fmt(used || suggested)} lb ${used ? "used" : "suggested"} · ` : "Choose weight after an easy warm-up · "}Rest ${time(e.rest || 0)}${status.done ? " · Finished" : current?.key === e.key ? " · Current exercise" : ""}</p></div>${!status.done && current?.key !== e.key && ["quality", "failure"].includes(e.kind) ? btn("Do next", "exercise-next", `data-key="${e.key}" aria-label="Do ${esc(e.name)} next"`, "button") : ""}</article>`;
     })
     .join("")}</details>`;
 }
@@ -680,7 +711,7 @@ function workoutView() {
       title(
         "TRAIN WITH INTENT",
         "Ready when you are.",
-        "Choose the next session and check today’s readiness.",
+        "Choose any session. Readiness check-ins are optional.",
       ) + btn("Back to your week", "week", "", "primary button")
     );
   const e = nextRow(w),
@@ -702,6 +733,14 @@ function workoutView() {
       w.session.title,
       `${dateLabel(w.date)} · Started ${stamp(w.startedAt)}`,
     ) +
+    (w.warnings?.length
+      ? `<details class="panel"><summary>Training guidance · you decide</summary>${w.warnings.map((text) => `<p>${esc(text)}</p>`).join("")}</details>`
+      : "") +
+    (!w.fullPlan &&
+    w.baseSession &&
+    workoutRowsDiffer(w.baseSession.rows, w.session.rows)
+      ? `<p>${btn("Use full planned workout", "use-full-workout", "", "button")} Readiness recommendations remain in your log.</p>`
+      : "") +
     `<div class="progress-line"><span style="width:${(done / w.session.rows.length) * 100}%"></span></div><p class="muted">${done} of ${w.session.rows.length} ${w.session.kind === "mobility" ? "mobility drills" : "exercises"} resolved. ${w.session.kind === "mobility" ? "Complete the scheduled holds, rests and active reps, or record an early stop." : "Log actual outcomes, including misses and safety stops."}</p><p class="session-budget">Starting session budget: <strong>${minutesText(originalTiming.seconds)}</strong> · includes prep, rest and breaks; fixed targets.</p>${workoutList(w)}${pacingCard(w)}${timingDetails(originalTiming)}`;
   if (w.warmup && w.session.kind === "lifting" && e)
     body += `<details ${w.preparationTimer?.key === "rewarm" ? "open" : ""}><summary>Preparation after an interruption</summary><p>If idle more than 15 minutes: 2 minutes easy movement, then two brief ascending rehearsals before resuming.</p>${preparationControls("rewarm", [180, 300], "Re-warm-up complete")}</details>`;
@@ -1053,7 +1092,7 @@ function settingsView() {
     ) +
     `<section class="panel"><h2>App & offline updates</h2><p>App ${APP_BUILD} · complete session timing. Each browser/device keeps an offline copy; connect Google below to sync your journal and setup.</p>${btn("Check for updates", "check-update", "", "quiet")}<p>Updates preserve saved records. Save form changes and finish any active session before using the update banner.</p></section>` +
     `<section class="panel"><h2>Alarms</h2><p>Sound starts automatically when you begin a session. A louder three-beep pattern repeats for up to one minute or until silenced. Preferences are saved on this device.</p><form data-form="alarms">${check("Alarm sound on", "enabled", timerAlerts.preferences.enabled)}${select("Alarm volume", "volume", { 1: "Loud · 100%", 0.75: "Medium · 75%", 0.5: "Lower · 50%" }, timerAlerts.preferences.volume)}${submit("Save alarm settings")}</form><p data-alarm-state></p><div class="actions">${btn("Test alarm sound", "alarm-test")}${btn("Test with phone locked · 10 seconds", "alarm-test-away")}</div><p>Use your phone’s <strong>media volume</strong> and check its speaker/headphone output. Background audio may pause music from another app. Test with your normal headphones, music and locked-screen setup.</p><p>The countdown and sound play as one audio track, so switching apps does not require a new sound to start at zero. The phone can still interrupt or stop playback; force-closing the app stops alarms. This is not a native phone alarm. Until your locked-screen test succeeds, keep the app visible or use your phone’s Clock timer.</p></section>` +
-    `<section class="panel"><h2>Weekly schedule</h2><p>${esc(scheduleName(t))}</p>${t.doseVersion === DOSE_VERSION ? "<p>The selected whole-week prescription uses Monday, Wednesday and Friday. Both lifts come first, with assistance distributed across the three visits. Week 12 retains its special taper/benchmark calendar. Use Move this day for a real conflict; later dates roll to preserve recovery.</p>" : `<p>This saved week keeps its existing calendar until reviewed. The pending whole-week update will then apply.</p><form data-form="schedule">${select("Training calendar", "schedule", { weekday: "Weekday plan · Mon B / Tue C / Thu A / Fri D", source: "Original PDF order · Mon A / Tue B / Thu C / Fri D" }, t.nextSchedule || t.schedule)}<p class="form-error" role="alert"></p>${submit("Save training calendar")}</form>`}</section>` +
+    `<section class="panel"><h2>Weekly schedule</h2><p>${esc(scheduleName(t))}</p>${t.doseVersion === DOSE_VERSION ? "<p>The selected whole-week prescription uses Monday, Wednesday and Friday. Both lifts come first, with assistance distributed across the three visits. Week 12 retains its special taper/benchmark calendar. Use Move this day for a real conflict; you can move just that day or also shift later unfinished days.</p>" : `<p>This saved week keeps its existing calendar until reviewed. The pending whole-week update will then apply.</p><form data-form="schedule">${select("Training calendar", "schedule", { weekday: "Weekday plan · Mon B / Tue C / Thu A / Fri D", source: "Original PDF order · Mon A / Tue B / Thu C / Fri D" }, t.nextSchedule || t.schedule)}<p class="form-error" role="alert"></p>${submit("Save training calendar")}</form>`}</section>` +
     `<section class="panel"><h2>Schedule & equipment</h2><form data-form="equipment"><div class="input-grid">${select("Visits on B/D", "split", t.doseVersion === DOSE_VERSION ? { single: "One visit per lifting day" } : { single: "Single visit", split: "Split after incline + laterals (≥3 h)" }, t.split ? "split" : "single")}${select("Smallest barbell increment · lb", "increment", { 2.5: "2.5 lb", 5: "5 lb" }, t.increment)}${select("Incline press", "incline", { default: "Machine · 30–45°", smith: "Smith · safeties", db: "Dumbbells · safe endpoint" }, t.equipment.incline || "default")}${select("Lateral raise", "lateral", { default: "Cable", db: "Dumbbell" }, t.equipment.lateral || "default")}${select("Supported row", "row", { default: "Chest-supported row · unspecified", db: "Dumbbells · chest on incline bench", machine: "Supported machine row" }, t.equipment.row || "default")}${select("Leg curl", "leg_curl", { default: "Seated leg curl", lying: "Lying leg curl" }, t.equipment.leg_curl || "default")}${select("Calves", "calf", { default: "Standing, knees extended", press: "Supported knee-extended press", seated: "Seated · individualized fallback" }, t.equipment.calf || "default")}${select("Leg extension", "leg_ext", { default: "Supported reclined · ~40° hip flexion", upright: "Upright · equipment fallback" }, t.equipment.leg_ext || "default")}${select("Abdominals", "crunch", { default: "Machine crunch", cable: "Cable crunch" }, t.equipment.crunch || "default")}${select("Triceps", "triceps", { default: "Overhead cable extension", pressdown: "Pressdown · intolerance/interference" }, t.equipment.triceps || "default")}</div><p class="muted">Substitutions retain sets, reps and endpoint. Bench requires a flat barbell, safeties and competent spotting. No glute isolation.</p><p class="form-error" role="alert"></p>${submit("Save schedule & equipment")}</form></section>` +
     `<section class="panel"><h2>Time planning</h2><p>These allowances set the displayed times and guided countdowns. Training doses stay the same; extra recovery extends the prescribed rest.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 30 seconds", moderate: "Moderate · 2 minutes", busy: "Busy · 4 minutes" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", t.doseVersion === DOSE_VERSION ? { same: "Same visit · after Olympic lifts, before assistance" } : { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use your selected times. Countdown targets include prescribed rest plus your extra recovery allowance. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
     `<section class="panel"><h2>Technical references</h2><p>SN ${t.anchors.snatch} lb · CJ ${t.anchors.cj} lb · CL ${t.anchors.clean || "unassessed"} · RJ ${t.anchors.jerk || "unassessed"}. Power clean never loads full CJ.</p>${btn("Record a demonstrated reference", "anchor")}${sourceLink(27)}</section>` +
@@ -1337,7 +1376,7 @@ async function action(el) {
     if (!r) throw Error("This saved session no longer exists.");
     return modal(
       "Delete this session?",
-      `<h3>${esc(r.session.title)}</h3><p>${stamp(r.startedAt)} · Cycle ${r.cycle}, week ${r.week} · ${r.sets.length} saved entries</p><p>Delete this session’s entries, warm-ups, timers, notes and follow-up. It will no longer count toward history or progression.${r.weekId === state.weekId ? " Its slot in this week will be available to start again, subject to the usual schedule and readiness checks." : " Your current program week will stay unchanged."}</p><p>This cannot be undone in the app. Existing exported backups are unchanged.</p><div class="actions">${btn("Keep session", "record", `data-id="${id}"`)}${btn("Delete session permanently", "confirm-delete-session", `data-id="${id}"`, "button danger")}</div>`,
+      `<h3>${esc(r.session.title)}</h3><p>${stamp(r.startedAt)} · Cycle ${r.cycle}, week ${r.week} · ${r.sets.length} saved entries</p><p>Delete this session’s entries, warm-ups, timers, notes and follow-up. It will no longer count toward history or progression.${r.weekId === state.weekId ? " Its slot in this week will be available to start again, whenever you choose." : " Your current program week will stay unchanged."}</p><p>This cannot be undone in the app. Existing exported backups are unchanged.</p><div class="actions">${btn("Keep session", "record", `data-id="${id}"`)}${btn("Delete session permanently", "confirm-delete-session", `data-id="${id}"`, "button danger")}</div>`,
     );
   }
   if (a === "confirm-delete-session") {
@@ -1360,31 +1399,37 @@ async function action(el) {
     return nav("guide");
   }
   if (a === "start") {
-    try {
-      timerAlerts.acknowledge();
-      transact((s) => startSession(s, day, id));
-      nav("workout");
-      try {
-        wakeLock = await navigator.wakeLock?.request("screen");
-      } catch {}
-    } catch (e) {
-      if (e.message.includes("You can start"))
-        formModal(
-          "Bench spacing",
-          "start-without",
-          `<p>${esc(e.message)}</p><input name="day" type="hidden" value="${day}"><input name="id" type="hidden" value="${id}">`,
-          "Start with bench deferred",
-        );
-      else throw e;
+    const options = {
+      fullPlan: el.dataset.full === "1",
+      repeat: el.dataset.repeat === "1",
+    };
+    if (state.active) {
+      if (state.active.day === day && state.active.session.id === id) {
+        if (options.fullPlan) transact((s) => useFullWorkout(s));
+        return nav("workout");
+      }
+      return formModal(
+        "Switch workouts",
+        "switch-workout",
+        `<p>A workout is already open. Save it as an unfinished workout and start the selected session, or close this window to keep it open. All recorded sets will be kept.</p><input type="hidden" name="day" value="${day}"><input type="hidden" name="id" value="${id}"><input type="hidden" name="fullPlan" value="${options.fullPlan}"><input type="hidden" name="repeat" value="${options.repeat}">`,
+        "Save current & start selected workout",
+      );
     }
+    timerAlerts.acknowledge();
+    transact((s) => startSession(s, day, id, Date.now(), options));
+    nav("workout");
+    try {
+      wakeLock = await navigator.wakeLock?.request("screen");
+    } catch {}
     return;
   }
+  if (a === "use-full-workout") return transact((s) => useFullWorkout(s));
   if (a === "defer")
     return formModal(
       "Move the whole session day",
       "defer",
-      `<input type="hidden" name="day" value="${day}">${input("Next ready date", "date", scheduledDate(state, day), "date", "required")}${textarea("Reason / event", "reason", "", "required")}<p>Roll later unresolved dates by the same interval. Completed sessions stay fixed. B/D carry their blocks and bench.</p>`,
-      "Move & roll later dates",
+      `<input type="hidden" name="day" value="${day}">${input("Workout date", "date", scheduledDate(state, day), "date", "required")}${check("Also shift later unfinished days by the same interval", "rollLater")}${textarea("Note (optional)", "reason")}<p>Choose an earlier or later date. Other days stay where they are unless you select the option above. Existing logs retain their actual dates.</p>`,
+      "Save workout date",
     );
   if (a === "omit-session")
     return formModal(
@@ -1413,8 +1458,8 @@ async function action(el) {
         },
         consumedBench(state, "bench_low") ? "bench_moderate" : "bench_low",
       ) +
-        `<p>Nearest ready day, ≥48 actual hours between sessions. Keep bench after priority lifting and away from a vulnerable next session. D can become low-rep with moderate bench on the next eligible day; shift the next B when needed. Only bench is rescued.</p>${notice(benchWindow(state).last ? "Last bench: " + stamp(benchWindow(state).last) + ". Earliest next: " + stamp(benchWindow(state).eligibleAt) : "No previous bench timestamp recorded.")}${check("Today’s priority work is complete; relocation will not compromise the next priority session", "placement")}${sourceLink(20)}`,
-      "Start eligible bench",
+        `<p>The program recommends ≥48 actual hours between sessions. This is guidance; you can start whenever you choose. Keep bench after priority lifting and away from a vulnerable next session. D can become low-rep with moderate bench on the next eligible day; shift the next B when needed. Only bench is rescued.</p>${notice(benchWindow(state).last ? "Last bench: " + stamp(benchWindow(state).last) + ". Recommended next: " + stamp(benchWindow(state).eligibleAt) : "No previous bench timestamp recorded.")}${sourceLink(20)}`,
+      "Start bench session",
     );
   if (a === "relocate") {
     transact((s) => {
@@ -1900,15 +1945,25 @@ function handleForm(form) {
       });
       if (s.active) reassessActive(s);
     }
+    if (type === "switch-workout") {
+      stopSession(s, "Switched to another workout.");
+      startSession(s, f.get("day"), f.get("id"), Date.now(), {
+        fullPlan: f.get("fullPlan") === "true",
+        repeat: f.get("repeat") === "true",
+      });
+    }
     if (type === "start-without")
       startSession(s, f.get("day"), f.get("id"), Date.now(), {
         deferBench: true,
       });
     if (type === "defer") {
-      deferDay(s, f.get("day"), f.get("date"));
+      deferDay(s, f.get("day"), f.get("date"), {
+        rollLater: f.has("rollLater"),
+      });
       s.events.push({
         at: Date.now(),
-        type: "Whole-session deferral",
+        type: "Workout date changed",
+        rollLater: f.has("rollLater"),
         day: f.get("day"),
         date: f.get("date"),
         notes: f.get("reason"),
@@ -1917,8 +1972,6 @@ function handleForm(form) {
     if (type === "omit-session")
       omissionRecord(s, f.get("day"), f.get("id"), f.get("reason"));
     if (type === "rescue") {
-      if (!f.has("placement"))
-        throw Error("Confirm priority placement before bench relocation.");
       const slot = f.get("slot");
       startSession(
         s,
@@ -2135,7 +2188,8 @@ function handleForm(form) {
     }
   }, "Saved on this device.");
   close();
-  if (["start-without", "rescue"].includes(type)) nav("workout");
+  if (["start-without", "rescue", "switch-workout"].includes(type))
+    nav("workout");
   else if (["finish", "end-early"].includes(type)) {
     wakeLock?.release();
     nav("history");

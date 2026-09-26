@@ -99,34 +99,25 @@ test("all 52 weeks preserve the source lifting rows, loads and rest under the ne
     }
 });
 
-test("runner starts B first, enforces C before A, rolls late sessions and preserves snapshots", () => {
+test("runner accepts early or out-of-order days and leaves other dates and snapshots alone", () => {
   const s = base(),
     now = ready(s, "2026-09-14");
-  assert.throws(
-    () => startSession(s, "monday", "main", now),
-    /scheduled later/,
-  );
-  assert.throws(
-    () => startSession(s, "thursday", "main", ready(s, "2026-09-15")),
-    /Resolve B/,
-  );
+  for (const day of ["monday", "thursday", "friday"]) {
+    const free = structuredClone(s);
+    startSession(free, day, "main", now);
+    assert.equal(free.active.day, day);
+    assert.equal(free.active.date, "2026-09-14");
+  }
   resolve(s, "tuesday");
   const before = structuredClone(s.records[0]);
-  assert.throws(
-    () => startSession(s, "monday", "main", ready(s, "2026-09-17")),
-    /Resolve C/,
-  );
   resolve(s, "thursday", "2026-09-16");
-  assert.equal(scheduledDate(s, "monday"), "2026-09-18");
-  assert.equal(scheduledDate(s, "friday"), "2026-09-19");
+  assert.equal(scheduledDate(s, "monday"), "2026-09-17");
+  assert.equal(scheduledDate(s, "friday"), "2026-09-18");
   assert.deepEqual(s.records[0], before);
   resolve(s, "monday");
   resolve(s, "friday");
   advanceWeek(s, review);
-  assert.equal(s.weekStart, "2026-09-22");
-  assert.equal(scheduledDate(s, "tuesday"), "2026-09-22");
-  assert.equal(scheduledDate(s, "thursday"), "2026-09-23");
-  assert.equal(scheduledDate(s, "monday"), "2026-09-25");
+  assert.equal(s.weekStart, "2026-09-21");
 });
 
 test("week 11 to taper to pivot preserves Friday testing, Saturday bench and real bench spacing", () => {
@@ -153,9 +144,13 @@ test("week 11 to taper to pivot preserves Friday testing, Saturday bench and rea
     ),
     false,
   );
-  assert.throws(
-    () => startSession(s, "saturday", "main", ready(s, "2026-09-26")),
-    /Resolve|test/,
+  assert.doesNotThrow(() =>
+    startSession(
+      structuredClone(s),
+      "saturday",
+      "main",
+      ready(s, "2026-09-26"),
+    ),
   );
   for (const day of ["monday", "tuesday", "thursday", "friday", "saturday"])
     omissionRecord(
@@ -183,7 +178,8 @@ test("week 11 to taper to pivot preserves Friday testing, Saturday bench and rea
     true,
   );
   assert.equal(
-    buildPlannerFeed(s).entries.find((e) => e.day === "tuesday").notBefore,
+    buildPlannerFeed(s).entries.find((e) => e.day === "tuesday")
+      .recommendedAfter,
     Date.parse("2026-09-28T17:00:00-05:00"),
   );
   assert(

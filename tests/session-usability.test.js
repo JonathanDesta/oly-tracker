@@ -136,14 +136,12 @@ test("early work-rest endings are explicit, persist, and do not fabricate full r
   logOlympicSet(s, { weight: 165, reps: 3, finish: "jerk_miss" }, now + 300000);
   sync(w, now + 300000);
   assert.equal(paceStage(w).id, `${e.key}:rest:0`);
-  assert.throws(
-    () =>
-      logOlympicSet(
-        s,
-        { weight: 165, reps: 2, finish: "jerk_miss" },
-        now + 330000,
-      ),
-    /5 minutes/,
+  assert.doesNotThrow(() =>
+    logOlympicSet(
+      structuredClone(s),
+      { weight: 165, reps: 2, finish: "jerk_miss" },
+      now + 330000,
+    ),
   );
   completePaceStage(w, now + 330000, true);
   sync(w, now + 330000);
@@ -154,13 +152,12 @@ test("early work-rest endings are explicit, persist, and do not fabricate full r
   validate(s);
 });
 
-test("moving an available assistance station keeps Olympic work first, preserves all rows and survives save", () => {
+test("moving an available exercise can override the suggested order and preserves every row", () => {
   const s = ready(),
     w = s.active;
-  assert.throws(
-    () => moveExerciseNext(s, "lateral", now),
-    /Olympic lifts first/,
-  );
+  const alternate = structuredClone(s);
+  moveExerciseNext(alternate, "lateral", now);
+  assert.equal(nextRow(alternate.active).id, "lateral");
   for (let i = 0; i < 2; i++) {
     prepare(s, 100);
     logOlympicSet(

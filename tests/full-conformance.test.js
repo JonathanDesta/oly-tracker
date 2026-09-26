@@ -162,7 +162,7 @@ test("full audit pp.14/34: reduced lower block plus partial calf substitution ha
   c.equipment.calf = "seated";
   assert.ok(!rows(dayPlan(c, "friday")).some((e) => e.key === "calf_partial"));
 });
-test("full audit pp.4/23: visit 2 cannot replay a completed day's omitted blocks later", () => {
+test("full audit pp.4/23: visit 2 can run on a later day by user choice", () => {
   const s = ready();
   s.training.split = true;
   const first = dayPlan(s.training, "tuesday").sessions.find(
@@ -175,10 +175,9 @@ test("full audit pp.4/23: visit 2 cannot replay a completed day's omitted blocks
   r.sets = [];
   s.records.push(r);
   s.weekStart = "2026-09-12";
-  assert.throws(
-    () => startSession(s, "tuesday", "accessories", mon),
-    /same day|omitted blocks/i,
-  );
+  startSession(s, "tuesday", "accessories", mon);
+  assert.equal(s.active.date, "2026-09-14");
+  assert.equal(s.active.timeConfig.continuation, false);
 });
 test("full audit p.32: TECH, failed or over-cap trial outcomes do not count as comparable successes", () => {
   const s = ready(),

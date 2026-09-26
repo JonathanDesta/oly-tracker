@@ -246,7 +246,7 @@ test("second report 11: >20% first-set loss requires two comparable exposures an
     "later sets do not replace the first-set comparison",
   );
 });
-test("second report 12: missing protection defers base/support barbell sets and prevents bench rescue", () => {
+test("second report 12: missing protection reduces the recommended plan and warns without blocking user choice", () => {
   const s = profile();
   s.readiness.noProtection = true;
   s.training.trials = [
@@ -261,8 +261,6 @@ test("second report 12: missing protection defers base/support barbell sets and 
     );
     assert.ok(actual.some((e) => e.id === "incline"));
   }
-  assert.throws(
-    () => startSession(s, "monday", "rescue", now, { rescue: "bench_low" }),
-    /protection/,
-  );
+  startSession(s, "monday", "rescue", now, { rescue: "bench_low" });
+  assert(s.active.warnings.some((w) => w.includes("protection")));
 });

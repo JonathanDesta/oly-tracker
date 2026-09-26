@@ -110,14 +110,12 @@ test("athletics runs between Olympic work and assistance in one visit, with runn
     "Synthetic completed prerequisite",
     monday,
   );
-  assert.throws(
-    () => startSession(s, "thursday", "support", wednesday),
-    /Resolve Olympic/,
+  assert.doesNotThrow(() =>
+    startSession(structuredClone(s), "thursday", "support", wednesday),
   );
   omissionRecord(s, "thursday", "main", "Synthetic prerequisite", wednesday);
-  assert.throws(
-    () => startSession(s, "thursday", "support", wednesday),
-    /Resolve Olympic/,
+  assert.doesNotThrow(() =>
+    startSession(structuredClone(s), "thursday", "support", wednesday),
   );
   omissionRecord(
     s,
@@ -141,9 +139,8 @@ test("athletics runs between Olympic work and assistance in one visit, with runn
     /Resolve/,
   );
   ready(s, "2026-10-09");
-  assert.throws(
-    () => startSession(s, "friday", "main", monday + 4 * 86400000),
-    /Resolve C/,
+  assert.doesNotThrow(() =>
+    startSession(structuredClone(s), "friday", "main", monday + 4 * 86400000),
   );
   ready(s, "2026-10-07");
   startSession(s, "thursday", "support", wednesday);

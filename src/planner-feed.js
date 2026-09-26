@@ -208,7 +208,9 @@ export function buildPlannerFeed(state, now = Date.now()) {
         ? `Workout ${SLOT_LETTERS[day]}`
         : "Moderate bench",
       date: active?.date || scheduledDate(state, day),
-      notBefore:
+      // Recovery is guidance, never a scheduling prohibition in Planner.
+      notBefore: null,
+      recommendedAfter:
         !active &&
         included.some((s) => !s.skipped && s.rows.some((e) => e.id === "bench"))
           ? benchWindow(state, now).eligibleAt

@@ -105,21 +105,20 @@ test("p.20 actual 48-hour boundary includes old-program and partial bench attemp
   assert.equal(benchWindow(s, mon + 48 * 3600000 - 1).ready, false);
   assert.equal(benchWindow(s, mon + 48 * 3600000).ready, true);
 });
-test("p.23 late B rolls C/D and no compressed out-of-order sessions", () => {
+test("late workouts change only their own date and later workouts can start early", () => {
   const s = ready();
   omissionRecord(s, "monday", "main", "Travel", mon);
   const wed = mon + 2 * 86400000;
   s.readiness.date = localDate(new Date(wed));
   startSession(s, "tuesday", "main", wed);
-  assert.equal(scheduledDate(s, "thursday"), "2026-09-18");
-  assert.equal(scheduledDate(s, "friday"), "2026-09-19");
+  assert.equal(scheduledDate(s, "tuesday"), "2026-09-16");
+  assert.equal(scheduledDate(s, "thursday"), "2026-09-17");
+  assert.equal(scheduledDate(s, "friday"), "2026-09-18");
   stopSession(s, "Done for today", wed + 60000);
-  assert.throws(
-    () => startSession(s, "friday", "main", wed + 120000),
-    /scheduled later/,
-  );
+  startSession(s, "friday", "main", wed + 120000);
+  assert.equal(s.active.date, "2026-09-16");
 });
-test("p.20 missing low bench occupies D; separate rescue cannot be repeated", () => {
+test("missing low bench remains recommended while repeat bench and shorter spacing are allowed", () => {
   const s = ready();
   s.training.entry = 3;
   const fri = mon + 4 * 86400000;
@@ -135,39 +134,19 @@ test("p.20 missing low bench occupies D; separate rescue cannot be repeated", ()
   logSet(s, { weight: 225, reps: 4, endpoint: "failure" }, fri + 1000);
   finishSession(s, "", fri + 1000);
   assert.ok(consumedBench(s, "bench_low"));
-  assert.throws(
-    () =>
-      startSession(s, "tuesday", "rescue", fri + 2000, { rescue: "bench_low" }),
-    /already has an exposure/,
-  );
-  assert.throws(
-    () =>
-      startSession(s, "friday", "rescue", fri + 2000, {
-        rescue: "bench_moderate",
-      }),
-    /Bench is eligible/,
-  );
+  const again = structuredClone(s);
+  startSession(again, "tuesday", "rescue", fri + 2000, { rescue: "bench_low" });
+  assert(again.active.warnings.some((w) => w.includes("48 hours")));
+  startSession(s, "friday", "rescue", fri + 2000, { rescue: "bench_moderate" });
+  prep(s);
+  logSet(s, { weight: 200, reps: 7, endpoint: "failure" }, fri + 3000);
+  assert.equal(s.active.sets.length, 1);
 });
-test("p.19 test-week second bench must be after test", () => {
+test("test-week bench can run before the test or low slot", () => {
   const s = ready();
   s.training.week = 12;
-  assert.throws(
-    () =>
-      startSession(s, "friday", "rescue", mon, { rescue: "bench_moderate" }),
-    /low-rep bench slot comes first/,
-  );
-  s.records.push({
-    id: "low",
-    day: "monday",
-    session: { id: "main", rows: [] },
-    weekId: s.weekId,
-    sets: [{ key: "bench_low", exerciseId: "bench", at: mon - 3 * 86400000 }],
-  });
-  assert.throws(
-    () =>
-      startSession(s, "friday", "rescue", mon, { rescue: "bench_moderate" }),
-    /Complete the Olympic test/,
-  );
+  startSession(s, "friday", "rescue", mon, { rescue: "bench_moderate" });
+  assert.equal(s.active.session.rows[0].key, "bench_moderate");
 });
 test("p.20 load progression uses actual endpoints, two exposures, overshoot correction in held weeks", () => {
   const e = failure("bench", 1, 3, 5, 270, { key: "bench_low" }),

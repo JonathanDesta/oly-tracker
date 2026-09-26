@@ -118,7 +118,9 @@ try {
       heavy: { snatch: heavy, cj: heavy, extraSnatch: 0, extraCj: 0 },
     });
     await page.locator('[data-action="day"][data-day="friday"]').click();
-    const prescriptions = await page.locator(".exercise-table").innerText();
+    const prescriptions = await page
+      .locator(".exercise-table:visible")
+      .innerText();
     assert.ok(prescriptions.includes(band + "%"), prescriptions);
   }
   // 5: Exact source text remains in the reader, and estimates appear at first work.
@@ -174,7 +176,7 @@ try {
   });
   await page.reload();
   await page.locator('[data-action="day"][data-day="wednesday"]').click();
-  text = await page.locator(".exercise-table").innerText();
+  text = await page.locator(".exercise-table:visible").innerText();
   for (const term of [
     "Main aerobic session",
     "30 min",

@@ -151,10 +151,16 @@ try {
   await click("Week");
   await click("Rescue a bench slot");
   await dialog.locator('[name="slot"]').selectOption("bench_moderate");
-  await dialog.locator('[name="placement"]').check();
-  await dclick("Start eligible bench");
-  assert.match(await dialog.innerText(), /Bench is eligible after/);
-  await dclick("Close");
+  await dclick("Start bench session");
+  await page
+    .getByText("Training guidance · you decide", { exact: true })
+    .click();
+  assert.match(await page.locator("main").innerText(), /48 hours/);
+  await click("End session early");
+  await dialog
+    .locator('[name="reason"]')
+    .fill("Bench start override verified.");
+  await dclick("End & save");
   // Backup round-trip through native file input.
   await click("Settings");
   const downloadPromise = page.waitForEvent("download");
@@ -184,6 +190,7 @@ try {
   await ctx.setOffline(false);
   await seed("");
   await click("Move this day");
+  await dialog.locator('[name="rollLater"]').check();
   await dialog.locator('[name="date"]').fill("2026-09-15");
   await dialog
     .locator('[name="reason"]')
