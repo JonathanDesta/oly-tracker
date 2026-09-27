@@ -181,7 +181,14 @@ export class TimerAlerts {
     this.audio.setAttribute("aria-hidden", "true");
     document.body.append(this.audio);
     this.audio.addEventListener("pause", () => {
-      if (this.target && !this.audio.ended && this.status === "playing")
+      // A queued pause from the replaced track can arrive after play() succeeds.
+      // Only the current media state can establish an actual interruption.
+      if (
+        this.audio.paused &&
+        this.target &&
+        !this.audio.ended &&
+        this.status === "playing"
+      )
         this.status = "interrupted";
     });
     this.audio.addEventListener("ended", () => {

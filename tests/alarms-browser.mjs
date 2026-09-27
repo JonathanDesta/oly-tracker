@@ -60,11 +60,23 @@ try {
     await other.close();
     await page.bringToFront();
   }
-  const continued = await audio();
-  assert(
-    continued.time >= 10,
-    `media must reach the embedded alarm without page timers: ${continued.time}`,
+  await page.waitForFunction(
+    () => document.querySelector("audio")?.readyState >= 3,
   );
+  const continued = await audio();
+  if (continued.src === scheduled.src) {
+    assert(
+      continued.time >= 10,
+      `media must reach the embedded alarm without page timers: ${continued.time}`,
+    );
+  } else {
+    // Visibility recovery deliberately replaces a delayed/interrupted track with
+    // an immediate alarm. Its playhead is measured from the new track's start.
+    assert(
+      !continued.paused && continued.duration >= 59 && continued.duration <= 61,
+      `return recovery must play an immediate alarm, not restart the silent delay: ${JSON.stringify(continued)}`,
+    );
+  }
   await page.waitForFunction(() =>
     document
       .querySelector("#alarm-message")

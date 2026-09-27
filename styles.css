@@ -885,6 +885,11 @@ dialog::backdrop {
   backdrop-filter: blur(3px);
 }
 .dialog-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card);
+  padding: 8px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1336,5 +1341,105 @@ dialog::backdrop {
   .workout-list-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+/* Guided training changes: readable on a phone, details only when requested. */
+.training-entry h2 {
+  font-size: 21px;
+}
+.training-status {
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 16px 0;
+}
+.training-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.training-options article,
+.training-day,
+.training-lift {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.training-options h3,
+.training-day h4 {
+  margin: 0 0 8px;
+}
+.training-options p,
+.training-status p,
+.training-day p,
+.dose-comparison p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.training-next,
+.training-details {
+  margin-top: 24px;
+}
+.training-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 12px 0;
+}
+.dose-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.dose-comparison > div {
+  padding: 14px;
+  background: var(--paper);
+  border-left: 3px solid var(--line);
+  min-width: 0;
+}
+.dose-comparison > div:last-child {
+  border-color: var(--green);
+}
+.training-day,
+.training-lift {
+  margin-bottom: 12px;
+}
+.training-day ul {
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.training-buttons {
+  display: grid;
+  gap: 10px;
+}
+.training-lift .button {
+  margin: 10px 8px 0 0;
+}
+.athletic-roadmap {
+  padding-left: 24px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.athletic-roadmap li {
+  padding: 8px;
+}
+.athletic-roadmap [aria-current="step"] {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+@media (max-width: 560px) {
+  .training-options,
+  .dose-comparison {
+    grid-template-columns: 1fr;
+  }
+  .training-options .button,
+  .training-next > .button,
+  .training-buttons .button {
+    width: 100%;
+    white-space: normal;
   }
 }

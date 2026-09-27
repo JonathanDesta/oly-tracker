@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-22-user-schedule-control";
+const CACHE = "oly-groundup-v7-23-guided-training";
 const FILES = [
   "./",
   "index.html",
@@ -22,6 +22,7 @@ const FILES = [
   "src/prescription.js",
   "src/training.js",
   "src/review.js",
+  "src/additions.js",
   "src/storage.js",
   "program/pages.json",
   "program/source.json",

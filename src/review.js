@@ -112,6 +112,95 @@ function checkAthleticIntroduction(s, change) {
     "No other dose increase is allowed in the athletics introduction week.",
   );
 }
+export const OPTIONAL_KINDS = [
+  "athletic_start",
+  "athletic_step",
+  "athletic_second",
+  "athletic_runs",
+  "secondary_jump",
+  "secondary_run",
+  "fly",
+  "cut",
+  "variation_intensity",
+  "cardio_start",
+  "cardio_step",
+];
+
+export function changeOptionalDose(t, change) {
+  const kind = change.kind;
+  if (kind === "athletic_start") {
+    requireFact(!t.athletics.enabled, "Athletics is already enabled.");
+    t.athletics.enabled = true;
+  } else if (kind === "athletic_step") {
+    requireFact(t.athletics.enabled, "Introduce athletics first.");
+    requireFact(
+      t.athletics.stage < 50,
+      "Review the current workload before further expansion.",
+    );
+    t.athletics.stage++;
+  } else if (kind === "athletic_second") {
+    requireFact(
+      t.athletics.enabled && !t.athletics.secondary && change.fourPrimary,
+      "Confirm four productive primary exposures before a second slot.",
+    );
+    t.athletics.secondary = 1;
+  } else if (kind === "athletic_runs") {
+    requireFact(
+      t.athletics.secondary === 1,
+      "Complete two green secondary jump exposures first.",
+    );
+    t.athletics.secondary = 2;
+  } else if (kind === "secondary_jump") {
+    requireFact(t.athletics.secondary > 0, "Start the secondary trial first.");
+    requireFact(
+      t.athletics.secondaryJumps < 50,
+      "Review the current jump workload before further expansion.",
+    );
+    t.athletics.secondaryJumps++;
+  } else if (kind === "secondary_run") {
+    requireFact(
+      t.athletics.secondary >= 2,
+      "Establish secondary running first.",
+    );
+    requireFact(
+      t.athletics.secondaryRuns < 50,
+      "Review the current running workload before further expansion.",
+    );
+    t.athletics.secondaryRuns++;
+  } else if (["fly", "cut"].includes(kind)) {
+    requireFact(t.athletics.stage >= 7, "First establish 4 × 20 m runs.");
+    t.athletics.variation = kind;
+    t.athletics.intensity = kind === "fly" ? 90 : 80;
+  } else if (kind === "variation_intensity") {
+    requireFact(
+      t.athletics.variation !== "none" &&
+        t.athletics.intensity < (t.athletics.variation === "fly" ? 95 : 90),
+      "Choose and tolerate a variation first; its prescribed intensity progression can be applied once.",
+    );
+    t.athletics.intensity = t.athletics.variation === "fly" ? 95 : 90;
+  } else if (kind === "cardio_start") {
+    requireFact(!t.cardio.enabled, "Aerobic work is already enabled.");
+    t.cardio.enabled = true;
+    t.cardio.minutes = 40;
+  } else if (kind === "cardio_step") {
+    requireFact(t.cardio.enabled, "Introduce aerobics first.");
+    requireFact(
+      t.cardio.minutes < 300,
+      "The program permits progression toward 300 moderate minutes, not beyond.",
+    );
+    if (t.cardio.minutes >= 150)
+      requireFact(
+        change.fullCycle,
+        "Beyond 150 minutes requires a full cycle of good tolerance at 150.",
+      );
+    t.cardio.minutes = Math.min(
+      300,
+      t.cardio.minutes + (t.cardio.minutes < 60 ? 5 : 10),
+    );
+  } else return false;
+  return true;
+}
+
 export function applyChange(s, change, now = Date.now()) {
   requireFact(
     !s.active,
@@ -448,63 +537,8 @@ export function applyChange(s, change, now = Date.now()) {
     );
     trial.load = weight;
     trial.loadChangedAt = now;
-  } else if (kind === "athletic_start") {
-    requireFact(!t.athletics.enabled, "Athletics is already enabled.");
-    t.athletics.enabled = true;
-  } else if (kind === "athletic_step") {
-    requireFact(t.athletics.enabled, "Introduce athletics first.");
-    t.athletics.stage++;
-  } else if (kind === "athletic_second") {
-    requireFact(
-      t.athletics.enabled && !t.athletics.secondary && change.fourPrimary,
-      "Confirm four productive primary exposures before a second slot.",
-    );
-    t.athletics.secondary = 1;
-  } else if (kind === "athletic_runs") {
-    requireFact(
-      t.athletics.secondary === 1,
-      "Complete two green secondary jump exposures first.",
-    );
-    t.athletics.secondary = 2;
-  } else if (kind === "secondary_jump") {
-    requireFact(t.athletics.secondary > 0, "Start the secondary trial first.");
-    t.athletics.secondaryJumps++;
-  } else if (kind === "secondary_run") {
-    requireFact(
-      t.athletics.secondary >= 2,
-      "Establish secondary running first.",
-    );
-    t.athletics.secondaryRuns++;
-  } else if (["fly", "cut"].includes(kind)) {
-    requireFact(t.athletics.stage >= 7, "First establish 4 × 20 m runs.");
-    t.athletics.variation = kind;
-    t.athletics.intensity = kind === "fly" ? 90 : 80;
-  } else if (kind === "variation_intensity") {
-    requireFact(
-      t.athletics.variation !== "none" &&
-        t.athletics.intensity < (t.athletics.variation === "fly" ? 95 : 90),
-      "Choose and tolerate a variation first; its prescribed intensity progression can be applied once.",
-    );
-    t.athletics.intensity = t.athletics.variation === "fly" ? 95 : 90;
-  } else if (kind === "cardio_start") {
-    requireFact(!t.cardio.enabled, "Aerobic work is already enabled.");
-    t.cardio.enabled = true;
-    t.cardio.minutes = 40;
-  } else if (kind === "cardio_step") {
-    requireFact(t.cardio.enabled, "Introduce aerobics first.");
-    requireFact(
-      t.cardio.minutes < 300,
-      "The program permits progression toward 300 moderate minutes, not beyond.",
-    );
-    if (t.cardio.minutes >= 150)
-      requireFact(
-        change.fullCycle,
-        "Beyond 150 minutes requires a full cycle of good tolerance at 150.",
-      );
-    t.cardio.minutes = Math.min(
-      300,
-      t.cardio.minutes + (t.cardio.minutes < 60 ? 5 : 10),
-    );
+  } else if (changeOptionalDose(t, change)) {
+    // Shared with the guided preview; all eligibility checks above still apply.
   } else if (heavy) {
     const id = kind.endsWith("snatch") ? "snatch" : "cj",
       key = kind.startsWith("extra_")

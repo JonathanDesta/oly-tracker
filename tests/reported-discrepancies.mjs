@@ -244,6 +244,12 @@ try {
   // Second report 9: the Settings gate rejects a normal early start, and saves
   // the explicit source exception atomically when prior adaptation is attested.
   await click("Settings");
+  await click("Add or adjust training");
+  await page
+    .locator("dialog .training-details")
+    .first()
+    .locator("summary")
+    .click();
   await click("Review one program change");
   await dialog.locator('[name="kind"]').selectOption("athletic_start");
   await dialog.locator('[name="ready"]').check();
@@ -282,6 +288,12 @@ try {
   });
   await page.reload();
   await click("Settings");
+  await click("Add or adjust training");
+  await page
+    .locator("dialog .training-details")
+    .first()
+    .locator("summary")
+    .click();
   await click("Review one program change");
   await dialog.locator('[name="kind"]').selectOption("athletic_start");
   for (const name of ["ready", "stable", "adapted"])

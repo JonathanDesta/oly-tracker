@@ -41,3 +41,7 @@ When athletics is present, the day contains main Olympic work, the field module 
 ## User control · App 7.22
 
 The [September 26 user-control amendment](WORKOUT-CONTROL.md) supersedes the scheduling enforcement described above. Calendar order, rest-day spacing and readiness checks are recommendations. The runner accepts early/out-of-order sessions and bench work under 48 hours, preserves explicit repeats as separate records, and supports a full-plan readiness override. Planner receives a null `notBefore` and a separate `recommendedAfter`. Actual dates, check-ins and logs remain factual; no override fabricates green readiness or completed work.
+
+## Guided additions
+
+`src/additions.js` builds the optional-training guidance, observation counts and previews. It uses `review.js`’s shared `changeOptionalDose` mutation for previews and revalidates through `applyChange` when saving. Preview timing uses `planFor` and `fixedDay`; there is no separate timing or dose table in the UI. Existing saved state needs no migration. See [guided training](GUIDED-TRAINING.md).

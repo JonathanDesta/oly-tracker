@@ -86,6 +86,12 @@ try {
     .fill("Two secure normal weeks, entry complete.");
   await dialog.locator('[name="confirmed"]').check();
   await dclick("Set reviewed position");
+  await click("Add or adjust training");
+  await page
+    .locator("dialog .training-details")
+    .first()
+    .locator("summary")
+    .click();
   await click("Review one program change");
   await dialog.locator('[name="kind"]').selectOption("squat");
   await dialog.locator('[name="exercise"]').selectOption("front_squat");

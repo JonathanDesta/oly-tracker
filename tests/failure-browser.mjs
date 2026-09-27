@@ -192,6 +192,12 @@ try {
     /not proven optimal or equivalent/,
   );
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await click("Add or adjust training");
+  await page
+    .locator("dialog .training-details")
+    .first()
+    .locator("summary")
+    .click();
   await click("Review one program change");
   const options = await page
     .locator('dialog select[name="kind"] option')

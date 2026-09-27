@@ -1,4 +1,18 @@
 import {
+  doseText,
+  changeLabel,
+  nextOptionalChange,
+  athleticAlternatives,
+  weekdayFor,
+  introductionStatus,
+  observation,
+  optionalStatus,
+  optionalPreview,
+  applyGuidedChange,
+  secondaryKind,
+  optionalKind,
+} from "./additions.js";
+import {
   DOSE_STAGES,
   DOSE_VERSION,
   MUSCLES,
@@ -15,6 +29,7 @@ import {
 } from "./failure-policy.js";
 import {
   programDays,
+  primaryAthleticSlot,
   SLOT_LETTERS,
   weekdaySchedule,
   threeDaySchedule,
@@ -120,7 +135,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.22";
+const APP_BUILD = "7.23";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -189,7 +204,7 @@ if (state)
         !weekRecords(state).some((r) => r.day === d && r.session.id === "main"),
     ) || "monday";
 const btn = (text, action, extra = "", cls = "button") =>
-  `<button class="${cls}" data-action="${action}" ${extra}>${esc(text)}</button>`;
+  `<button type="button" class="${cls}" data-action="${action}" ${extra}>${esc(text)}</button>`;
 const notice = (s, type = "") => `<div class="notice ${type}">${esc(s)}</div>`;
 const input = (label, name, value = "", type = "text", extra = "") =>
   `<label>${esc(label)}<input name="${name}" type="${type}" value="${esc(value)}" ${extra}></label>`;
@@ -231,10 +246,13 @@ function transact(fn, message) {
   render();
 }
 function modal(heading, body) {
-  lastFocus = document.activeElement;
+  if (!$("dialog").open) lastFocus = document.activeElement;
   $("dialog").innerHTML =
     `<div class="dialog-head"><h2 id="dialog-title">${esc(heading)}</h2>${btn("Close", "close", "", "quiet")}</div>${body}`;
   $("dialog").showModal();
+  $("dialog").scrollTop = 0;
+  $("dialog-title").tabIndex = -1;
+  $("dialog-title").focus({ preventScroll: true });
 }
 function close() {
   if ($("dialog").open) $("dialog").close();
@@ -309,7 +327,7 @@ function weekView() {
     ) +
     (allLoadedFailure(t)
       ? notice(
-          `Loaded work: failure endpoint. Olympic sets end at the first miss or invalid rep. Introduction ${t.failureEntry}/${DOSE_STAGES} · ${t.failureWeeks.length}/2 stable green weeks reviewed. New dose additions wait for this review.`,
+          `Loaded work: failure endpoint. Olympic sets end at the first miss or invalid rep. Lifting build-up ${t.failureEntry}/${DOSE_STAGES}. Use “Add or adjust training” for your next step and optional training plans.`,
         )
       : t.nextWorkSetPolicy
         ? notice(
@@ -328,7 +346,7 @@ function weekView() {
       : "") +
     (scheduleTrialPending(t)
       ? notice(
-          `Schedule trial: ${t.scheduleTrial.weeks.length}/2 complete green weeks reviewed at the established dose. Check C/D quality; hold new dose additions.`,
+          `New schedule: ${t.scheduleTrial.weeks.length}/2 full weeks reviewed. Compare the following Olympic sessions and record normal recovery in Weekly review.`,
         )
       : "") +
     (storageError ? notice(storageError, "warning") : "") +
@@ -341,6 +359,7 @@ function weekView() {
       ? `<div class="resume-banner"><span>Session in progress · ${esc(state.active.session.title)}</span>${btn("Resume workout", "resume", "", "primary button")}</div>`
       : "") +
     `<div class="overview"><article><small>PRIORITY</small><strong>01 <span>Weightlifting</span></strong><p>Then hypertrophy, athleticism, longevity.</p></article><article><small>PLANNED THIS WEEK</small><strong>${failureSets} <span>failure sets</span></strong><p>${allLoadedFailure(t) ? "Includes Olympic and conventional loaded work." : "Separate from quality-limited Olympic work."}</p></article><article><small>BENCH CONTINUITY</small><strong>${["bench_low", "bench_moderate"].filter((k) => consumedBench(state, k)).length}<span> / 2 exposures</span></strong><p>Low 3–5 · moderate 6–8 · 48 hours recommended.</p></article></div>` +
+    trainingLink() +
     readinessCard() +
     `<section class="week-section"><div class="section-label"><h2>The week ahead</h2><span>Phase first. Readiness second.</span></div><div class="week-days">${programDays(
       t,
@@ -435,7 +454,7 @@ function dosePanel(p) {
     .map(([id, name]) => `<p><b>${name}:</b> ${MUSCLE_DECISIONS[id]}</p>`)
     .join(
       "",
-    )}</details><h3>How the dose is reviewed</h3><p>Starting/restarting: four stages, advancing only after a complete green week and normal next-session follow-ups. An ordinary Foundation week progresses through 31, 41, 46 and 56 conventional sets, and 6, 6, 9 and 12 Olympic sets. Taper, pivot and readiness reductions take precedence. The last stage is the full selected allocation. Its exact counts are reasoned prescriptions, not measured individual optima.</p>${DOSE_REVIEWS.map(([name, text]) => `<p><b>${name}:</b> ${text}</p>`).join("")}<p>The chosen targets balance the priority order, training overlap and failure fatigue; they are not scientific thresholds. After two stable green weeks, trial one additional weekly set on one exercise. Hold other additions for two normal weeks, compare performance and recovery, and retain only with a useful response. Assess physique trends over a full cycle; two weeks mainly assesses tolerance. Improving performance alone does not prove maximum muscle growth. If later sets or the next Olympic session deteriorate, use Remove one weekly work set after review. It can pause a trial or reduce an established exercise; restoring a set uses the same controlled addition process.</p>${allLoadedFailure(state.training) ? btn("Review one program change", "change", "", "button") : ""}</details>`;
+    )}</details><h3>How the dose is reviewed</h3><p>Starting/restarting: four stages, advancing only after a complete green week and normal next-session follow-ups. An ordinary Foundation week progresses through 31, 41, 46 and 56 conventional sets, and 6, 6, 9 and 12 Olympic sets. Taper, pivot and readiness reductions take precedence. The last stage is the full selected allocation. Its exact counts are reasoned prescriptions, not measured individual optima.</p>${DOSE_REVIEWS.map(([name, text]) => `<p><b>${name}:</b> ${text}</p>`).join("")}<p>The chosen targets balance the priority order, training overlap and failure fatigue; they are not scientific thresholds. After two stable green weeks, trial one additional weekly set on one exercise. Hold other additions for two normal weeks, compare performance and recovery, and retain only with a useful response. Assess physique trends over a full cycle; two weeks mainly assesses tolerance. Improving performance alone does not prove maximum muscle growth. If later sets or the next Olympic session deteriorate, use Remove one weekly work set after review. It can pause a trial or reduce an established exercise; restoring a set uses the same controlled addition process.</p>${allLoadedFailure(state.training) ? btn("Add or adjust training", "change", "", "button") : ""}</details>`;
 }
 function sessionMuscles(s, p) {
   if (s.skipped || s.kind !== "lifting") return "";
@@ -1097,7 +1116,8 @@ function settingsView() {
     `<section class="panel"><h2>Time planning</h2><p>These allowances set the displayed times and guided countdowns. Training doses stay the same; extra recovery extends the prescribed rest.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 30 seconds", moderate: "Moderate · 2 minutes", busy: "Busy · 4 minutes" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", t.doseVersion === DOSE_VERSION ? { same: "Same visit · after Olympic lifts, before assistance" } : { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use your selected times. Countdown targets include prescribed rest plus your extra recovery allowance. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
     `<section class="panel"><h2>Technical references</h2><p>SN ${t.anchors.snatch} lb · CJ ${t.anchors.cj} lb · CL ${t.anchors.clean || "unassessed"} · RJ ${t.anchors.jerk || "unassessed"}. Power clean never loads full CJ.</p>${btn("Record a demonstrated reference", "anchor")}${sourceLink(27)}</section>` +
     `<section class="panel"><h2>Technique & interference</h2><form data-form="technique"><div class="input-grid">${["snatch", "clean", "jerk"].map((k) => select(pretty(k), k, allLoadedFailure(t) ? { none: "Ordinary failure prescription", receive: "Defer affected failure work for technique / receiving review", ...(t.technique[k] !== "none" && t.technique[k] !== "receive" ? { [t.technique[k]]: "Existing technique issue · affected work deferred" } : {}) } : k === "jerk" ? { none: "Ordinary prescription", stance: "Light split stance/recovery", dip: "Light pause-dip regression" } : { none: "Ordinary prescription", receive: "Unsafe receiving · technique-bar rehearsal", return: "Secure return · 4 singles at 40–60%", turnover: "High-hang turnover replacement", balance: "First two sets knee-pause" }, t.technique[k])).join("")}</div>${t.doseVersion === DOSE_VERSION ? "" : check(allLoadedFailure(t) ? "Omit A snatch failure set: repeated next-session cost" : "Reduce A snatch doubles to 4 × 2: repeated next-session cost", "reduceA", t.reduceA)}${t.doseVersion === DOSE_VERSION ? "" : check(allLoadedFailure(t) ? "Omit C jerk failure set while reviewing recovery" : "One fewer C jerk set for two exposures; suspend C assistance", "reduceJerk", t.reduceJerk)}${check("Lower-block fatigue: curls/calves 1; omit extensions/crunch", "lowerDose", t.lowerDose)}${check("Omit week-11 D affected lower work for slow recovery", "omitLastLower", t.omitLastLower)}${t.doseVersion === DOSE_VERSION ? "" : check("Omit provisional C pulls after target/cost review", "omitPull", t.omitPull)}${textarea("Observed issue / target and return review", "reason", "", "required")}<p class="form-error" role="alert"></p>${submit("Save technical prescription")}</form>${sourceLink(16)}${sourceLink(34)}</section>` +
-    `<section class="panel"><h2>Optional work & controlled trials</h2><p>Athletics: ${t.athletics.enabled ? `stage ${t.athletics.stage}, ${t.athletics.secondary ? "two slots" : "one slot"}` : "not introduced"}. Aerobics: ${t.cardio.enabled ? t.cardio.minutes + " min/week" : "not introduced"}.</p>${btn("Review one program change", "change", "", "primary button")}${btn("Reduce or suspend optional work", "reduce-optional", "", "quiet")}${t.trials.map((trial) => `<div class="trial-row"><div><strong>${esc(trial.kind.replaceAll("_", " "))} · ${calendarWeekday(trial.day)}</strong><p>${esc(trial.reason)}</p><small>${trialExposures(state, trial).length} comparable exposures · ${trial.paused ? "paused" : trial.status} · review ${trial.reviewAt || "2 / 4 / 8"}</small></div>${btn("Review", "trial", `data-id="${trial.id}"`)}</div>`).join("")}</section>` +
+    trainingLink() +
+    `<section class="panel" id="training-changes"><h2>Saved lifting changes</h2>${t.trials.length ? t.trials.map((trial) => `<div class="trial-row"><div><strong>${esc(trial.kind.replaceAll("_", " "))} · ${calendarWeekday(trial.day)}</strong><p>${esc(trial.reason)}</p><small>${trialExposures(state, trial).length} comparable sessions · ${trial.paused ? "paused" : trial.status}</small></div>${btn("Review", "trial", `data-id="${trial.id}"`)}</div>`).join("") : "<p>No extra sets or exercise substitutions under review.</p>"}</section>` +
     `<section class="panel"><h2>Targeted mobility</h2><form data-form="mobility"><p>Choose at most two restrictions; no extra stretching if positions are comfortable.</p>${["Ankle · bent-knee calf stretch, heel down", "Overhead shoulder · hands-on-bench lat stretch, ribs controlled", "Front rack · supported wrist stretch or unloaded elbow lifts", "Hip rotation · supported 90/90"].map((x) => check(x, "mobility", t.mobility.includes(x)).replace('name="mobility"', `name="mobility" value="${esc(x)}"`)).join("")}<div class="input-grid">${select("Hold duration", "seconds", { 30: "30 s", 45: "45 s after two weeks without improvement" }, t.mobilitySeconds)}${select("Days per week", "days", { 3: "3", 4: "4 after two weeks without improvement" }, t.mobilityDays)}</div><p class="form-error" role="alert"></p>${check("Two weeks at the current dose did not improve the selected position", "observed")}${submit("Save mobility")}</form></section>` +
     `<section class="panel"><h2>Program position</h2><p>New users start with the entry ramp. Weeks advance through review; interruptions extend elapsed time.</p>${btn("Set reviewed starting position", "position", "", "quiet")}</section><section class="panel"><h2>Backup & restore</h2><p>This journal is saved locally and can sync through Google Drive. Export regularly; browser data clearing removes local copies. The original program and app work offline after the first load.</p><div class="actions">${btn("Export full backup", "export")}<label class="file-button">Import backup<input type="file" id="import" accept="application/json,.json"></label></div><p class="muted">Import is validated before replacing the active journal; the current journal is archived in the imported backup.</p></section>`
   );
@@ -1239,7 +1259,132 @@ function openReview() {
     "Save weekly review",
   );
 }
-function openChange() {
+function trainingLink() {
+  return `<section class="panel training-entry"><div><h2>Add or adjust training</h2><p>Jumps & short runs, easy cardio, lifting sets or targeted stretching. See what changes, when to add it, and what comes next.</p></div>${btn("Add or adjust training", "change", "", "primary button")}</section>`;
+}
+function trainingStatus() {
+  const step = introductionStatus(state),
+    pending = observation(state);
+  return `<div class="training-status"><strong>${esc(step.title)}</strong><p>${esc(step.text)}</p>${step.action ? btn("Open Weekly review", step.action) : ""}${pending ? `<p>${esc(pending.text)}</p>${btn(pending.action === "history" ? "Record next-session recovery" : "Open Weekly review", pending.action)}` : ""}</div>`;
+}
+function openTraining() {
+  const t = state.training;
+  modal(
+    "Add or adjust training",
+    `${trainingStatus()}<div class="training-options">
+    <article><h3>Jumps & short runs</h3><p>Build jumping and sprinting skills. ${t.athletics.enabled ? esc(doseText(t.athletics)) : "Start with one short session after your Olympic lifts."}</p>${btn("See athletics plan", "optional", 'data-domain="athletics"', "primary button")}</article>
+    <article><h3>Easy cardio</h3><p>${t.cardio.enabled ? `${t.cardio.minutes} moving minutes per week.` : "Start with two 20-minute brisk walks or easy rides."} Keep a pace where you can speak in full sentences.</p>${btn("See cardio plan", "optional", 'data-domain="cardio"')}</article>
+    <article><h3>Lifting sets</h3><p>Add one weekly set to an exercise with a clear reason, or remove an unproductive set. More work is not automatically better.</p>${allLoadedFailure(t) ? btn("Adjust lifting sets", "lifting-changes") : btn("Review lifting changes", "advanced-change")}</article>
+    <article><h3>Targeted stretching</h3><p>Choose up to two positions that actually limit your lifts. The stretches, timers and active movement checks appear on their workout days.</p>${btn("Choose stretches", "mobility-settings")}</article>
+    </div><details class="training-details"><summary>Exercise substitutions and other specialized changes</summary><p>Use this for a specific observed limitation. Ordinary jumps, runs and cardio are covered in the guided plans above.</p>${btn("Review one program change", "advanced-change")}${state.training.trials.length ? btn("Review existing lifting changes", "trials") : ""}</details><details class="training-details"><summary>Why this order?</summary><p>Your priority order is weightlifting, muscle development, athletics, then health-only conditioning. Make one useful change, observe its effect, and keep it only if it helps without disrupting higher priorities. You do not have to exhaust lifting changes or wait for muscle growth to stall before starting athletics.</p><p>Research supports jump/sprint training and aerobic health benefits, but does not establish an exact best dose or guarantee zero interference for your failure-based routine. The small starting doses, two-session reviews and ordering are individualized programming choices. The first six jumps are familiarization, not a permanent target.</p><p><a href="https://pubmed.ncbi.nlm.nih.gov/31754845/" target="_blank" rel="noopener">Sprint training review</a> · <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10457889/" target="_blank" rel="noopener">Jump-training evidence gaps</a> · <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8891239/" target="_blank" rel="noopener">Concurrent training review</a></p></details>`,
+  );
+}
+function optionalPreviewHTML(kind) {
+  const p = optionalPreview(state, kind);
+  return `<div class="dose-comparison"><div><small>NOW</small><p>${esc(kind.startsWith("cardio") ? (state.training.cardio.enabled ? `${state.training.cardio.minutes} aerobic minutes per week` : "No formal cardio added") : doseText(state.training.athletics, secondaryKind(kind)))}</p></div><div><small>AFTER THIS CHANGE</small><p>${esc(kind.startsWith("cardio") ? `${p.training.cardio.minutes} aerobic minutes per week` : doseText(p.training.athletics, secondaryKind(kind)))}</p></div></div>${p.days
+    .map(
+      (d) =>
+        `<article class="training-day"><h4>${esc(d.label)} · ${esc(dateLabel(d.date))}</h4><ul>${d.sessions
+          .flatMap((s) => s.rows)
+          .map((r) => `<li>${esc(r.name)}: ${esc(describe(r))}</li>`)
+          .join(
+            "",
+          )}</ul><p><b>${minutesText([d.afterSeconds, d.afterSeconds])} whole day</b> · ${d.addedSeconds >= 0 ? "+" : "−"}${minutesText([Math.abs(d.addedSeconds), Math.abs(d.addedSeconds)])} from this change</p></article>`,
+    )
+    .join(
+      "",
+    )}${!p.days.length ? notice(p.unchangedReason) : ""}<p class="muted">Planned times include warm-ups, rests, transitions, setup, your gym-traffic allowance and misc. time. Daily readiness, interruptions and moving workout dates can change the actual plan.</p>`;
+}
+function optionalAction(kind) {
+  const status = optionalStatus(state, kind);
+  const guidance = `<div class="training-status"><strong>${status.allowed ? "Ready to review" : "Before adding this"}</strong><p>${esc(status.reason)}</p>${status.action ? btn({ review: "Open Weekly review", history: "Record next-session recovery", resume: "Return to workout", trials: "Review existing lifting changes" }[status.action], status.action) : ""}</div>`;
+  return `${status.allowed ? "" : guidance}<h3>${esc(changeLabel(state.training, kind))}</h3>${optionalPreviewHTML(kind)}${status.allowed ? guidance + btn("Review this change", "optional-change", `data-kind="${kind}"`, "primary button") : ""}`;
+}
+function openOptional(domain) {
+  const t = state.training,
+    athletics = domain === "athletics",
+    kind = nextOptionalChange(t, domain);
+  const mainDay = weekdayFor(state, primaryAthleticSlot(t));
+  const secondDay = weekdayFor(state, secondaryAthleticSlot(t));
+  const options = athletics ? athleticAlternatives(t) : [];
+  const a = t.athletics;
+  modal(
+    athletics ? "Your athletics plan" : "Your cardio plan",
+    `${btn("All training options", "change", "", "quiet")}<p>${athletics ? `Normally ${mainDay}, after Olympic lifts${threeDaySchedule(t) ? " and before assistance, in the same visit" : ""}. Full running warm-up and rests are included. Jumps and runs stop when quality falls; they do not go to failure.` : "Brisk walking or easy cycling at a full-sentence talking pace. The main sessions build to 30 minutes each; additional minutes become short walks on other days. Your actual days are listed below."}</p>${athletics && a.secondary ? `<p><b>Second session · ${secondDay}:</b> ${esc(doseText(a, true))}</p>` : ""}<section class="training-next"><span class="eyebrow">${athletics && a.enabled && a.stage >= 7 ? "REVIEW BEFORE ADDING MORE" : "NEXT SMALL CHANGE"}</span>${kind ? optionalAction(kind) : "<p>You have reached the program’s current planning limit. Keep or reduce the established dose and review whether it is useful.</p>"}</section>${athletics ? `<details class="training-details"><summary>See the progression from the beginning</summary><p>Repeat each dose for at least two successful sessions and confirm normal recovery at the following lifting session. Then change just one part. Eligible weeks and higher-priority training still take precedence.</p><ol class="athletic-roadmap">${Array.from({ length: 8 }, (_, stage) => `<li${a.enabled && a.stage === stage ? ' aria-current="step"' : ""}><b>${stage === 0 ? "Start" : `Next ${stage}`} ${a.enabled && a.stage === stage ? "· Current dose" : ""}</b><br>${esc(doseText({ ...a, enabled: true, stage, secondary: 0, variation: "none" }))}</li>`).join("")}</ol><p>Review how the work is helping around 4 sets of jumps and 4 × 20 m runs. These are review points, not quotas. Continuing at the same dose is a valid decision.</p></details>${options.length ? `<details class="training-details"><summary>Other athletic goals · choose one alternative</summary><p>These replace the next change above. A second day requires four successful main sessions. Flying runs or cuts require established 4 × 20 m runs; they replace two runs on alternate sessions. Review around 24–36 purposeful jumps and 6–8 short runs per week across both days; those are not mandatory targets.</p><div class="training-buttons">${options.map((k) => btn(changeLabel(t, k), "optional-change", `data-kind="${k}"`)).join("")}</div></details>` : ""}` : `<details class="training-details"><summary>How cardio increases</summary><ol><li>Start with 20 minutes on each of two days.</li><li>After two weeks with normal performance and recovery, add 5 minutes to one session. Repeat gradually until both reach 30 minutes.</li><li>Then add 10 minutes per week as short walks, with two weeks to review each increase, toward 150 minutes.</li><li>Only after a full cycle tolerating 150 minutes, consider further 10-minute increases toward 300.</li></ol><p>A justified lifting or athletic change comes before extra health-only cardio. Keep the pace easy and count actual moving minutes once.</p></details>`}${(athletics ? a.enabled : t.cardio.enabled) ? `<details class="training-details"><summary>Keep, reduce or pause</summary><p>Keeping the current dose needs no action. If the new work worsens lifting, technique, soreness or recovery, reduce the responsible addition and check the next comparable workout.</p>${btn("Reduce or pause this work", "optional-reduce", `data-domain="${domain}"`)}</details>` : ""}`,
+  );
+}
+function openOptionalChange(kind) {
+  const status = optionalStatus(state, kind),
+    athletics = !kind.startsWith("cardio");
+  const body = `${btn("Back to plan", "optional", `data-domain="${athletics ? "athletics" : "cardio"}"`, "quiet")}${optionalPreviewHTML(kind)}${notice(status.reason)}${status.action ? btn({ review: "Open Weekly review", history: "Record next-session recovery", resume: "Return to workout", trials: "Review existing lifting changes" }[status.action], status.action) : ""}`;
+  if (!status.allowed) return modal(changeLabel(state.training, kind), body);
+  formModal(
+    changeLabel(state.training, kind),
+    "optional-change",
+    `${body}<input type="hidden" name="kind" value="${kind}"><p><b>After saving:</b> this work appears on the day tabs with its warm-up, timers and rests. ${athletics ? "Keep other additions steady for two successful sessions. Confirm normal recovery at the following lifting session in History, then return here." : "Keep other additions steady for two weeks, then complete Weekly review and return here."} No increase happens automatically.</p>${check(athletics ? "Lifting and recovery are normal; the listed preparation is complete, and I am changing only this part of training." : "I have had two weeks of normal lifting and recovery at this workload, and I am not increasing lifting or athletics at the same time.", "confirmed")}${kind === "cardio_step" && state.training.cardio.minutes >= 150 ? check("I tolerated 150 minutes per week for a full cycle before this further expansion.", "fullCycle") : ""}${textarea("What this should improve / anything to compare next time", "reason", athletics ? "Develop jumping and sprinting while preserving Olympic quality and normal next-session recovery." : "Improve aerobic health while preserving lifting and athletic performance.", "required")}`,
+    "Add to my week",
+  );
+}
+function openLiftingChanges() {
+  const t = state.training;
+  modal(
+    "Adjust lifting sets",
+    `${btn("All training options", "change", "", "quiet")}<p>Select an exercise on the day you want to change. One added set is one extra set per week, not an extra set every day. Use repeated comparable performance and recovery observations to decide whether it helps.</p>${programDays(
+      t,
+    )
+      .map((day) => {
+        const rows = dayPlan(t, day)
+          .sessions.flatMap((s) => s.rows)
+          .filter((e) => e.kind === "failure" || olympicFailure(e));
+        return rows.length
+          ? `<details class="training-details"><summary>${esc(weekdayFor(state, day))} · ${rows.length} exercises</summary>${rows.map((e) => `<div class="training-lift"><strong>${esc(e.name)} · ${e.sets} ${e.sets === 1 ? "set" : "sets"}</strong><div>${btn("Add 1 weekly set", "set-change", `data-day="${day}" data-id="${e.id}" data-kind="${olympicFailure(e) ? "olympic_set" : "set"}"`)}${e.sets > 1 ? btn("Remove 1 weekly set", "set-change", `data-day="${day}" data-id="${e.id}" data-kind="reduce_set"`) : ""}</div></div>`).join("")}</details>`
+          : "";
+      })
+      .join("")}`,
+  );
+}
+function openSetChange(day, id, kind) {
+  const row = dayPlan(state.training, day)
+      .sessions.flatMap((s) => s.rows)
+      .find((e) => e.id === id),
+    remove = kind === "reduce_set";
+  if (!remove) {
+    let reason = "";
+    const pending = observation(state);
+    if (pending && !pending.complete) reason = pending.text;
+    else {
+      try {
+        applyChange(copy(state), {
+          kind,
+          day,
+          exercise: id,
+          ready: true,
+          stable: true,
+          reason: "Preview only",
+        });
+      } catch (e) {
+        reason =
+          failureTrialPending(state.training) ||
+          scheduleTrialPending(state.training)
+            ? `${introductionStatus(state).title}. ${introductionStatus(state).text}`
+            : e.message;
+      }
+    }
+    if (reason)
+      return modal(
+        "Before adding this set",
+        `<p><b>${esc(row.name)} · ${esc(weekdayFor(state, day))}</b></p>${notice(reason)}${btn("Back to lifting sets", "lifting-changes")}${btn("Open Weekly review", "review")}`,
+      );
+  }
+  formModal(
+    `${remove ? "Remove" : "Add"} one ${weekdayFor(state, day)} set`,
+    "change",
+    `<input type="hidden" name="kind" value="${kind}"><input type="hidden" name="exercise" value="${id}"><input type="hidden" name="day" value="${day}"><p><b>${esc(row.name)}:</b> ${row.sets} → ${row.sets + (remove ? -1 : 1)} sets on ${esc(weekdayFor(state, day))}. Other days stay at their current set counts.</p>${remove ? "" : `${trainingStatus()}${check("At least three comparable observations support this addition; lifting and recovery are normal.", "ready")}${check("Two weeks at the same workload are complete; I am changing only this exercise.", "stable")}<p>Keep other additions steady. Review tolerance after two comparable sessions, early response after four, and benefit after eight. These reviews do not establish a personal maximum for muscle growth.</p>`}${textarea("What your recent training showed and why this change should help", "reason", "", "required")}`,
+    remove ? "Remove this weekly set" : "Add this weekly set",
+  );
+}
+
+function openAdvancedChange() {
   formModal(
     "One reviewed change",
     "change",
@@ -1249,7 +1394,7 @@ function openChange() {
       Object.fromEntries(
         Object.entries(CHANGE_OPTIONS).filter(([k]) =>
           allLoadedFailure(state.training)
-            ? !sourceOlympicChange(k)
+            ? !sourceOlympicChange(k) && !optionalKind(k)
             : !["olympic_set", "reduce_set"].includes(k),
         ),
       ),
@@ -1334,7 +1479,65 @@ async function action(el) {
   if (a === "resume") return nav("workout");
   if (a === "readiness") return openReadiness();
   if (a === "review") return openReview();
-  if (a === "change") return openChange();
+  if (a === "change") return openTraining();
+  if (a === "advanced-change") return openAdvancedChange();
+  if (a === "optional") return openOptional(el.dataset.domain);
+  if (a === "optional-change") return openOptionalChange(el.dataset.kind);
+  if (a === "lifting-changes") return openLiftingChanges();
+  if (a === "set-change") return openSetChange(day, id, el.dataset.kind);
+  if (a === "history") return nav("history");
+  if (a === "trials") {
+    nav("settings");
+    document
+      .getElementById("training-changes")
+      ?.scrollIntoView({ block: "start" });
+    return;
+  }
+  if (a === "optional-reduce") {
+    const athletics = el.dataset.domain === "athletics";
+    const last = state.reviews.findLast(
+      (r) =>
+        r.afterAthletics &&
+        JSON.stringify(r.afterAthletics) ===
+          JSON.stringify(state.training.athletics),
+    );
+    const choices = athletics
+      ? {
+          athletics: "Pause all athletics",
+          ...(last?.beforeAthletics
+            ? { athletics_undo: "Undo the last saved athletic change" }
+            : {}),
+          ...(state.training.athletics.stage > 0
+            ? { athletic_step: "Undo one increase on the main day" }
+            : {}),
+          ...(state.training.athletics.secondary
+            ? { secondary: "Remove the second athletic day" }
+            : {}),
+        }
+      : {
+          cardio: "Pause formal cardio",
+          ...(state.training.cardio.minutes > 40
+            ? { cardio_step: "Undo one increase in weekly minutes" }
+            : {}),
+        };
+    return formModal(
+      "Reduce or pause",
+      "reduce-optional",
+      select(
+        "What to change",
+        "kind",
+        choices,
+        athletics ? "athletics" : "cardio",
+      ) +
+        textarea(
+          "What changed in your performance or recovery?",
+          "reason",
+          "",
+          "required",
+        ),
+      "Save reduction",
+    );
+  }
   if (a === "record") return openRecord(id);
   if (a === "exercise-next")
     return transact(
@@ -2108,6 +2311,13 @@ function handleForm(form) {
         notes: f.get("evidence"),
       });
     }
+    if (type === "optional-change")
+      applyGuidedChange(s, {
+        kind: f.get("kind"),
+        confirmed: f.has("confirmed"),
+        fullCycle: f.has("fullCycle"),
+        reason: f.get("reason"),
+      });
     if (type === "change")
       applyChange(s, {
         kind: f.get("kind"),
@@ -2162,6 +2372,18 @@ function handleForm(form) {
       const k = f.get("kind"),
         t = s.training;
       if (s.active) throw Error("Finish the active session first.");
+      if (k === "athletics_undo") {
+        const last = s.reviews.findLast(
+          (r) =>
+            r.afterAthletics &&
+            JSON.stringify(r.afterAthletics) === JSON.stringify(t.athletics),
+        );
+        if (!last?.beforeAthletics)
+          throw Error(
+            "The previous athletic dose is unavailable. Choose a specific reduction.",
+          );
+        t.athletics = copy(last.beforeAthletics);
+      }
       if (k === "athletics") t.athletics.enabled = false;
       if (k === "secondary") t.athletics.secondary = 0;
       if (k === "athletic_step")
@@ -2179,6 +2401,7 @@ function handleForm(form) {
         if (t.heavy[extra]) t.heavy[extra]--;
         else t.heavy[id] = t.heavy[id] > 92 ? 92 : t.heavy[id] > 88 ? 88 : 0;
       }
+      t.workloadChangedAt = Date.now();
       s.reviews.push({
         at: Date.now(),
         type: "Reverse interfering addition",
@@ -2188,6 +2411,21 @@ function handleForm(form) {
     }
   }, "Saved on this device.");
   close();
+  if (type === "optional-change") {
+    selected = f.get("kind").startsWith("cardio")
+      ? programDays(state.training).find((day) =>
+          dayPlan(state.training, day).sessions.some(
+            (se) => se.kind === "cardio",
+          ),
+        ) || selected
+      : secondaryKind(f.get("kind"))
+        ? secondaryAthleticSlot(state.training)
+        : primaryAthleticSlot(state.training);
+    nav("week");
+    toast(
+      "Added to your week. The workout, preparation and timers are on its day tab.",
+    );
+  }
   if (["start-without", "rescue", "switch-workout"].includes(type))
     nav("workout");
   else if (["finish", "end-early"].includes(type)) {

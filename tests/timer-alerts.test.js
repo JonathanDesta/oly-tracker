@@ -115,6 +115,7 @@ function controller() {
   let now = 0,
     sequence = 0,
     reject = false;
+  const listeners = new Map();
   const audio = {
     paused: true,
     currentTime: 0,
@@ -122,7 +123,12 @@ function controller() {
     plays: 0,
     setAttribute() {},
     removeAttribute() {},
-    addEventListener() {},
+    addEventListener(name, handler) {
+      listeners.set(name, handler);
+    },
+    dispatch(name) {
+      listeners.get(name)?.();
+    },
     load() {},
     pause() {
       this.paused = true;
@@ -222,4 +228,19 @@ test("the dumbbell-row preference migrates once and preserves active prescriptio
     "machine",
     "later explicit choices remain available",
   );
+});
+
+test("a queued pause from replaced media cannot mark the playing alarm interrupted", async () => {
+  const c = controller();
+  c.alerts.sync({ key: "first", label: "Rest", deadline: 10000 });
+  await new Promise(setImmediate);
+  c.setTime(12000);
+  c.alerts.sync({ key: "second", label: "Rest", deadline: 10000 });
+  await new Promise(setImmediate);
+  c.audio.dispatch("pause");
+  assert.equal(c.audio.paused, false);
+  assert.equal(c.alerts.status, "playing");
+  c.audio.pause();
+  c.audio.dispatch("pause");
+  assert.equal(c.alerts.status, "interrupted");
 });
