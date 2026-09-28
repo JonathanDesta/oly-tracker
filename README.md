@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.24 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.25 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -102,3 +102,14 @@ Alarms use mixable foreground audio without a silent playback track. Optional on
 The previous comparable workout recommends +10 lb when every working set reaches the upper rep bound, −10 lb if a completed set falls below the lower bound, otherwise the same weight. Dumbbells change 5 lb per hand. These user-requested rules supersede earlier load recommendations. [Implementation, deployment and verification](docs/ALARMS-AND-LOADS.md).
 
 Install frontend and notification dependencies with `npm run setup` before the full audit.
+
+## Barbell shrugs · App 7.25
+
+The September 28 equipment change selects barbell shrugs from upper-thigh rack
+supports for future sessions. Sets, 10–15 reps, rests and weekly muscle volume
+stay the same. Log total bar-and-plate weight. Choose a new load through easy
+warm-ups; dumbbell history never supplies a barbell starting weight. The existing
++10 lb rule applies when every working set reaches 15 or more. Guidance and
+countdown steps cover rack setup, plate loading and light-bar preparation.
+Existing active sessions and saved logs stay unchanged. The one-time migration
+preserves later equipment choices in Settings → Schedule & equipment → Shrugs.

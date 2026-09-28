@@ -388,8 +388,10 @@ export function nextLoad(e, history) {
   if (!last)
     return {
       text:
-        startingEstimate(e)?.text ||
-        "Choose a conservative familiar load; log the actual endpoint. No calibration failure set is owed.",
+        e.id === "shrug" && e.loadUnit === "total barbell"
+          ? "Choose a barbell working weight through easy warm-ups for 10–15 full reps. Log the bar plus plates. Previous dumbbell weights are not a barbell estimate; no extra failure test is needed."
+          : startingEstimate(e)?.text ||
+            "Choose a conservative familiar load; log the actual endpoint. No calibration failure set is owed.",
     };
   return loadRecommendation(
     e,

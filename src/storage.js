@@ -304,6 +304,7 @@ export function validate(data) {
     incline: ["", "smith", "db"],
     lateral: ["", "db"],
     row: ["", "machine", "db"],
+    shrug: ["", "barbell", "db", "machine"],
     leg_curl: ["", "lying"],
     calf: ["", "press", "seated"],
     leg_ext: ["", "upright"],

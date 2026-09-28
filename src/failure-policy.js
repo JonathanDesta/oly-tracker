@@ -94,7 +94,7 @@ export function adoptReviewedDose(t) {
 
 export function adoptFailurePolicy(t, now = Date.now()) {
   t.workSetPolicy = "all-failure";
-  adoptRowEquipment(t);
+  adoptEquipment(t);
   adoptReviewedDose(t);
   delete t.nextWorkSetPolicy;
   t.failureEntry = 1;
@@ -132,15 +132,22 @@ export function migrateFailurePolicy(s) {
       s.training.nextDoseVersion = DOSE_VERSION;
     else adoptReviewedDose(s.training);
   }
-  if (allLoadedFailure(s.training)) adoptRowEquipment(s.training);
+  if (allLoadedFailure(s.training)) adoptEquipment(s.training);
   return s;
 }
-function adoptRowEquipment(t) {
+function adoptEquipment(t) {
   // September 25: the user confirmed using incline-bench dumbbell rows.
   // Set the future preference once; never rewrite saved/active prescriptions.
-  if (t.rowEquipmentRevision === 1) return;
-  t.equipment.row = "db";
-  t.rowEquipmentRevision = 1;
+  if (t.rowEquipmentRevision !== 1) {
+    t.equipment.row = "db";
+    t.rowEquipmentRevision = 1;
+  }
+  // September 28: dumbbells are capped and no shrug machine is available.
+  // Change future sessions once; retain history, active sessions and later choices.
+  if (t.shrugEquipmentRevision !== 1) {
+    t.equipment.shrug = "barbell";
+    t.shrugEquipmentRevision = 1;
+  }
 }
 export const failureTrialPending = (c) =>
   allLoadedFailure(c) &&

@@ -424,6 +424,11 @@ const SUBSTITUTES = {
     machine: "Supported machine row",
     db: "Chest-supported dumbbell row · incline bench",
   },
+  shrug: {
+    barbell: "Barbell shrug · from rack",
+    db: "Dumbbell shrug",
+    machine: "Supported machine shrug",
+  },
   leg_curl: { lying: "Lying leg curl" },
   calf: {
     press: "Supported knee-extended calf press",
@@ -511,6 +516,20 @@ function conventional(c, day, phase, one = false) {
                       ? "Controlled trunk flexion; no hip pulling or neck strain. "
                       : "Keep upper arms stable through a comfortable elbow range. ") +
         "Keep a stable, supported setup and full comfortable ROM. About 2 seconds lowering; strict-form failure with a safe endpoint. Establish a new load after equipment/ROM changes.";
+    }
+    if (id === "shrug" && substitute) {
+      const barbell = c.equipment.shrug === "barbell";
+      if (barbell) e.loadUnit = "total barbell";
+      e.note =
+        (barbell
+          ? "Take the bar from rack supports around upper-thigh height and return it under control. Log the TOTAL weight of the bar and plates. "
+          : c.equipment.shrug === "db"
+            ? "Log the weight of ONE dumbbell. "
+            : "Use the machine's stable support and log its working load. ") +
+        "Raise the shoulders through a full comfortable range, then lower under control. Keep arms straight; no bouncing, leg drive, neck circles or shortened reps. End at the last full rep when another would need those compensations. Use straps if grip limits you before your traps. Keep the prescribed sets and reps; choose a fresh working weight after changing equipment.";
+      if (barbell)
+        e.warmup =
+          "Set the rack supports around upper-thigh height. Rehearse 6–8 easy shrugs with a light bar and check the pickup and return. Use additional easy warm-up steps if needed to select a working weight for 10–15 full reps; no extra failure set. Dumbbell weights do not determine the barbell starting load.";
     }
     rows.push(e);
   }

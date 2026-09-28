@@ -83,7 +83,9 @@ function ramps(e, previous, config) {
         config.equipment?.lateral !== "db" &&
         p.unilateralCable;
       stage(
-        `Easy rehearsal · 6–8 reps${sides ? " each side" : ""}`,
+        e.id === "shrug" && e.loadUnit === "total barbell"
+          ? "Light-bar shrugs from rack · 6–8 easy reps"
+          : `Easy rehearsal · 6–8 reps${sides ? " each side" : ""}`,
         sides ? 70 : 33,
         75,
       );
@@ -231,7 +233,12 @@ export function fixedSession(session, config = {}, options = {}) {
     };
     for (const [part, label] of [
       ["recovery", "Recover / transition from previous exercise"],
-      ["setup", "Move station · set up and load equipment"],
+      [
+        "setup",
+        e.id === "shrug" && e.loadUnit === "total barbell"
+          ? "Set rack supports · load barbell"
+          : "Move station · set up and load equipment",
+      ],
       ["waiting", "Wait for equipment"],
     ])
       if (oldRow.parts[part][1])
