@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-23-guided-training";
+const CACHE = "oly-groundup-v7-24-music-push-loads";
 const FILES = [
   "./",
   "index.html",
@@ -18,6 +18,9 @@ const FILES = [
   "src/timeline.js",
   "src/pacing.js",
   "src/timer-alerts.js",
+  "src/load-progression.js",
+  "src/push-alerts.js",
+  "src/push-config.js",
   "src/routines.js",
   "src/prescription.js",
   "src/training.js",
@@ -73,5 +76,37 @@ self.addEventListener("fetch", (event) => {
           (await cache.match(event.request, { ignoreSearch: true })) ||
           fetch(event.request),
       ),
+  );
+});
+
+// Server-sent push wakes this worker even when no app window is open. Every
+// received push produces a visible notification, as required by iOS.
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    self.registration.showNotification("Oly Tracker · timer finished", {
+      body: "Your countdown has finished. Open Oly Tracker for the next step.",
+      tag: "oly-timer",
+      renotify: true,
+      icon: new URL("icon.svg", self.registration.scope).href,
+      data: { url: self.registration.scope },
+    }),
+  );
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      const existing = windows.find((window) =>
+        window.url.startsWith(self.registration.scope),
+      );
+      if (existing) {
+        await existing.focus();
+        existing.postMessage({ type: "TIMER_NOTIFICATION_OPENED" });
+      } else await self.clients.openWindow(self.registration.scope);
+    })(),
   );
 });

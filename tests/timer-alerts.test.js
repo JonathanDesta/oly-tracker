@@ -112,91 +112,91 @@ test("audio file contains the complete delay plus a loud, unclipped repeating al
   assert(Math.min(...quieter) > 72);
 });
 function controller() {
-  let now = 0,
-    sequence = 0,
-    reject = false;
-  const listeners = new Map();
-  const audio = {
-    paused: true,
-    currentTime: 0,
-    ended: false,
-    plays: 0,
-    setAttribute() {},
-    removeAttribute() {},
-    addEventListener(name, handler) {
-      listeners.set(name, handler);
-    },
-    dispatch(name) {
-      listeners.get(name)?.();
-    },
-    load() {},
-    pause() {
-      this.paused = true;
-    },
-    play() {
-      this.plays++;
-      this.paused = false;
-      return reject ? Promise.reject(Error("blocked")) : Promise.resolve();
-    },
-  };
-  const revoked = [],
-    alerts = new TimerAlerts({
-      document: { createElement: () => audio, body: { append() {} } },
-      navigator: {},
-      URL: {
-        createObjectURL: () => `blob:${++sequence}`,
-        revokeObjectURL: (url) => revoked.push(url),
-      },
-      Blob,
-      storage: memory(),
-      now: () => now,
-    });
+  let now = 0;
+  const sources = [],
+    navigator = { audioSession: {} },
+    document = { visibilityState: "visible" };
+  class AudioContext {
+    state = "running";
+    destination = {};
+    resume() {
+      this.state = "running";
+      return Promise.resolve();
+    }
+    createBuffer(channels, length) {
+      return { getChannelData: () => new Float32Array(length) };
+    }
+    createBufferSource() {
+      const source = {
+        started: false,
+        stopped: false,
+        connect() {},
+        disconnect() {},
+        start() {
+          this.started = true;
+        },
+        stop() {
+          this.stopped = true;
+        },
+      };
+      sources.push(source);
+      return source;
+    }
+  }
+  const alerts = new TimerAlerts({
+    document,
+    navigator,
+    storage: memory(),
+    now: () => now,
+    AudioContext,
+  });
   return {
     alerts,
-    audio,
-    revoked,
+    document,
+    navigator,
+    sources,
     setTime: (value) => (now = value),
-    block: (value) => (reject = value),
   };
 }
-test("blocked audio is visible, a gesture retries, acknowledgement and changed timers cancel old media", async () => {
+test("countdowns play no silent track, use mixable audio, and sound only at the absolute deadline", () => {
   const c = controller(),
     target = { key: "a", label: "Rest", deadline: 10000 };
-  c.block(true);
-  c.alerts.sync(target);
-  await new Promise(setImmediate);
-  assert.equal(c.alerts.status, "blocked");
-  c.alerts.sync(target);
-  assert.equal(c.audio.plays, 1, "do not hammer blocked autoplay every second");
-  c.block(false);
   c.alerts.sync(target, { gesture: true });
-  await new Promise(setImmediate);
+  assert.equal(c.navigator.audioSession.type, "ambient");
+  assert.equal(c.alerts.status, "armed");
+  assert.equal(c.sources.length, 0);
+  c.setTime(10000);
+  c.alerts.sync(target);
   assert.equal(c.alerts.status, "playing");
+  assert.equal(c.sources.length, 1);
+  c.alerts.sync(target);
+  assert.equal(c.sources.length, 1);
   c.alerts.acknowledge();
+  assert(c.sources[0].stopped);
   c.alerts.sync(target);
   assert.equal(c.alerts.target, null);
-  c.alerts.sync({ ...target, key: "b", deadline: 20000 });
-  assert.equal(c.audio.plays, 3);
-  c.alerts.sync(null);
-  assert.equal(c.audio.paused, true);
-  assert.equal(c.revoked.length, 3);
 });
-test("returning after interrupted background audio catches up to the wall-clock deadline", async () => {
+test("foreground sound can recover after a tap; hidden pages rely on push, not Web Audio", () => {
   const c = controller(),
     target = { key: "a", label: "Rest", deadline: 10000 };
   c.alerts.sync(target);
-  await new Promise(setImmediate);
   c.setTime(12000);
-  c.audio.currentTime = 2;
-  c.alerts.sync(target, { resuming: true });
-  assert.equal(c.audio.plays, 2);
-  assert.equal(c.alerts.armedAt, 12000);
-  c.alerts.save({ volume: 0.5 });
-  c.alerts.sync(target, { gesture: true });
-  assert.equal(c.audio.plays, 3, "volume changes rebuild the audio samples");
-  assert.equal(c.alerts.armedVolume, 0.5);
-  c.alerts.save({ enabled: false });
   c.alerts.sync(target);
+  assert.equal(c.alerts.status, "blocked");
+  c.alerts.sync(target, { gesture: true });
+  assert.equal(c.alerts.status, "playing");
+  c.alerts.sync(null);
+  assert(c.sources[0].stopped);
+  c.document.visibilityState = "hidden";
+  const next = { ...target, key: "b" };
+  c.alerts.sync(next);
+  assert.equal(c.sources.length, 1);
+  c.document.visibilityState = "visible";
+  c.alerts.sync(next, { resuming: true });
+  assert.equal(c.sources.length, 2);
+  assert.equal(c.alerts.armedAt, 12000);
+  c.alerts.save({ enabled: false });
+  c.alerts.sync(next);
   assert.equal(c.alerts.target, null);
 });
 test("the dumbbell-row preference migrates once and preserves active prescriptions and dose", () => {
@@ -228,19 +228,4 @@ test("the dumbbell-row preference migrates once and preserves active prescriptio
     "machine",
     "later explicit choices remain available",
   );
-});
-
-test("a queued pause from replaced media cannot mark the playing alarm interrupted", async () => {
-  const c = controller();
-  c.alerts.sync({ key: "first", label: "Rest", deadline: 10000 });
-  await new Promise(setImmediate);
-  c.setTime(12000);
-  c.alerts.sync({ key: "second", label: "Rest", deadline: 10000 });
-  await new Promise(setImmediate);
-  c.audio.dispatch("pause");
-  assert.equal(c.audio.paused, false);
-  assert.equal(c.alerts.status, "playing");
-  c.audio.pause();
-  c.audio.dispatch("pause");
-  assert.equal(c.alerts.status, "interrupted");
 });

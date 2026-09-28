@@ -148,17 +148,17 @@ test("test-week bench can run before the test or low slot", () => {
   startSession(s, "friday", "rescue", mon, { rescue: "bench_moderate" });
   assert.equal(s.active.session.rows[0].key, "bench_moderate");
 });
-test("p.20 load progression uses actual endpoints, two exposures, overshoot correction in held weeks", () => {
+test("September 27 load amendment uses one workout and fixed 10 lb changes even in held weeks", () => {
   const e = failure("bench", 1, 3, 5, 270, { key: "bench_low" }),
     ex = (reps, normal = true) => ({
       normal,
       sets: [{ weight: 225, reps, endpoint: "failure" }],
     });
-  assert.equal(nextLoad(e, [ex(5)]).weight, 225);
-  assert.equal(nextLoad(e, [ex(5), ex(5)]).weight, 227.5);
-  assert.equal(nextLoad({ ...e, hold: true }, [ex(6)]).weight, 227.5);
-  assert.equal(nextLoad(e, [ex(2)]).weight, 208.125);
-  assert.equal(nextLoad(e, [ex(6, false)]).weight, 225);
+  assert.equal(nextLoad(e, [ex(5)]).weight, 235);
+  assert.equal(nextLoad(e, [ex(5), ex(5)]).weight, 235);
+  assert.equal(nextLoad({ ...e, hold: true }, [ex(6)]).weight, 235);
+  assert.equal(nextLoad(e, [ex(2)]).weight, 215);
+  assert.equal(nextLoad(e, [ex(6, false)]).weight, 235);
 });
 test("reactive reduction restores gradually and does not advance calendar prematurely", () => {
   const s = ready();

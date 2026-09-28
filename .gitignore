@@ -4,3 +4,6 @@ tmp/
 test-results/
 .DS_Store
 .claude/
+.wrangler/
+.dev.vars
+notifications/.secrets.json

@@ -350,7 +350,7 @@ test("full audit pp.23/24: every combined event applies the stricter active rule
             );
         }
 });
-test("full audit pp.17/20: within-session load reduction is not compounded at the next normal exposure", () => {
+test("September 27 amendment: any below-range work set reduces the next recommendation 10 lb from the final working weight", () => {
   const e = failure("incline", 3, 6, 10, 210);
   const h = [
     {
@@ -362,9 +362,9 @@ test("full audit pp.17/20: within-session load reduction is not compounded at th
       ],
     },
   ];
-  assert.equal(nextLoad(e, h).weight, 90);
+  assert.equal(nextLoad(e, h).weight, 80);
   h[0].sets.at(-1).reps = 4;
-  assert.equal(nextLoad(e, h).weight, 83.25);
+  assert.equal(nextLoad(e, h).weight, 80);
 });
 test("full audit p.32: resumed assistance holds its secure load for two valid exposures", () => {
   const s = ready(5);

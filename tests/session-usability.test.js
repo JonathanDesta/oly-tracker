@@ -110,7 +110,7 @@ test("one whole-set entry records six good clean-and-jerks and a seventh jerk mi
     .find((x) => x.id === "cj");
   assert.equal(
     next.workingLoad,
-    170,
+    175,
     "starting-load correction crosses weekdays during introduction",
   );
   validate(s);

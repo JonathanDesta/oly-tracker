@@ -1,3 +1,4 @@
+import { loadRecommendation } from "./load-progression.js";
 import { DOSE_STAGES } from "./dose.js";
 import {
   allLoadedFailure,
@@ -357,7 +358,8 @@ export function exposureHistory(state, e) {
           ]
         : [];
     })
-    .filter((r) => r.sets.length);
+    .filter((r) => r.sets.length)
+    .sort((a, b) => (a.record.startedAt || 0) - (b.record.startedAt || 0));
 }
 // Page 5 estimates apply only to the first base-strength exposure at its entry
 // rep range. They are guidance, never an automatically selected work weight.
@@ -381,73 +383,27 @@ export function startingEstimate(e) {
   }
   return null;
 }
-export function nextLoad(e, history, increment = 2.5) {
-  const last = history.at(-1),
-    lo = e.repRange[0],
-    hi = e.repRange[1];
+export function nextLoad(e, history) {
+  const last = history.at(-1);
   if (!last)
     return {
       text:
         startingEstimate(e)?.text ||
         "Choose a conservative familiar load; log the actual endpoint. No calibration failure set is owed.",
     };
-  const sets = last.sets,
-    weight = sets.at(-1).weight;
-  const valid = (r) =>
-    r?.normal &&
-    r.sets.length === e.sets &&
-    r.sets.every((s) => s.endpoint === "failure");
-  if (sets.at(-1).endpoint === "failure" && sets.at(-1).reps < lo)
-    return {
-      weight: weight * 0.925,
-      text: "Below the rep window: reduce about 5–10%; keep the prescribed range.",
-    };
-  if (!valid(last))
-    return {
-      weight: e.hold || e.checkpoint ? e.heldWeight || weight : weight,
-      text: "Hold or reassess. Progression needs complete valid failure sets and confirmed normal next-session recovery.",
-    };
-  if (sets.some((s) => s.reps < lo))
-    return {
-      weight,
-      text: "The load was already reduced within the last exposure and its final set reached the range. Repeat that load; do not compound the reduction.",
-    };
-  const special = e.id.endsWith("squat") || e.key === "bench_low";
-  // Rep-window correction is explicitly allowed in held weeks, including support trials.
-  if (special && sets.every((s) => s.reps > hi))
-    return {
-      weight: weight + Math.min(5, increment),
-      text: "Above the rep window: correct by +2.5–5 lb next eligible exposure. No repeat overshoot needed.",
-    };
-  if (e.hold || e.checkpoint)
-    return {
-      weight: e.heldWeight || weight,
-      text: "Hold the most recent secure load. Rep-window corrections and reductions remain allowed.",
-    };
-  const allTop = (r) =>
-    r.sets.every((s) => s.reps >= hi && s.weight === weight);
-  if (
-    allTop(last) &&
-    ((e.sets > 1 && !special) ||
-      (valid(history.at(-2)) && allTop(history.at(-2))))
-  ) {
-    if (["wrist_curl", "wrist_extension"].includes(e.id))
-      return {
-        weight,
-        text: "Ready for a small load increase per dumbbell. Select the smallest controllable available step; the barbell plate setting does not apply to wrists. If the next dumbbell is too large a jump, keep this load or use secure fractional loading. Log the actual load; do not force a five-pound increase.",
-      };
-    return {
-      weight: weight + (special ? Math.min(5, increment) : increment),
-      text: "Increase by the smallest available increment; squat/low bench use 2.5–5 lb.",
-    };
-  }
-  return {
-    weight,
-    text: allTop(last)
-      ? "Upper bound once: repeat successfully before increasing."
-      : "Keep the load while valid reps build within the target range.",
-  };
+  return loadRecommendation(
+    e,
+    last.sets.map((s) => ({ ...s, valid: s.endpoint === "failure" })),
+    {
+      complete:
+        last.sets.length === (last.row?.sets ?? e.sets) &&
+        !last.record?.omissions?.some(
+          (o) => o.key === (last.row?.key || e.key),
+        ),
+    },
+  );
 }
+
 export function benchWindow(state, now = Date.now()) {
   const times = [
     ...state.records,
@@ -679,7 +635,7 @@ export function planFor(
       ) {
         e.hold = true;
         e.note +=
-          " After resuming, hold a secure load for two comparable normal exposures before progressing (p.32).";
+          " After resuming, check the load in warm-ups. Current load recommendations use the previous workout’s reps.";
       }
       if (olympicFailure(e)) {
         e.hold ||=

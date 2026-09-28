@@ -1,3 +1,4 @@
+import { loadRecommendation } from "./load-progression.js";
 // September 21 amendment. The exact Olympic dose is a practical inference,
 // not a protocol demonstrated superior (or equivalent) in intervention trials.
 import { DOSE_VERSION, DOSE_STAGES, olympicDose } from "./dose.js";
@@ -222,64 +223,30 @@ export function failureOlympics(rows, c, phase, day) {
     });
 }
 
-export function failureProgression(e, history, increment = 5) {
+export function failureProgression(e, history) {
   const last = history.at(-1);
   if (!last)
     return {
       weight: null,
       text: `Choose your working weight. Aim for a weight that allows about ${e.validRepRange.join("–")} good reps before the first miss or form breakdown. That range guides weight selection; it is not a required stopping point. Use warm-ups to check the weight, and do not turn the set into a conditioning test.`,
     };
-  const weight = last.sets[0]?.weight;
-  if (!weight)
-    return { weight: null, text: "No comparable loaded exposure yet." };
-  if (last.sets.some((r) => ["fatigue", "pain", "stop"].includes(r.endpoint)))
-    return {
-      weight,
-      text: "The previous set stopped for fatigue, pain or another interruption. This does not establish a power limit or earn an automatic increase. Choose the next weight after checking recovery and warm-ups.",
-    };
-  const count = validReps(failureSets(last.sets)[0] || []);
-  if (count < e.validRepRange[0])
-    return {
-      weight: Math.max(
-        increment,
-        Math.floor((weight * 0.925) / increment) * increment,
-      ),
-      text: "Below the valid-rep window: reduce about 5–10% next exposure and review technique/recovery. Do not add retry sets.",
-    };
-  const complete = failureSetStatus(last.row || e, last.sets);
-  const eligible =
-    last.normal &&
-    complete.endpointReached &&
-    !complete.stop &&
-    !last.record.omissions.some((o) => o.key === e.key) &&
-    last.sets.every((r) => !r.overCap && r.weight === weight);
-  if (e.calibrationAllowed && eligible && count > e.validRepRange[1])
-    return {
-      weight: weight + Math.min(5, increment),
-      text: `You completed ${count} good reps before the set ended, above the ${e.validRepRange.join("–")} target. Try one small increase next time, only if warm-ups and recovery are normal. This corrects the starting estimate; it does not add sets.`,
-    };
-  if (e.hold || e.checkpoint)
-    return {
-      weight,
-      text: "Hold the last comparable work load during introduction, checkpoint or Realization/taper. Recovery still governs whether to train.",
-    };
-  const recent = history.slice(-2);
-  const earned =
-    recent.length === 2 &&
-    recent.every(
-      (h) =>
-        h.normal &&
-        !h.record.omissions.some((o) => o.key === e.key) &&
-        failureSetStatus(e, h.sets).completedSets === e.sets &&
-        failureSets(h.sets).every(
-          (set) => failureReached(set) && validReps(set) >= e.validRepRange[1],
+  const sets = failureSets(last.sets);
+  return loadRecommendation(
+    e,
+    sets.map((set) => ({
+      weight: set.at(-1)?.weight,
+      reps: validReps(set),
+      valid:
+        failureReached(set) &&
+        !set.some((r) => ["fatigue", "pain", "stop"].includes(r.endpoint)),
+    })),
+    {
+      complete:
+        sets.length === (last.row?.sets ?? e.sets) &&
+        !last.record?.omissions?.some(
+          (o) => o.key === (last.row?.key || e.key),
         ) &&
-        h.sets.every((r) => !r.overCap && r.weight === weight),
-    );
-  return {
-    weight: weight + (earned ? increment : 0),
-    text: earned
-      ? "Two comparable, normal exposures reached the top of the valid-rep window before the terminal attempt. Add one plate increment; keep the prescribed set count."
-      : "Repeat this load. An increase requires two comparable normal exposures at the top of the valid-rep window, each ending at the first miss/invalid rep, with normal subsequent recovery.",
-  };
+        !last.sets.some((r) => r.overCap),
+    },
+  );
 }

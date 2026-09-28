@@ -113,10 +113,7 @@ export function currentAlarm(state) {
     : null;
 }
 
-// One actual media track contains BOTH the delay and the repeating alert.
-// The audio renderer can reach the alarm without a background JS callback.
-// This is not an OS alarm: interruptions, browser termination, and device policy
-// can stop media. Never advertise guaranteed locked-phone delivery.
+// PCM alert samples. Live countdowns never play a silent keepalive track.
 export function alarmWave(delaySeconds, ringSeconds = 60, volume = 1) {
   if (!Number.isFinite(delaySeconds) || delaySeconds < 0 || delaySeconds > 7200)
     throw Error("Alarm delay must be between zero and two hours.");
@@ -164,53 +161,45 @@ export class TimerAlerts {
   constructor({
     document,
     navigator,
-    URL,
-    Blob,
     storage,
     now = () => Date.now(),
+    AudioContext = globalThis.AudioContext || globalThis.webkitAudioContext,
   }) {
-    Object.assign(this, { document, navigator, URL, Blob, storage, now });
+    Object.assign(this, { document, navigator, storage, now, AudioContext });
     this.preferences = readAlertPreferences(storage);
     this.acknowledged = new Set();
     this.status = "idle";
     this.target = null;
-    this.audio = document.createElement("audio");
-    this.audio.id = "workout-alarm-audio";
-    this.audio.preload = "auto";
-    this.audio.setAttribute("playsinline", "");
-    this.audio.setAttribute("aria-hidden", "true");
-    document.body.append(this.audio);
-    this.audio.addEventListener("pause", () => {
-      // A queued pause from the replaced track can arrive after play() succeeds.
-      // Only the current media state can establish an actual interruption.
-      if (
-        this.audio.paused &&
-        this.target &&
-        !this.audio.ended &&
-        this.status === "playing"
-      )
-        this.status = "interrupted";
-    });
-    this.audio.addEventListener("ended", () => {
-      this.status = "finished";
-      if (this.testTarget) this.acknowledge();
-    });
-    this.audio.addEventListener("error", () => {
-      this.status = "blocked";
-    });
   }
   save(preferences) {
     this.preferences = { ...this.preferences, ...preferences };
     this.storage.setItem(ALERT_KEY, JSON.stringify(this.preferences));
   }
+  prepareAudio() {
+    try {
+      // Ambient mixes with Apple Music. Never request exclusive playback.
+      if (this.navigator.audioSession)
+        this.navigator.audioSession.type = "ambient";
+      this.context ||= new this.AudioContext();
+      if (this.context.state === "suspended")
+        this.context
+          .resume()
+          .then(() => this.sync(this.target, { resuming: true }))
+          .catch(() => {});
+    } catch {
+      /* The visible timer still works without audio support. */
+    }
+  }
   stop() {
+    const source = this.source;
+    this.source = null;
+    if (source) {
+      source.onended = null;
+      source.stop();
+      source.disconnect();
+    }
     this.status = "idle";
     this.target = null;
-    this.audio.pause();
-    this.audio.removeAttribute("src");
-    this.audio.load();
-    if (this.url) this.URL.revokeObjectURL(this.url);
-    this.url = null;
   }
   acknowledge() {
     if (this.target) this.acknowledged.add(this.target.key);
@@ -221,6 +210,7 @@ export class TimerAlerts {
   }
   sync(target, { gesture = false, resuming = false } = {}) {
     target = this.testTarget || target;
+    if (gesture && this.preferences.enabled) this.prepareAudio();
     if (
       !this.preferences.enabled ||
       !target ||
@@ -230,61 +220,49 @@ export class TimerAlerts {
       return;
     }
     const same =
-      target.key === this.target?.key &&
+      this.target?.key === target.key &&
       this.armedVolume === this.preferences.volume;
+    if (!same) {
+      this.stop();
+      this.target = target;
+      this.status = "armed";
+      this.armedVolume = this.preferences.volume;
+    }
     if (
-      same &&
-      !(gesture && ["blocked", "interrupted"].includes(this.status)) &&
-      !resuming
+      target.deadline > this.now() ||
+      this.document.visibilityState === "hidden"
     )
       return;
-    // If audio was interrupted while hidden, use the wall-clock deadline on return.
-    if (
-      same &&
-      resuming &&
-      this.status === "playing" &&
-      !this.audio.paused &&
-      Math.abs(this.audio.currentTime - (this.now() - this.armedAt) / 1000) < 2
-    )
-      return;
-    if (same && this.status === "finished") return;
-    this.stop();
-    this.target = target;
-    const delay = Math.max(0, (target.deadline - this.now()) / 1000);
-    if (delay > 7200) {
+    if (this.status === "finished") return;
+    if (this.source && this.context?.state === "running") return;
+    if (this.status === "blocked" && !gesture && !resuming) return;
+    if (!this.context || this.context.state !== "running") {
       this.status = "blocked";
       return;
     }
-    this.url = this.URL.createObjectURL(
-      new this.Blob([alarmWave(delay, 60, this.preferences.volume)], {
-        type: "audio/wav",
-      }),
-    );
-    this.audio.src = this.url;
-    // iPhone controls media-element volume itself. Scale the actual samples
-    // instead, so the app's quieter settings also work on that platform.
-    this.audio.volume = 1;
-    this.armedVolume = this.preferences.volume;
+    if (this.source) {
+      this.source.onended = null;
+      this.source.stop();
+      this.source.disconnect();
+    }
+    const bytes = alarmWave(0, 60, this.preferences.volume).subarray(44),
+      buffer = this.context.createBuffer(1, bytes.length, 8000),
+      samples = buffer.getChannelData(0);
+    for (let i = 0; i < bytes.length; i++) samples[i] = (bytes[i] - 128) / 128;
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.context.destination);
+    source.onended = () => {
+      if (this.source !== source) return;
+      source.disconnect();
+      this.source = null;
+      this.status = "finished";
+      if (this.testTarget) this.acknowledge();
+    };
+    this.source = source;
+    this.status = "playing";
     this.armedAt = this.now();
-    this.status = "starting";
-    try {
-      if (this.navigator.audioSession)
-        this.navigator.audioSession.type = "playback";
-    } catch {
-      /* Optional browser capability. */
-    }
-    const url = this.url;
-    try {
-      Promise.resolve(this.audio.play())
-        .then(() => {
-          if (url === this.url) this.status = "playing";
-        })
-        .catch(() => {
-          if (url === this.url) this.status = "blocked";
-        });
-    } catch {
-      this.status = "blocked";
-    }
+    source.start();
   }
   test(delay = 0) {
     this.acknowledge();

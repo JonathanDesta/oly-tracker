@@ -39,6 +39,7 @@ import {
   setSchedule,
 } from "./calendar.js";
 import { installPlannerIntegration } from "./planner-integration.js";
+import { PushAlerts } from "./push-alerts.js";
 import { TimerAlerts, currentAlarm } from "./timer-alerts.js";
 import {
   DAYS,
@@ -135,7 +136,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.23";
+const APP_BUILD = "7.24";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -189,6 +190,7 @@ try {
   storageError = e.message;
 }
 if (state?.active) view = "workout";
+const pushAlerts = new PushAlerts();
 const timerAlerts = new TimerAlerts({
   document,
   navigator,
@@ -664,7 +666,7 @@ function pacingCard(w) {
     if (stage.role !== "break-pool")
       controls += btn("Take a 2-minute break", "pace-break", "", "quiet");
   }
-  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(timerAlerts.preferences.enabled ? "Alarm sound on · mute" : "Alarm sound off · enable", "pace-sound", "", "quiet")}</div><p class="fine-print" data-alarm-state></p><p class="fine-print">Sound uses your phone’s media volume. Background playback can be interrupted by other audio, calls, or the phone; closing the app stops its audio. Try Settings → Alarms → Test with phone locked before relying on it.</p><p class="fine-print">Zero is a cue, not a completed set. Follow the current exercise’s endpoint and record the real outcome. For Olympic failure sets, keep going at the same load until the first miss or invalid rep; the planned rep count is only a time estimate. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; Use the rest target as a recommendation. If you end it early, the actual rest is recorded. Skip a warm-up set only when you are already prepared for that weight.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
+  return `<section class="pace-card" aria-label="Guided session countdown"><div class="eyebrow">GUIDED COUNTDOWN${stage?.exercise ? ` / ${esc(stage.exercise)}` : ""}</div><h2 id="pace-label">${esc(display.label)}</h2><div class="pace-clock"><strong id="pace-clock" role="timer">${countdownText(display.seconds)}</strong>${p.timer?.pausedAt !== null && p.timer && !p.workEndedAt ? "<span>Paused</span>" : ""}</div><p id="pace-forecast">${time(display.info.remaining)} of planned steps left · projected finish ${new Date(display.info.finishAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p><p class="fine-print">Session target <span id="pace-budget">${countdownText(display.info.budgetRemaining)}</span> remaining. ${time(Math.max(0, (p.plan.find((s) => s.role === "break-pool")?.seconds || 0) - p.breakUsed))} of miscellaneous allowance unused. Pausing a step does not hide elapsed session time.</p><div class="pace-actions">${controls}${btn(timerAlerts.preferences.enabled ? "Alarm sound on · mute" : "Alarm sound off · enable", "pace-sound", "", "quiet")}</div><p class="fine-print" data-alarm-state></p><p class="fine-print">In-app sound mixes with music and uses media volume. For alerts with the phone locked or the app closed, connect background notifications in Settings → Alarms. Wait for confirmation that this countdown is saved, then test with your normal music and notification settings.</p><p class="fine-print">Zero is a cue, not a completed set. Follow the current exercise’s endpoint and record the real outcome. For Olympic failure sets, keep going at the same load until the first miss or invalid rep; the planned rep count is only a time estimate. Take longer recovery when needed. Loading and logging share rest time. Confirm each preparation step; Use the rest target as a recommendation. If you end it early, the actual rest is recorded. Skip a warm-up set only when you are already prepared for that weight.</p><details><summary>Remaining countdown steps</summary><ol class="pace-plan">${p.plan
     .filter((step) => !p.completed.some((x) => x.id === step.id))
     .map(
       (step) =>
@@ -796,10 +798,12 @@ function workoutView() {
     if (range) proposed = range[0];
     if (status.cap)
       proposed = Math.min(Number(proposed) || status.cap, status.cap);
-    if (e.kind === "failure" && status.logs.at(-1)?.reps < e.repRange[0])
-      proposed = status.logs.at(-1).weight * 0.925;
+
     if (proposed)
-      proposed = Math.floor((proposed + 1e-8) / w.increment) * w.increment;
+      proposed =
+        e.kind === "failure"
+          ? proposed
+          : Math.floor((proposed + 1e-8) / w.increment) * w.increment;
     const prepared = w.preparations.includes(e.key);
     body += `<section class="focus-card"><div class="focus-meta"><span class="pill">${e.kind === "failure" ? "STRICT-FORM FAILURE" : e.kind === "quality" ? (olympicFailure(e) ? "OLYMPIC FAILURE SET" : "OLYMPIC QUALITY") : e.kind === "speed" ? "ATHLETIC QUALITY" : "EASY AEROBICS"}</span><span>${olympicFailure(e) ? `${status.completedSets}/${e.sets} sets ended · set ${status.currentSet}: ${status.currentValidReps} valid ${e.id === "cj" ? "pairs" : "reps"}` : `${status.count} / ${status.planned} ${e.kind === "quality" ? "attempts" : "sets"}`}</span></div><h2>${esc(e.name)}</h2><p class="prescription">${esc(describe(e))}</p><p class="exercise-duration">Full exercise allowance: ${minutesText(currentTiming.rows.find((r) => r.key === e.key).seconds)} including prep & rest.</p>${
       range
@@ -1079,7 +1083,7 @@ function failureGuide() {
   return `<section class="panel" id="failure-amendment"><h2>September 21 · loaded working sets to failure</h2>
   <p>Your amendment supersedes the PDF wherever endpoints or workload conflict. It applies to loaded working sets, including Olympic lifts and pulls. Warm-ups, unloaded rehearsal, athletics, aerobic work and mobility retain their original endpoints. The original PDF remains available as the unchanged source.</p>
   <p><strong>Olympic endpoint:</strong> each prescribed work set uses a fixed load. Complete a valid rep, rest 40 seconds, then repeat. A clean-and-jerk rep requires BOTH lifts to be valid. The first miss or rep that loses the prescribed form ends the set immediately. The recommended recovery before the next prescribed set is five minutes. No extra retry sets, drop sets or escalating attempts. Zero valid reps in a set, or the same material fault ending two sets, ends the exercise. Use “Log completed set” to enter the total good reps and what ended it, or record each rep individually. A catch-style change or miss does not measure power output. Pain or an unsafe situation ends work and is recorded as incomplete, never disguised as failure.</p>
-  <p><strong>Choosing weight:</strong> choose your own working weight, as you do for the other lifts. The app does not prescribe a percentage-based Olympic starting weight. Foundation uses about 2–4 good reps, Build 1–3 and Realization 1–2 as weight-selection guides. Your previous comparable weight and result are shown for reference. A completed clean & jerk rep includes both lifts. A higher catch is not evidence that you ran out of power; log any form change or breathing/burning limit honestly. An above-range set can prompt a small load correction during introduction once the next-session recovery check is normal. No additional failure test is required.</p>
+  <p><strong>Choosing weight:</strong> choose your own working weight, as you do for the other lifts. The app does not prescribe a percentage-based Olympic starting weight. Foundation uses about 2–4 good reps, Build 1–3 and Realization 1–2 as weight-selection guides. Your previous comparable weight and result are shown for reference. A completed clean & jerk rep includes both lifts. A higher catch is not evidence that you ran out of power; log any form change or breathing/burning limit honestly. After the previous comparable workout: increase 10 lb when every working set reaches the top of the rep range or higher; decrease 10 lb if any completed working set is below the bottom. Otherwise repeat the last working weight. For dumbbells, change 5 lb per hand. Missed/invalid attempts do not count as good reps. Incomplete, pain or fatigue stops do not earn increases. These recommendations replace earlier smaller-step and two-workout load rules, including held weeks. Weights remain editable; use warm-ups to check them.</p>
   <p><strong>Warm-ups:</strong> perform the general warm-up once per visit. The first Olympic lift uses a short light-bar check and three single-rep steps at 50%, 70% and 85% of your selected working weight. The second uses its own light-bar check and two single-rep steps at 60% and 85%. These are adjustable preparation guides, not proven unique optima. Use “Ready · skip warm-up rest” when ready, or add time if needed. Work-set recovery still has a recommended target; ending it early is recorded.</p>
   <p><strong>Dose and calendar:</strong> the whole-week allocation uses Monday, Wednesday and Friday. Both competition lifts lead each visit; assistance follows. Each competition lift still has three weekly exposures, with recovery days between loaded sessions. The restart has four stages: an ordinary Foundation week has 31/41/46/56 conventional sets and 6/6/9/12 Olympic sets. Each complete green weekly review may advance one stage, with next-session follow-ups required. Good historical recovery supports trying the progression; it does not skip observation. Record the next-session checks in History. Then review two full green weeks at a stable workload before optional additions. A controlled addition can now add one weekly Olympic or conventional set to a selected existing exercise. Source heavy-slot and bounded-assessment rules remain superseded. Existing logs and active sessions keep their original prescription.</p>
   <p><strong>Recovery:</strong> the recommended target is five minutes after each Olympic failure set before the next set or loaded exercise, plus any next-exercise ramp. Amber/global fatigue, targeted/reset weeks and sport later that day omit Olympic failure work. A technical restriction omits the affected work; no submaximal working-set substitute. Week 12 has Monday Olympic failure sets plus low-rep bench, no Tuesday/Thursday loading, Friday fixed-load failure benchmarks, and moderate bench afterward. The benchmark is not a three-attempt competition total. Week 13 has no Olympic loading and one set per retained conventional exercise. Actual bench exposures still require at least 48 hours.</p>
@@ -1110,7 +1114,7 @@ function settingsView() {
       "Use reviewed changes for workload progression. Setup changes start a new load comparison.",
     ) +
     `<section class="panel"><h2>App & offline updates</h2><p>App ${APP_BUILD} · complete session timing. Each browser/device keeps an offline copy; connect Google below to sync your journal and setup.</p>${btn("Check for updates", "check-update", "", "quiet")}<p>Updates preserve saved records. Save form changes and finish any active session before using the update banner.</p></section>` +
-    `<section class="panel"><h2>Alarms</h2><p>Sound starts automatically when you begin a session. A louder three-beep pattern repeats for up to one minute or until silenced. Preferences are saved on this device.</p><form data-form="alarms">${check("Alarm sound on", "enabled", timerAlerts.preferences.enabled)}${select("Alarm volume", "volume", { 1: "Loud · 100%", 0.75: "Medium · 75%", 0.5: "Lower · 50%" }, timerAlerts.preferences.volume)}${submit("Save alarm settings")}</form><p data-alarm-state></p><div class="actions">${btn("Test alarm sound", "alarm-test")}${btn("Test with phone locked · 10 seconds", "alarm-test-away")}</div><p>Use your phone’s <strong>media volume</strong> and check its speaker/headphone output. Background audio may pause music from another app. Test with your normal headphones, music and locked-screen setup.</p><p>The countdown and sound play as one audio track, so switching apps does not require a new sound to start at zero. The phone can still interrupt or stop playback; force-closing the app stops alarms. This is not a native phone alarm. Until your locked-screen test succeeds, keep the app visible or use your phone’s Clock timer.</p></section>` +
+    `<section class="panel"><h2>Alarms</h2><p>Sound is on by default. While the app is open, the alert repeats at zero and mixes with your music.</p><form data-form="alarms">${check("Alarm sound on", "enabled", timerAlerts.preferences.enabled)}${select("Alarm volume", "volume", { 1: "Loud · 100%", 0.75: "Medium · 75%", 0.5: "Lower · 50%" }, timerAlerts.preferences.volume)}${submit("Save alarm settings")}</form><p data-alarm-state></p>${btn("Test alarm sound", "alarm-test")}<p>Use media volume for the in-app sound. On iPhone, turn off Silent mode to hear this music-friendly alert.</p><h3>When the app is closed or your phone is locked</h3><p>Enter your connection code once and allow notifications. The online service then alerts you even when the app is closed. Wait for “Background alert saved” before leaving; saving changes and receiving alerts need internet.</p><p data-push-state role="status">${esc(pushAlerts.status)}</p>${input("Connection code", "push-code", "", "password", 'autocomplete="off" spellcheck="false"')}<div class="actions">${btn(pushAlerts.device ? "Reconnect notifications" : "Enable background notifications", "push-enable")}${pushAlerts.device ? btn("Disconnect notifications", "push-disable", "", "quiet") : ""}${btn("Test with phone locked · 10 seconds", "alarm-test-away")}</div><p>Turn on Oly Tracker’s notification sounds and allow it in Focus. Your iPhone chooses the background sound and volume. Delivery may be delayed; an alert already sent cannot be recalled. Test with Apple Music playing and your screen locked.</p><p class="muted">Connect each device separately. The service receives an anonymous timer deadline and notification address, never your workout log.</p></section>` +
     `<section class="panel"><h2>Weekly schedule</h2><p>${esc(scheduleName(t))}</p>${t.doseVersion === DOSE_VERSION ? "<p>The selected whole-week prescription uses Monday, Wednesday and Friday. Both lifts come first, with assistance distributed across the three visits. Week 12 retains its special taper/benchmark calendar. Use Move this day for a real conflict; you can move just that day or also shift later unfinished days.</p>" : `<p>This saved week keeps its existing calendar until reviewed. The pending whole-week update will then apply.</p><form data-form="schedule">${select("Training calendar", "schedule", { weekday: "Weekday plan · Mon B / Tue C / Thu A / Fri D", source: "Original PDF order · Mon A / Tue B / Thu C / Fri D" }, t.nextSchedule || t.schedule)}<p class="form-error" role="alert"></p>${submit("Save training calendar")}</form>`}</section>` +
     `<section class="panel"><h2>Schedule & equipment</h2><form data-form="equipment"><div class="input-grid">${select("Visits on B/D", "split", t.doseVersion === DOSE_VERSION ? { single: "One visit per lifting day" } : { single: "Single visit", split: "Split after incline + laterals (≥3 h)" }, t.split ? "split" : "single")}${select("Smallest barbell increment · lb", "increment", { 2.5: "2.5 lb", 5: "5 lb" }, t.increment)}${select("Incline press", "incline", { default: "Machine · 30–45°", smith: "Smith · safeties", db: "Dumbbells · safe endpoint" }, t.equipment.incline || "default")}${select("Lateral raise", "lateral", { default: "Cable", db: "Dumbbell" }, t.equipment.lateral || "default")}${select("Supported row", "row", { default: "Chest-supported row · unspecified", db: "Dumbbells · chest on incline bench", machine: "Supported machine row" }, t.equipment.row || "default")}${select("Leg curl", "leg_curl", { default: "Seated leg curl", lying: "Lying leg curl" }, t.equipment.leg_curl || "default")}${select("Calves", "calf", { default: "Standing, knees extended", press: "Supported knee-extended press", seated: "Seated · individualized fallback" }, t.equipment.calf || "default")}${select("Leg extension", "leg_ext", { default: "Supported reclined · ~40° hip flexion", upright: "Upright · equipment fallback" }, t.equipment.leg_ext || "default")}${select("Abdominals", "crunch", { default: "Machine crunch", cable: "Cable crunch" }, t.equipment.crunch || "default")}${select("Triceps", "triceps", { default: "Overhead cable extension", pressdown: "Pressdown · intolerance/interference" }, t.equipment.triceps || "default")}</div><p class="muted">Substitutions retain sets, reps and endpoint. Bench requires a flat barbell, safeties and competent spotting. No glute isolation.</p><p class="form-error" role="alert"></p>${submit("Save schedule & equipment")}</form></section>` +
     `<section class="panel"><h2>Time planning</h2><p>These allowances set the displayed times and guided countdowns. Training doses stay the same; extra recovery extends the prescribed rest.</p><form data-form="timing"><div class="input-grid">${select("Gym traffic · wait per station", "traffic", { quiet: "Quiet · 30 seconds", moderate: "Moderate · 2 minutes", busy: "Busy · 4 minutes" }, timing.traffic)}${input("Water, restroom & misc. · min per visit", "breakMinutes", timing.breakMinutes, "number", 'min="0" max="60" required')}${input("Typical plate / stack change · seconds", "plateSeconds", timing.plateSeconds, "number", 'min="0" max="300" required')}${input("Typical station move & setup · seconds", "stationSeconds", timing.stationSeconds, "number", 'min="0" max="600" required')}${input("Extra recovery allowance · seconds per work-set rest", "extraRestSeconds", timing.extraRestSeconds, "number", 'min="0" max="300" required')}${select("Athletics timing", "athleticsVisit", t.doseVersion === DOSE_VERSION ? { same: "Same visit · after Olympic lifts, before assistance" } : { separate: "Separate visit · allow ≥3 hours", same: "Same visit · 5-minute transition" }, timing.athleticsVisit)}</div>${check("Cable lateral raises performed one arm at a time (time both sides)", "unilateralCable", timing.unilateralCable)}<p class="muted">Setup and loading use your selected times. Countdown targets include prescribed rest plus your extra recovery allowance. One-arm timing does not apply when dumbbells are selected. Cardio shares the preceding visit when present. Arrival and departure are included; commuting is additional. A long interruption can require extra preparation. Active sessions keep their starting assumptions.</p><p class="form-error" role="alert"></p>${submit("Save time planning")}</form></section>` +
@@ -1403,7 +1407,7 @@ function openAdvancedChange() {
       `<div class="input-grid">${select("Exercise for this change", "exercise", { snatch: "Full snatch", cj: "Clean & jerk", hang: "Hang snatch", jerk: "Rack jerk", pull: "Snatch pull", bench: "Flat barbell bench", incline: "Incline", lateral: "Lateral raise", shrug: "Shrug", row: "Row", pulldown: "Pulldown", rear_delt: "Rear delt", curl: "Supinated curl", hammer_curl: "Hammer curl", wrist_curl: "Wrist curl", wrist_extension: "Wrist extension", triceps: "Triceps", leg_curl: "Leg curl", calf: "Calf", leg_ext: "Leg extension", crunch: "Crunch", front_squat: "Front squat", back_squat: "Back squat", press: "Overhead press (active substitution)" }, "shrug")}${select("Day for an added set", "day", { monday: `A · ${calendarWeekday("monday")}`, thursday: `C · ${calendarWeekday("thursday")}`, tuesday: `B · ${calendarWeekday("tuesday")}`, friday: `D · ${calendarWeekday("friday")}` }, "friday")}${allLoadedFailure(state.training) ? "" : input("Previous secure rack working load (rack progression only)", "baselineLoad", "", "number", 'min="1" step="any"') + input("New rack or pause-jerk trial load (+2.5–5 lb only)", "load", "", "number", 'min="1" step="any"')}</div>` +
       notice(
         allLoadedFailure(state.training)
-          ? "Failure amendment: Olympic loads progress from valid reps and two normal subsequent exposures. One added weekly Olympic set can be trialed on an existing row after the stable-dose review. Source heavy slots and bounded assessments remain superseded. Optional conventional/athletic/aerobic additions require the new introduction plus two complete stable green weeks. Other source eligibility rules still apply."
+          ? "Failure amendment: Olympic load recommendations use the previous workout: +10 lb if every set reaches the top of its good-rep range, −10 lb if a completed set is below the bottom, otherwise hold. One added weekly Olympic set can be trialed on an existing row after the stable-dose review. Source heavy slots and bounded assessments remain superseded. Optional conventional/athletic/aerobic additions require the new introduction plus two complete stable green weeks. Other source eligibility rules still apply."
           : "Use pages 15, 21–22, 27–29 and 31–34 for eligibility. Assessments need two secure Olympic weeks + safe release. Assistance needs ≥3 comparable observations. Primary athletics progresses after two good exposures per step; second slot after four productive primary exposures. Heavy trials replace one attempt in one lift, at 90–92%, with the final D gate earned first.",
       ) +
       check(
@@ -1708,6 +1712,30 @@ async function action(el) {
     refreshAlerts(true);
     return render();
   }
+  if (a === "push-enable") {
+    el.disabled = true;
+    try {
+      await pushAlerts.enable(
+        document.querySelector('[name="push-code"]').value,
+      );
+      render();
+      refreshAlerts(true);
+    } finally {
+      el.disabled = false;
+    }
+    return;
+  }
+  if (a === "push-disable") {
+    el.disabled = true;
+    try {
+      await pushAlerts.disable();
+      render();
+      refreshAlerts();
+    } finally {
+      el.disabled = false;
+    }
+    return;
+  }
   if (a === "alarm-dismiss") {
     timerAlerts.acknowledge();
     refreshAlerts();
@@ -1724,6 +1752,10 @@ async function action(el) {
       );
     if (!timerAlerts.preferences.enabled)
       throw Error("Turn alarm sound on before testing.");
+    if (a === "alarm-test-away" && !pushAlerts.device)
+      throw Error(
+        "Enable background notifications on this device before the locked-phone test.",
+      );
     timerAlerts.test(a === "alarm-test-away" ? 10 : 0);
     refreshAlerts();
     return;
@@ -2539,6 +2571,9 @@ document.addEventListener("input", (e) => {
 });
 function refreshAlerts(gesture = false, resuming = false) {
   timerAlerts.sync(currentAlarm(state), { gesture, resuming });
+  pushAlerts.sync(timerAlerts.target);
+  for (const node of document.querySelectorAll("[data-push-state]"))
+    node.textContent = pushAlerts.status;
   const target = timerAlerts.target,
     box = $("alarm-status"),
     blocked = ["blocked", "interrupted"].includes(timerAlerts.status),
@@ -2548,7 +2583,7 @@ function refreshAlerts(gesture = false, resuming = false) {
     ? "Alarm audio needs a tap to resume. Keep the app open until sound is working."
     : due
       ? `${target.label} · timer finished. Record the actual work; the alarm does not complete a set.`
-      : "Test alarm in 10 seconds. Switch apps or lock your phone now to check background sound.";
+      : `${timerAlerts.testTarget ? "Test alarm in 10 seconds. " : ""}${pushAlerts.status}`;
   box.querySelector('[data-action="alarm-resume"]').hidden = !blocked;
   box.querySelector('[data-action="alarm-dismiss"]').textContent = due
     ? "Silence alarm"
@@ -2559,8 +2594,8 @@ function refreshAlerts(gesture = false, resuming = false) {
       : blocked
         ? "Sound needs a tap: use Resume alarm audio."
         : target && timerAlerts.status === "playing"
-          ? "Alarm audio is playing for this countdown."
-          : "Alarm sound is on. Starting a session enables audio.";
+          ? "Alarm is sounding. Tap Silence alarm to stop it."
+          : `Alarm sound is on. ${target ? "Countdown armed; sound starts at zero. " : ""}${pushAlerts.status}`;
 }
 function tick() {
   if (!state) return;

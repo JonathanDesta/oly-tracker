@@ -487,10 +487,11 @@ function conventional(c, day, phase, one = false) {
         ? { page: null, amendment: true }
         : {}),
     });
+    if (/dumbbell/i.test(e.name)) e.loadUnit = "per dumbbell";
     const substitute = SUBSTITUTES[id]?.[c.equipment[id]];
     if (substitute) {
       e.name = substitute;
-      if (id === "row" && c.equipment.row === "db") e.loadUnit = "per dumbbell";
+      if (c.equipment[id] === "db") e.loadUnit = "per dumbbell";
       e.note =
         (id === "calf"
           ? "2 seconds down, 1-second bottom pause, full rise; no bouncing. "

@@ -300,7 +300,7 @@ test("migration is immediate for unstarted work, freezes active prescriptions, a
   );
 });
 
-test("progression needs two comparable normal terminal sets and honors holds, same-load comparisons and rep-loss review", () => {
+test("September 27 Olympic load amendment uses the previous completed workout across held weeks", () => {
   const { s } = start(),
     e = nextRow(s.active);
   e.hold = false;
@@ -316,19 +316,19 @@ test("progression needs two comparable normal terminal sets and honors holds, sa
       { weight, outcome: "miss", grade: "A" },
     ],
   });
-  assert.equal(failureProgression(e, [history(4), history(4)], 5).weight, 105);
+  assert.equal(failureProgression(e, [history(4), history(4)], 5).weight, 110);
   assert.equal(
     failureProgression(e, [history(4), history(4, false)], 5).weight,
-    100,
+    110,
   );
   assert.equal(
     failureProgression(e, [history(4, true, 95), history(4)], 5).weight,
-    100,
+    110,
   );
   assert.equal(
     failureProgression({ ...e, hold: true }, [history(4), history(4)], 5)
       .weight,
-    100,
+    110,
   );
   assert.equal(failureProgression(e, [history(0)], 5).weight, 90);
   assert.equal(failureReached(history(4).sets), true);

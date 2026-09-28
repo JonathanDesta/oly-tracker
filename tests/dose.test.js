@@ -238,8 +238,8 @@ test("regional additions, equipment-specific muscle counts and Planner signature
     })),
     5,
   );
-  assert.equal(suggestion.weight, 5);
-  assert.match(suggestion.text, /barbell plate setting does not apply/);
+  assert.equal(suggestion.weight, 10);
+  assert.match(suggestion.text, /per dumbbell/);
   s.training.doseVersion = LEGACY_DOSE_VERSION;
   const previous = planFor(s, "friday").sessions[0];
   assert.notEqual(
@@ -461,7 +461,7 @@ test("load increases require every prescribed set, not only a successful first s
   );
   assert.equal(
     failureProgression(e, history([...set(4), ...set(4)]), 5).weight,
-    105,
+    110,
   );
 });
 

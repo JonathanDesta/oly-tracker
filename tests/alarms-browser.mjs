@@ -22,13 +22,32 @@ const page = await context.newPage(),
 page.on("pageerror", (error) => errors.push(error.message));
 const click = (name) => page.getByRole("button", { name, exact: true }).click();
 const audio = () =>
-  page.locator("#workout-alarm-audio").evaluate((a) => ({
-    src: a.src,
-    paused: a.paused,
-    time: a.currentTime,
-    duration: a.duration,
-    volume: a.volume,
+  page.evaluate(() => ({
+    starts: window.__audioStarts,
+    active: window.__audioActive,
   }));
+await page.addInitScript(() => {
+  window.__audioStarts = 0;
+  window.__audioActive = 0;
+  const Original = window.AudioContext || window.webkitAudioContext;
+  window.AudioContext = class extends Original {
+    createBufferSource() {
+      const source = super.createBufferSource(),
+        start = source.start.bind(source),
+        stop = source.stop.bind(source);
+      source.start = (...args) => {
+        window.__audioStarts++;
+        window.__audioActive++;
+        return start(...args);
+      };
+      source.stop = (...args) => {
+        window.__audioActive--;
+        return stop(...args);
+      };
+      return source;
+    }
+  };
+});
 const read = () =>
   page.evaluate(() => JSON.parse(localStorage.getItem("oly_program_v7")));
 try {
@@ -37,53 +56,15 @@ try {
   assert(await page.getByLabel("Alarm sound on", { exact: true }).isChecked());
   assert.equal(await page.locator('[name="volume"]').inputValue(), "1");
   assert.equal(await page.locator('[name="row"]').inputValue(), "db");
-  await click("Test with phone locked · 10 seconds");
-  await page.waitForFunction(
-    () =>
-      document.querySelector("audio")?.readyState >= 3 &&
-      !document.querySelector("audio").paused &&
-      document.querySelector("audio").currentTime > 0.1,
-  );
-  const scheduled = await audio();
-  assert(scheduled.duration >= 69 && scheduled.duration <= 71);
-  // Suspend page lifecycle callbacks. The media track itself contains the alert.
-  if (engine === "chromium") {
-    const cdp = await context.newCDPSession(page);
-    await cdp.send("Page.setWebLifecycleState", { state: "frozen" });
-    await new Promise((resolve) => setTimeout(resolve, 11500));
-    await cdp.send("Page.setWebLifecycleState", { state: "active" });
-  } else {
-    const other = await context.newPage();
-    await other.goto("about:blank");
-    await other.bringToFront();
-    await new Promise((resolve) => setTimeout(resolve, 11500));
-    await other.close();
-    await page.bringToFront();
-  }
-  await page.waitForFunction(
-    () => document.querySelector("audio")?.readyState >= 3,
-  );
-  const continued = await audio();
-  if (continued.src === scheduled.src) {
-    assert(
-      continued.time >= 10,
-      `media must reach the embedded alarm without page timers: ${continued.time}`,
-    );
-  } else {
-    // Visibility recovery deliberately replaces a delayed/interrupted track with
-    // an immediate alarm. Its playhead is measured from the new track's start.
-    assert(
-      !continued.paused && continued.duration >= 59 && continued.duration <= 61,
-      `return recovery must play an immediate alarm, not restart the silent delay: ${JSON.stringify(continued)}`,
-    );
-  }
-  await page.waitForFunction(() =>
-    document
-      .querySelector("#alarm-message")
-      .textContent.includes("timer finished"),
+  await click("Test alarm sound");
+  await page.waitForFunction(() => window.__audioStarts === 1);
+  assert.equal(
+    await page.locator("audio").count(),
+    0,
+    "no exclusive media element or silent keepalive track",
   );
   await click("Silence alarm");
-  assert.equal((await audio()).paused, true);
+  assert.equal((await audio()).active, 0);
 
   await page.clock.install({ time: new Date("2026-09-25T12:00:00-05:00") });
   await page.evaluate(async () => {
@@ -124,12 +105,16 @@ try {
   await page.getByLabel("Valid completed reps", { exact: true }).fill("10");
   await click("Save set");
   assert.equal((await read()).active.sets[0].loadUnit, "per dumbbell");
-  await page.waitForFunction(() => !document.querySelector("audio").paused);
-  const original = (await audio()).src;
+  const original = (await audio()).starts;
+  assert.equal(
+    (await audio()).active,
+    0,
+    "rest countdown plays no audio before zero",
+  );
   await click("Settings");
   assert.equal(await page.locator("#pace-clock").count(), 0);
   assert.equal(
-    (await audio()).src,
+    (await audio()).starts,
     original,
     "changing app screen must not cancel or restart the alarm",
   );
@@ -138,20 +123,25 @@ try {
     await page.locator("#alarm-message").innerText(),
     /timer finished/,
   );
+  assert.equal((await audio()).starts, original + 1);
   await click("Silence alarm");
   await click("Workout");
   await click("Add 1 minute");
-  assert.notEqual((await audio()).src, original);
+  assert.equal(
+    (await audio()).active,
+    0,
+    "extending the timer does not start audio",
+  );
   await click("Pause countdown");
-  assert.equal((await audio()).paused, true);
+  assert.equal((await audio()).active, 0);
   await page.clock.fastForward(30000);
   assert.equal(await page.locator("#alarm-status").isVisible(), false);
   await click("Resume countdown");
-  await page.waitForFunction(() => !document.querySelector("audio").paused);
+  assert.equal((await audio()).active, 0);
   await click("End rest early");
   assert.equal(
-    (await audio()).paused,
-    true,
+    (await audio()).active,
+    0,
     "an unstarted work set must not retain the old rest alarm",
   );
   await click("Settings");
@@ -198,7 +188,7 @@ try {
     .screenshot({ path: `test-results/alarm-panel-${engine}.png` });
   assert.deepEqual(errors, []);
   console.log(
-    `PASS alarms and dumbbell rows (${engine}): automatic loud audio, ${engine === "chromium" ? "frozen-page" : "background-tab"} media playback, other app screens, deadline changes/cancellation, per-dumbbell logging, mobile layout and ${engine === "chromium" ? "offline" : "reload"} preferences. Physical iPhone lock-screen behavior remains a device test.`,
+    `PASS alarms and dumbbell rows (${engine}): foreground Web Audio without silent playback, other app screens, deadline changes/cancellation, per-dumbbell logging, mobile layout and ${engine === "chromium" ? "offline" : "reload"} preferences. Physical iPhone lock-screen behavior remains a device test.`,
   );
 } finally {
   await browser.close();

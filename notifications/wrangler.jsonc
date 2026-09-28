@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "oly-timer-notifications",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [{ "name": "TIMERS", "class_name": "DeviceTimer" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceTimer"] }],
+  "vars": {
+    "APP_ORIGIN": "https://jonathandesta.github.io",
+    "APP_URL": "https://jonathandesta.github.io/oly-tracker/",
+    "VAPID_SUBJECT": "https://jonathandesta.github.io/oly-tracker/",
+  },
+  "observability": { "enabled": false },
+}

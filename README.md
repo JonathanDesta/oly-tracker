@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.23 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.24 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -94,3 +94,11 @@ Alarm sound defaults on, with a louder repeating three-beep pattern, device-loca
 Background audio is still subject to iPhone/browser media policies: other audio, calls, closing the app or device interruptions can stop playback. It may pause music from another app. Settings → Alarms includes a 10-second locked-phone test. This is not a native scheduled alarm or a claim of guaranteed iPhone lock-screen delivery. See [the implementation and verification review](docs/ALARMS-AND-ROW.md).
 
 Optional training now starts at **Week or Settings → Add or adjust training**. Choose jumps/runs, easy cardio, lifting sets or targeted stretches. Each guided plan shows the next concrete change, affected days, time cost and the review needed before progression. See [guided training changes](docs/GUIDED-TRAINING.md).
+
+## Music, notifications and load recommendations · App 7.24
+
+Alarms use mixable foreground audio without a silent playback track. Optional online Web Push delivers timer notifications to a connected Home Screen installation while the page is closed. Connect once in Settings → Alarms, allow notifications, then run the locked-phone test. Each countdown shows whether its background alert has been saved.
+
+The previous comparable workout recommends +10 lb when every working set reaches the upper rep bound, −10 lb if a completed set falls below the lower bound, otherwise the same weight. Dumbbells change 5 lb per hand. These user-requested rules supersede earlier load recommendations. [Implementation, deployment and verification](docs/ALARMS-AND-LOADS.md).
+
+Install frontend and notification dependencies with `npm run setup` before the full audit.

@@ -53,7 +53,7 @@ const change = (kind, extra = {}) => ({
   reason: "Comparable training and subsequent recovery reviewed.",
   ...extra,
 });
-test("second report 3: assistance holds secure loads through all Realization weeks, including week 11", () => {
+test("second report 3: held-week prescriptions persist; September 27 recommendations supersede load holds", () => {
   const s = profile(11),
     c = s.training;
   c.trials = [
@@ -78,7 +78,7 @@ test("second report 3: assistance holds secure loads through all Realization wee
       assert.equal(e.hold, true);
       const h = [record(e, e.repRange[1]), record(e, e.repRange[1])];
       s.records = h;
-      assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 100);
+      assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 110);
     }
   }
   assert.ok(!rows(c, "friday").some((e) => e.key === "support_friday_support"));
@@ -94,15 +94,15 @@ test("second report 3: assistance holds secure loads through all Realization wee
     .sessions.flatMap((x) => x.rows)
     .find((x) => x.key === e.key);
   assert.equal(planned.heldWeight, 100);
-  assert.equal(nextLoad(planned, exposureHistory(s, planned)).weight, 100);
+  assert.equal(nextLoad(planned, exposureHistory(s, planned)).weight, 110);
   s.records = [record(e, 2)];
-  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 92.5);
+  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 90);
   c.week = 3;
   const progressing = rows(c, "tuesday").find((x) => x.key === e.key);
   s.records = [record(e, 5), record(e, 5)];
   assert.equal(
     nextLoad(progressing, exposureHistory(s, progressing)).weight,
-    102.5,
+    110,
   );
 });
 test("second report 5: main aerobics cap at 30; page-22 walks are separate rows and sum exactly", () => {
@@ -141,9 +141,9 @@ test("second report 8: a ready limited-later day receives and earns normal load 
     second = record(e, 5);
   second.context.event = "limited_later";
   s.records = [first, second];
-  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 102.5);
+  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 110);
   second.followup.normal = false;
-  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 100);
+  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 110);
   assert.throws(
     () =>
       applyChange(s, change("set", { exercise: "shrug", day: "tuesday" }), now),

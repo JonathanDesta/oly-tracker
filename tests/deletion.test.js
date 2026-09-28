@@ -190,12 +190,13 @@ test("deletion removes progression and assistance exposure credit", () => {
   ];
   const second = structuredClone(r);
   second.id = "second";
+  second.sets[0].weight = 235;
   s.records.push(second);
   const trial = { id: "trial", day: "tuesday" };
-  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 227.5);
+  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 245);
   assert.equal(trialExposures(s, trial).length, 2);
   deleteSession(s, second.id);
-  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 225);
+  assert.equal(nextLoad(e, exposureHistory(s, e)).weight, 235);
   assert.equal(trialExposures(s, trial).length, 1);
 });
 
