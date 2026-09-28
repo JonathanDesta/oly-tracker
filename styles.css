@@ -1443,3 +1443,20 @@ dialog::backdrop {
     white-space: normal;
   }
 }
+
+.training-checks {
+  padding-left: 20px;
+}
+.training-checks li {
+  margin-bottom: 16px;
+}
+.training-checks p {
+  margin: 6px 0;
+}
+.training-preparation {
+  margin: 18px 0;
+}
+.training-preparation p {
+  font-size: 14px;
+  line-height: 1.6;
+}

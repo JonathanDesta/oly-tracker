@@ -9,6 +9,7 @@ import {
   optionalStatus,
   optionalPreview,
   applyGuidedChange,
+  canChooseOptional,
   secondaryKind,
   optionalKind,
 } from "./additions.js";
@@ -87,6 +88,7 @@ import {
   exposureHistory,
   nextLoad,
   advanceWeek,
+  liftingWeekChecks,
   monitoring,
   monitoringTotals,
   normal,
@@ -136,7 +138,7 @@ import {
   finishPaceBreak,
 } from "./pacing.js";
 const $ = (id) => document.getElementById(id);
-const APP_BUILD = "7.25";
+const APP_BUILD = "7.26";
 let plannerIntegration;
 const esc = (x) =>
   String(x ?? "").replace(
@@ -1256,7 +1258,7 @@ function openReview() {
   formModal(
     "Weekly comparison & decision",
     "review",
-    `${reviewChecklist(t.week === 13)}${allLoadedFailure(t) ? notice(`Failure introduction ${t.failureEntry}/${DOSE_STAGES}; ${t.failureWeeks.length}/2 stable green weeks. Log next-session follow-ups in History. Only complete weeks under the new prescription qualify; older/mixed or omitted weeks do not.`) : ""}${scheduleTrialPending(t) ? notice("Schedule trial: complete two green weeks at the established dose. Compare Wednesday after Monday and Friday after Wednesday at familiar loads; review any athletic cost. A tolerable schedule is not proof of equal long-term gains.") + check(t.doseVersion === DOSE_VERSION ? "Receiving positions, Olympic quality and first-set output stayed normal across the three-day schedule" : "C/D quality, receiving positions and first-set output stayed normal under this schedule", "scheduleQuality") : ""}<p>Compare like-load Olympic quality, first failure sets and next-session positions. Resolve priority-1 needs first. If unclear: reverse health-only additions, then athletics, then recent/local hypertrophy.</p>${monitoring(
+    `${reviewChecklist(t.week === 13)}${preparationHTML()}${allLoadedFailure(t) ? notice(`Failure introduction ${t.failureEntry}/${DOSE_STAGES}; ${t.failureWeeks.length}/2 stable green weeks. Log next-session follow-ups in History. Only complete weeks under the new prescription qualify; older/mixed or omitted weeks do not.`) : ""}${scheduleTrialPending(t) ? notice("Schedule trial: complete two green weeks at the established dose. Compare Wednesday after Monday and Friday after Wednesday at familiar loads; review any athletic cost. A tolerable schedule is not proof of equal long-term gains.") + check(t.doseVersion === DOSE_VERSION ? "Receiving positions, Olympic quality and first-set output stayed normal across the three-day schedule" : "C/D quality, receiving positions and first-set output stayed normal under this schedule", "scheduleQuality") : ""}<p>Compare like-load Olympic quality, first failure sets and next-session positions. Resolve priority-1 needs first. If unclear: reverse health-only additions, then athletics, then recent/local hypertrophy.</p>${monitoring(
       state,
     )
       .map((s) => notice(s, "warning"))
@@ -1267,12 +1269,48 @@ function openReview() {
   );
 }
 function trainingLink() {
-  return `<section class="panel training-entry"><div><h2>Add or adjust training</h2><p>Jumps & short runs, easy cardio, lifting sets or targeted stretching. See what changes, when to add it, and what comes next.</p></div>${btn("Add or adjust training", "change", "", "primary button")}</section>`;
+  const t = state.training;
+  const status = optionalStatus(state, nextOptionalChange(t, "athletics"));
+  const summary = t.athletics.enabled
+    ? `Athletics: ${doseText(t.athletics)}`
+    : status.allowed
+      ? "Athletics: ready to add. Preview the workout, then choose Add to my week."
+      : `Athletics: recommended to wait. ${introductionStatus(state).action ? introductionStatus(state).title : status.reason}`;
+  return `<section class="panel training-entry"><div><h2>Add or adjust training</h2><p>${esc(summary)}</p><p>Open the plan to see your next steps or choose to add now. Other options include cardio, lifting sets and targeted stretching. Nothing is added automatically.</p></div><div class="training-buttons">${btn("Open athletics", "optional", 'data-domain="athletics"', "primary button")}${btn("Add or adjust training", "change")}</div></section>`;
+}
+function preparationHTML() {
+  const t = state.training;
+  if (
+    !allLoadedFailure(t) ||
+    (!failureTrialPending(t) && !scheduleTrialPending(t))
+  )
+    return "";
+  const checks = liftingWeekChecks(state);
+  return `<section class="training-preparation"><h3>Your steps before the recommended start</h3><p>These counts come from this device's saved journal. They do not change just because a new calendar week begins.</p><ol class="athletic-roadmap">
+    <li><b>Lifting build-up: level ${t.failureEntry} of ${DOSE_STAGES}</b><br>${t.failureEntry < DOSE_STAGES ? `There are ${DOSE_STAGES - t.failureEntry} lifting increases left. Finish and review each level before increasing the sets. Checkpoint weeks 4 and 8 hold increases.` : "Full lifting workload reached."}</li>
+    <li><b>Full-workload reviews: ${Math.min(2, t.failureWeeks.length)} of 2</b><br>After reaching level 4, keep the same workload for two complete weeks with normal lifting and recovery, and save Weekly review for each.</li>
+    ${t.scheduleTrial ? `<li><b>Schedule reviews: ${Math.min(2, t.scheduleTrial.weeks.length)} of 2</b><br>These can count during the same two full-workload weeks. In Weekly review, record whether positions, lifting quality and first-set performance stayed normal.</li>` : ""}
+    <li><b>Return here and choose Add to my week</b><br>Recommended addition weeks are 1–3 and 5–7, after the checks above. You do not need to add more lifting sets first. Adding now is also your choice.</li></ol>
+    <details class="training-details" open><summary>This week's workout and recovery checks · ${checks.filter((c) => c.complete).length} of ${checks.length} recorded</summary><p>After the next lifting session, open the previous workout and save its Next-session check. Report what actually happened; a missing entry and poor recovery are different things.</p><ul class="training-checks">${checks.map((c) => `<li><b>${esc(weekdayFor(state, c.day))} · ${esc(c.title)}</b><p>${esc(c.detail)}</p>${!c.complete ? (c.recordId ? btn("Open workout log", "record", `data-id="${esc(c.recordId)}"`, "quiet") : btn("View workout", "preparation-day", `data-day="${c.day}"`, "quiet")) : ""}</li>`).join("")}</ul></details>
+    <p>At the end of the week: open Weekly review, record normal training and recovery only if true, and choose <b>Advance after resolving the week</b> to progress the build-up. The two full-workload weeks and schedule checks may be recorded together. These waiting periods are programming recommendations, not a measured test of your athletic ability.</p></section>`;
+}
+function statusActions(status) {
+  return status.action
+    ? btn(
+        {
+          review: "Open Weekly review",
+          history: "Record next-session recovery",
+          resume: "Return to workout",
+          trials: "Review existing lifting changes",
+        }[status.action],
+        status.action,
+      )
+    : "";
 }
 function trainingStatus() {
   const step = introductionStatus(state),
     pending = observation(state);
-  return `<div class="training-status"><strong>${esc(step.title)}</strong><p>${esc(step.text)}</p>${step.action ? btn("Open Weekly review", step.action) : ""}${pending ? `<p>${esc(pending.text)}</p>${btn(pending.action === "history" ? "Record next-session recovery" : "Open Weekly review", pending.action)}` : ""}</div>`;
+  return `<div class="training-status"><strong>${esc(step.title)}</strong><p>${esc(step.text)}</p>${step.action ? btn("Open Weekly review", step.action) : ""}${pending ? `<p>${esc(pending.text)}</p>${statusActions(pending)}` : ""}</div>`;
 }
 function openTraining() {
   const t = state.training;
@@ -1304,8 +1342,8 @@ function optionalPreviewHTML(kind) {
 }
 function optionalAction(kind) {
   const status = optionalStatus(state, kind);
-  const guidance = `<div class="training-status"><strong>${status.allowed ? "Ready to review" : "Before adding this"}</strong><p>${esc(status.reason)}</p>${status.action ? btn({ review: "Open Weekly review", history: "Record next-session recovery", resume: "Return to workout", trials: "Review existing lifting changes" }[status.action], status.action) : ""}</div>`;
-  return `${status.allowed ? "" : guidance}<h3>${esc(changeLabel(state.training, kind))}</h3>${optionalPreviewHTML(kind)}${status.allowed ? guidance + btn("Review this change", "optional-change", `data-kind="${kind}"`, "primary button") : ""}`;
+  const guidance = `<div class="training-status"><strong>${status.allowed ? "Ready to add" : "Recommended: wait before adding"}</strong><p>${esc(status.reason)}</p>${statusActions(status)}${!status.allowed ? "<p>You can follow the steps below or choose Add now anyway. That choice does not mark unfinished reviews or recovery checks as complete.</p>" : ""}${!status.allowed && canChooseOptional(state, kind) ? btn("Add now anyway", "optional-change", `data-kind="${kind}" data-choose-now="1"`) : ""}</div>`;
+  return `${guidance}${!status.allowed ? preparationHTML() : ""}<h3>${esc(changeLabel(state.training, kind))}</h3><p>This is a preview. Saving adds it to your day tabs with warm-ups, rests and timers.</p>${optionalPreviewHTML(kind)}${status.allowed ? btn("Review this change", "optional-change", `data-kind="${kind}"`, "primary button") : ""}`;
 }
 function openOptional(domain) {
   const t = state.training,
@@ -1320,16 +1358,28 @@ function openOptional(domain) {
     `${btn("All training options", "change", "", "quiet")}<p>${athletics ? `Normally ${mainDay}, after Olympic lifts${threeDaySchedule(t) ? " and before assistance, in the same visit" : ""}. Full running warm-up and rests are included. Jumps and runs stop when quality falls; they do not go to failure.` : "Brisk walking or easy cycling at a full-sentence talking pace. The main sessions build to 30 minutes each; additional minutes become short walks on other days. Your actual days are listed below."}</p>${athletics && a.secondary ? `<p><b>Second session · ${secondDay}:</b> ${esc(doseText(a, true))}</p>` : ""}<section class="training-next"><span class="eyebrow">${athletics && a.enabled && a.stage >= 7 ? "REVIEW BEFORE ADDING MORE" : "NEXT SMALL CHANGE"}</span>${kind ? optionalAction(kind) : "<p>You have reached the program’s current planning limit. Keep or reduce the established dose and review whether it is useful.</p>"}</section>${athletics ? `<details class="training-details"><summary>See the progression from the beginning</summary><p>Repeat each dose for at least two successful sessions and confirm normal recovery at the following lifting session. Then change just one part. Eligible weeks and higher-priority training still take precedence.</p><ol class="athletic-roadmap">${Array.from({ length: 8 }, (_, stage) => `<li${a.enabled && a.stage === stage ? ' aria-current="step"' : ""}><b>${stage === 0 ? "Start" : `Next ${stage}`} ${a.enabled && a.stage === stage ? "· Current dose" : ""}</b><br>${esc(doseText({ ...a, enabled: true, stage, secondary: 0, variation: "none" }))}</li>`).join("")}</ol><p>Review how the work is helping around 4 sets of jumps and 4 × 20 m runs. These are review points, not quotas. Continuing at the same dose is a valid decision.</p></details>${options.length ? `<details class="training-details"><summary>Other athletic goals · choose one alternative</summary><p>These replace the next change above. A second day requires four successful main sessions. Flying runs or cuts require established 4 × 20 m runs; they replace two runs on alternate sessions. Review around 24–36 purposeful jumps and 6–8 short runs per week across both days; those are not mandatory targets.</p><div class="training-buttons">${options.map((k) => btn(changeLabel(t, k), "optional-change", `data-kind="${k}"`)).join("")}</div></details>` : ""}` : `<details class="training-details"><summary>How cardio increases</summary><ol><li>Start with 20 minutes on each of two days.</li><li>After two weeks with normal performance and recovery, add 5 minutes to one session. Repeat gradually until both reach 30 minutes.</li><li>Then add 10 minutes per week as short walks, with two weeks to review each increase, toward 150 minutes.</li><li>Only after a full cycle tolerating 150 minutes, consider further 10-minute increases toward 300.</li></ol><p>A justified lifting or athletic change comes before extra health-only cardio. Keep the pace easy and count actual moving minutes once.</p></details>`}${(athletics ? a.enabled : t.cardio.enabled) ? `<details class="training-details"><summary>Keep, reduce or pause</summary><p>Keeping the current dose needs no action. If the new work worsens lifting, technique, soreness or recovery, reduce the responsible addition and check the next comparable workout.</p>${btn("Reduce or pause this work", "optional-reduce", `data-domain="${domain}"`)}</details>` : ""}`,
   );
 }
-function openOptionalChange(kind) {
+function openOptionalChange(kind, chooseNow = false) {
   const status = optionalStatus(state, kind),
     athletics = !kind.startsWith("cardio");
-  const body = `${btn("Back to plan", "optional", `data-domain="${athletics ? "athletics" : "cardio"}"`, "quiet")}${optionalPreviewHTML(kind)}${notice(status.reason)}${status.action ? btn({ review: "Open Weekly review", history: "Record next-session recovery", resume: "Return to workout", trials: "Review existing lifting changes" }[status.action], status.action) : ""}`;
-  if (!status.allowed) return modal(changeLabel(state.training, kind), body);
+  const preview = optionalPreview(state, kind);
+  const body = `${btn("Back to plan", "optional", `data-domain="${athletics ? "athletics" : "cardio"}"`, "quiet")}${optionalPreviewHTML(kind)}${notice(status.reason)}${statusActions(status)}`;
+  if (!status.allowed && !chooseNow)
+    return modal(
+      changeLabel(state.training, kind),
+      `${body}${preparationHTML()}${canChooseOptional(state, kind) ? btn("Add now anyway", "optional-change", `data-kind="${kind}" data-choose-now="1"`) : ""}`,
+    );
+  const confirmation = chooseNow
+    ? "I choose to add this work now. The recommended preparation or recovery checks may still be incomplete."
+    : athletics
+      ? "Lifting and recovery are normal; the listed preparation is complete, and I am changing only this part of training."
+      : "I have had two weeks of normal lifting and recovery at this workload, and I am not increasing lifting or athletics at the same time.";
   formModal(
-    changeLabel(state.training, kind),
+    chooseNow
+      ? "Your choice: add this work now"
+      : changeLabel(state.training, kind),
     "optional-change",
-    `${body}<input type="hidden" name="kind" value="${kind}"><p><b>After saving:</b> this work appears on the day tabs with its warm-up, timers and rests. ${athletics ? "Keep other additions steady for two successful sessions. Confirm normal recovery at the following lifting session in History, then return here." : "Keep other additions steady for two weeks, then complete Weekly review and return here."} No increase happens automatically.</p>${check(athletics ? "Lifting and recovery are normal; the listed preparation is complete, and I am changing only this part of training." : "I have had two weeks of normal lifting and recovery at this workload, and I am not increasing lifting or athletics at the same time.", "confirmed")}${kind === "cardio_step" && state.training.cardio.minutes >= 150 ? check("I tolerated 150 minutes per week for a full cycle before this further expansion.", "fullCycle") : ""}${textarea("What this should improve / anything to compare next time", "reason", athletics ? "Develop jumping and sprinting while preserving Olympic quality and normal next-session recovery." : "Improve aerobic health while preserving lifting and athletic performance.", "required")}`,
-    "Add to my week",
+    `${body}<input type="hidden" name="kind" value="${kind}">${chooseNow ? '<input type="hidden" name="chooseNow" value="1"><p>The app will record this as your choice, without claiming you completed the recommended waiting period. Adding work while lifting volume is still changing makes its effect harder to judge.</p>' : ""}<p><b>After saving:</b> ${preview.days.length ? "the work shown above appears on its day tabs with warm-ups, timers and rests." : esc(preview.unchangedReason)} ${state.active ? "Your open workout keeps its original prescription; this change applies to newly started sessions." : ""} ${athletics ? "Repeat the same athletic workout twice. After each following lifting session, record the recovery check in History, then return here." : "Keep the added minutes steady for two weeks, complete Weekly review, then return here."} No increase happens automatically.</p>${check(confirmation, "confirmed")}${!chooseNow && kind === "cardio_step" && state.training.cardio.minutes >= 150 ? check("I tolerated 150 minutes per week for a full cycle before this further expansion.", "fullCycle") : ""}${textarea("What this should improve / anything to compare next time", "reason", athletics ? "Develop jumping and sprinting while comparing Olympic quality and next-session recovery." : "Improve aerobic health while comparing lifting and athletic performance.", "required")}`,
+    preview.days.length ? "Add to my week" : "Save for future sessions",
   );
 }
 function openLiftingChanges() {
@@ -1489,7 +1539,12 @@ async function action(el) {
   if (a === "change") return openTraining();
   if (a === "advanced-change") return openAdvancedChange();
   if (a === "optional") return openOptional(el.dataset.domain);
-  if (a === "optional-change") return openOptionalChange(el.dataset.kind);
+  if (a === "optional-change")
+    return openOptionalChange(el.dataset.kind, el.dataset.chooseNow === "1");
+  if (a === "preparation-day") {
+    selected = day;
+    return nav("week");
+  }
   if (a === "lifting-changes") return openLiftingChanges();
   if (a === "set-change") return openSetChange(day, id, el.dataset.kind);
   if (a === "history") return nav("history");
@@ -2350,6 +2405,7 @@ function handleForm(form) {
     if (type === "optional-change")
       applyGuidedChange(s, {
         kind: f.get("kind"),
+        chooseNow: f.has("chooseNow"),
         confirmed: f.has("confirmed"),
         fullCycle: f.has("fullCycle"),
         reason: f.get("reason"),
@@ -2458,8 +2514,17 @@ function handleForm(form) {
         ? secondaryAthleticSlot(state.training)
         : primaryAthleticSlot(state.training);
     nav("week");
+    const hasWork = programDays(state.training).some((day) =>
+      dayPlan(state.training, day).sessions.some(
+        (se) =>
+          se.kind ===
+          (f.get("kind").startsWith("cardio") ? "cardio" : "athletic"),
+      ),
+    );
     toast(
-      "Added to your week. The workout, preparation and timers are on its day tab.",
+      hasWork
+        ? "Saved. The workout, warm-ups and timers are on its day tab. Already-open workouts keep their original plan."
+        : "Saved for future sessions. This phase temporarily omits this work.",
     );
   }
   if (["start-without", "rescue", "switch-workout"].includes(type))

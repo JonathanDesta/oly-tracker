@@ -1,4 +1,4 @@
-const CACHE = "oly-groundup-v7-25-barbell-shrugs";
+const CACHE = "oly-groundup-v7-26-clear-training-choices";
 const FILES = [
   "./",
   "index.html",

@@ -1592,6 +1592,59 @@ function nextExposure(s) {
   if (s.training.nextSchedule) setSchedule(s.training, s.training.nextSchedule);
   migrateFailurePolicy(s);
 }
+// The readiness explanation and weekly review use the same evidence.
+export function liftingWeekChecks(s) {
+  const t = s.training;
+  return programDays(t).flatMap((day) =>
+    dayPlan(t, day)
+      .sessions.filter((se) =>
+        ["main", "accessories", "support"].includes(se.id),
+      )
+      .map((se) => {
+        const records = weekRecords(s).filter(
+          (r) => r.day === day && r.session.id === se.id,
+        );
+        const reason = (r) => {
+          if (r.status !== "complete") return "Workout was stopped or omitted.";
+          if (
+            r.timeConfig?.workSetPolicy !== "all-failure" ||
+            r.timeConfig?.doseVersion !== t.doseVersion ||
+            r.session.rows.length !== se.rows.length ||
+            !se.rows.every((expected) =>
+              r.session.rows.some(
+                (actual) =>
+                  actual.key === expected.key &&
+                  actual.sets === expected.sets &&
+                  fingerprint(actual) === fingerprint(expected),
+              ),
+            )
+          )
+            return "Saved workout uses a different prescription from this week's plan.";
+          if (!r.followup)
+            return "Next-session recovery check is missing. Save it after your next lifting session.";
+          if (!normal(r))
+            return "The workout or next-session recovery needs review.";
+          if (
+            !r.session.rows.every(
+              (e) => e.kind !== "quality" || successfulRow(r, e),
+            )
+          )
+            return "Olympic work was not completed as prescribed.";
+          return null;
+        };
+        const record = records.find((r) => !reason(r)) || records.at(-1);
+        const detail = record ? reason(record) : "Workout not yet logged.";
+        return {
+          day,
+          sessionId: se.id,
+          title: se.title,
+          recordId: record?.id,
+          complete: !!record && !detail,
+          detail: detail || "Workout and next-session recovery recorded.",
+        };
+      }),
+  );
+}
 export function advanceWeek(s, review, now = Date.now()) {
   if (s.active)
     throw Error("Finish the active session before reviewing the week.");
@@ -1632,35 +1685,7 @@ export function advanceWeek(s, review, now = Date.now()) {
       t.lowerDose,
       t.omitPull,
     ]);
-    const complete = programDays(t).every((day) =>
-      dayPlan(t, day)
-        .sessions.filter((se) =>
-          ["main", "accessories", "support"].includes(se.id),
-        )
-        .every((se) =>
-          weekRecords(s).some(
-            (r) =>
-              r.day === day &&
-              r.session.id === se.id &&
-              r.status === "complete" &&
-              r.timeConfig?.workSetPolicy === "all-failure" &&
-              r.timeConfig?.doseVersion === t.doseVersion &&
-              r.session.rows.length === se.rows.length &&
-              se.rows.every((expected) =>
-                r.session.rows.some(
-                  (actual) =>
-                    actual.key === expected.key &&
-                    actual.sets === expected.sets &&
-                    fingerprint(actual) === fingerprint(expected),
-                ),
-              ) &&
-              normal(r) &&
-              r.session.rows.every(
-                (e) => e.kind !== "quality" || successfulRow(r, e),
-              ),
-          ),
-        ),
-    );
+    const complete = liftingWeekChecks(s).every((check) => check.complete);
     const green =
       complete &&
       review.green &&

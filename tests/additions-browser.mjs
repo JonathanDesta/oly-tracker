@@ -104,6 +104,96 @@ try {
   await click("Close");
   assert.deepEqual((await read()).training, original.training);
 
+  // The waiting reason is visible from Week; users can follow the checklist or
+  // explicitly add now without inventing completed preparation.
+  await click("Open athletics");
+  assert.match(await dialog.innerText(), /Lifting build-up: level 1 of 4/);
+  assert.match(await dialog.innerText(), /Full-workload reviews: 0 of 2/);
+  assert.match(await dialog.innerText(), /same two full-workload weeks/);
+  assert.match(await dialog.innerText(), /0 of 3 recorded/);
+  await dialog
+    .getByRole("button", { name: "View workout", exact: true })
+    .first()
+    .click();
+  assert.equal(await dialog.isVisible(), false);
+  await page.evaluate(async () => {
+    const t = await import("./src/training.js");
+    const s = JSON.parse(localStorage.getItem("oly_program_v7"));
+    let at = Date.now() - 8 * 3600000;
+    s.readiness = {
+      date: s.weekStart,
+      level: "green",
+      event: "normal",
+      local: "",
+    };
+    t.startSession(s, "tuesday", "main", at);
+    s.active.warmup = true;
+    s.active.preparations = s.active.session.rows.map((e) => e.key);
+    while (t.nextRow(s.active)) {
+      const e = t.nextRow(s.active);
+      at += 300000;
+      if (e.kind === "quality")
+        t.logOlympicSet(
+          s,
+          {
+            weight: 100,
+            reps: 3,
+            finish: e.id === "cj" ? "jerk_miss" : "miss",
+          },
+          at,
+        );
+      else
+        t.logSet(
+          s,
+          { weight: 100, reps: e.repRange[1], endpoint: "failure" },
+          at,
+        );
+    }
+    t.finishSession(s, "Synthetic workout awaiting recovery check.", at + 1000);
+    localStorage.setItem("oly_program_v7", JSON.stringify(s));
+  });
+  await page.reload();
+  await click("Open athletics");
+  assert.match(
+    await dialog.innerText(),
+    /Next-session recovery check is missing/,
+  );
+  await click("Open workout log");
+  assert.match(await dialog.innerText(), /Next-session check/);
+  await dialog.locator('[name="normal"]').check();
+  await dialog
+    .locator('[data-form="followup"] [name="notes"]')
+    .fill("Synthetic normal recovery after the next practice.");
+  await click("Save follow-up");
+  await click("Open athletics");
+  assert.match(await dialog.innerText(), /1 of 3 recorded/);
+  await click("Add now anyway");
+  assert.match(
+    await dialog.innerText(),
+    /recommended preparation or recovery checks may still be incomplete/,
+  );
+  await click("Close");
+  assert.equal((await read()).training.athletics.enabled, false);
+  await click("Open athletics");
+  await click("Add now anyway");
+  await click("Add to my week");
+  assert.match(await dialog.locator(".form-error").innerText(), /Confirm/);
+  await dialog.locator('[name="confirmed"]').check();
+  await click("Add to my week");
+  const chosen = await read();
+  assert.equal(chosen.training.athletics.enabled, true);
+  assert.equal(chosen.training.failureEntry, 1);
+  assert.deepEqual(chosen.training.failureWeeks, []);
+  assert.deepEqual(chosen.training.scheduleTrial.weeks, []);
+  assert.equal(chosen.reviews.at(-1).change.chooseNow, true);
+  assert.match(await page.locator("main").innerText(), /Jumps & accelerations/);
+  // Match the existing WebKit harness workaround for offline/SW navigation
+  // (#42775); Chromium checks cold offline, WebKit checks persistent reload.
+  if (!safari) await context.setOffline(true);
+  await page.reload();
+  assert.equal((await read()).training.athletics.enabled, true);
+  if (!safari) await context.setOffline(false);
+
   await seed(true);
   await openPlan();
   const proposed = await page.evaluate(async () => {
@@ -193,9 +283,21 @@ try {
   await click("Settings");
   await openPlan();
   await noOverflow();
+  await click("Close");
+  await seed(true, { week: 12 });
+  await openPlan();
+  await click("Add now anyway");
+  assert.match(await dialog.innerText(), /phase temporarily omits/);
+  await dialog.locator('[name="confirmed"]').check();
+  await click("Save for future sessions");
+  assert.equal((await read()).training.athletics.enabled, true);
+  assert.match(
+    await page.locator("#toast").innerText(),
+    /Saved for future sessions/,
+  );
   assert.deepEqual(errors, []);
   console.log(
-    `Guided training additions (${safari ? "WebKit" : "Chromium"}): passed; introduction, preview/save timing parity, progression, second-day hold, reduction, cardio, lifting selection, held weeks and mobile layout.`,
+    `Guided training additions (${safari ? "WebKit" : "Chromium"}): passed; introduction, preview/save timing parity, progression, second-day hold, reduction, cardio, lifting selection, held weeks, actionable preparation checks, explicit add-now choice, ${safari ? "reload" : "offline"} persistence and mobile layout.`,
   );
 } finally {
   await browser.close();

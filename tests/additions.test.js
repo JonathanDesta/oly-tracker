@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fresh, normal, planFor } from "../src/training.js";
+import {
+  fresh,
+  normal,
+  planFor,
+  liftingWeekChecks,
+  startSession,
+  advanceWeek,
+  scheduledDate,
+} from "../src/training.js";
 import { dayPlan, copy } from "../src/prescription.js";
 import { fixedDay } from "../src/timeline.js";
 import { primaryAthleticSlot, secondaryAthleticSlot } from "../src/calendar.js";
 import {
   optionalStatus,
+  canChooseOptional,
   optionalPreview,
   applyGuidedChange,
   introductionStatus,
@@ -285,4 +294,130 @@ test("legacy athletics on a saved nondefault day still counts its completed sess
     ),
   });
   assert.equal(athleticProgress(s).count, 1);
+});
+
+test("choosing to add now preserves actual readiness, unfinished reviews and the open workout", () => {
+  const s = fresh("2026-09-21", "weekday", "all-failure");
+  startSession(s, "tuesday", "main", now);
+  const active = copy(s.active),
+    before = copy(s);
+  assert.equal(optionalStatus(s, "athletic_start", now).allowed, false);
+  assert.equal(canChooseOptional(s, "athletic_start"), true);
+  assert.throws(
+    () =>
+      applyGuidedChange(
+        s,
+        { ...change("athletic_start"), chooseNow: true, confirmed: false },
+        now,
+      ),
+    /Confirm/,
+  );
+  assert.deepEqual(s, before);
+  applyGuidedChange(s, { ...change("athletic_start"), chooseNow: true }, now);
+  assert.equal(s.training.athletics.enabled, true);
+  assert.deepEqual(s.active, active);
+  assert.deepEqual(s.readiness, before.readiness);
+  assert.deepEqual(s.training.failureWeeks, []);
+  assert.deepEqual(s.training.scheduleTrial.weeks, []);
+  assert.equal(s.training.failureEntry, 1);
+  assert.equal(s.reviews.at(-1).change.chooseNow, true);
+  assert.equal(s.reviews.at(-1).change.stable, undefined);
+  assert.match(s.reviews.at(-1).recommendation, /Build up/);
+  assert.equal(observation(s).count, 0);
+  assert.equal(canChooseOptional(s, "athletic_start"), false);
+  assert.equal(canChooseOptional(s, "fly"), false);
+  assert.equal(canChooseOptional(s, "made_up"), false);
+});
+
+test("choosing optional cardio or a later athletic step changes only that dose", () => {
+  const s = fresh("2026-09-21", "weekday", "all-failure");
+  applyGuidedChange(s, { ...change("cardio_start"), chooseNow: true }, now);
+  assert.equal(s.training.cardio.minutes, 40);
+  assert.equal(s.training.athletics.enabled, false);
+  applyGuidedChange(
+    s,
+    { ...change("athletic_start"), chooseNow: true },
+    now + 1,
+  );
+  applyGuidedChange(
+    s,
+    { ...change("athletic_step"), chooseNow: true },
+    now + 2,
+  );
+  assert.equal(s.training.athletics.stage, 1);
+  assert.equal(s.training.cardio.minutes, 40);
+  assert.deepEqual(s.training.failureWeeks, []);
+  s.training.week = 12;
+  assert.equal(optionalPreview(s, "athletic_step").days.length, 0);
+  applyGuidedChange(
+    s,
+    { ...change("athletic_step"), chooseNow: true },
+    now + 3,
+  );
+  assert.equal(s.training.athletics.stage, 2);
+  assert.equal(
+    planFor(s, "thursday").sessions.some((se) => se.kind === "athletic"),
+    false,
+  );
+});
+
+function liftingRecord(s, day) {
+  const session = dayPlan(s.training, day).sessions.find(
+    (se) => se.id === "main",
+  );
+  return {
+    id: day,
+    day,
+    date: scheduledDate(s, day),
+    weekId: s.weekId,
+    status: "complete",
+    session,
+    timeConfig: copy(s.training),
+    context: { level: "green", event: "normal", recovery: "normal" },
+    followup: { normal: true },
+    omissions: [],
+    sets: session.rows.flatMap((e) =>
+      Array.from({ length: e.sets }, () =>
+        e.kind === "quality"
+          ? [
+              { key: e.key, outcome: "make", grade: "A" },
+              { key: e.key, outcome: "miss", grade: "A" },
+            ]
+          : [{ key: e.key, endpoint: "failure", reps: 12, weight: 100 }],
+      ).flat(),
+    ),
+  };
+}
+test("the preparation checklist and weekly advancement use the same completed-workout evidence", () => {
+  const s = fresh("2026-09-21", "weekday", "all-failure");
+  assert.equal(liftingWeekChecks(s).length, 3);
+  assert(liftingWeekChecks(s).every((c) => /not yet logged/.test(c.detail)));
+  s.records = ["tuesday", "thursday", "friday"].map((day) =>
+    liftingRecord(s, day),
+  );
+  const first = s.records[0];
+  delete first.followup;
+  assert.match(liftingWeekChecks(s)[0].detail, /check is missing/);
+  first.followup = { normal: false };
+  assert.match(liftingWeekChecks(s)[0].detail, /needs review/);
+  first.followup.normal = true;
+  first.session.rows[0].sets++;
+  assert.match(liftingWeekChecks(s)[0].detail, /different prescription/);
+  first.session.rows[0].sets--;
+  assert(liftingWeekChecks(s).every((c) => c.complete));
+  s.records.push({ ...copy(first), id: "later-partial", status: "stopped" });
+  assert.equal(liftingWeekChecks(s)[0].recordId, first.id);
+  advanceWeek(
+    s,
+    {
+      action: "advance",
+      green: true,
+      recovery: "normal",
+      scheduleQuality: true,
+      notes: "Synthetic complete review",
+    },
+    now,
+  );
+  assert.equal(s.training.failureEntry, 2);
+  assert.deepEqual(s.training.failureWeeks, []);
 });

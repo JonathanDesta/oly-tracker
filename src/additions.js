@@ -1,5 +1,6 @@
 // Guided optional training. The same dose mutation and eligibility checks power
-// preview and save; viewing a proposal never changes the journal.
+// preview and save; viewing a proposal never changes the journal. The recommended
+// waiting periods remain visible when the user explicitly chooses to add now.
 import { copy, dayPlan, athleticDose } from "./prescription.js";
 import { allLoadedFailure, failureTrialPending } from "./failure-policy.js";
 import { DOSE_STAGES } from "./dose.js";
@@ -115,12 +116,12 @@ export function introductionStatus(s) {
     if (t.failureEntry < DOSE_STAGES)
       return {
         title: `Build up your lifting first · ${t.failureEntry} of ${DOSE_STAGES}`,
-        text: "Finish this week, save the next-session recovery checks in History, then complete Weekly review. A complete week with normal lifting and recovery can advance the build-up. After the full workload is established, repeat it for two reviewed weeks before adding training.",
+        text: "The app recommends waiting because you are still increasing lifting sets. Each level is a different workload, not a calendar week. After your next lifting session, record how you recovered from the previous workout. At the end of the week, save Weekly review with Advance selected if training and recovery were normal. Then spend two reviewed weeks at level 4 before adding training. Time passing alone does not advance this.",
         action: "review",
       };
     return {
       title: `Confirm the full lifting workload · ${Math.min(2, t.failureWeeks.length)} of 2 weeks reviewed`,
-      text: "Keep the workload steady. Save normal next-session recovery checks in History and complete Weekly review. Both full weeks must have normal lifting and recovery; a shortened or disrupted week does not count.",
+      text: "Keep the full workload steady for two reviewed weeks. After each following lifting session, open the previous workout in History and save its Next-session check. Complete Weekly review with normal training and recovery recorded. A shortened or disrupted week does not count; time passing alone does not advance this.",
       action: "review",
     };
   }
@@ -315,6 +316,20 @@ export function optionalStatus(s, kind, now = Date.now()) {
     return { allowed: false, reason, action };
   }
 }
+// Only structural dose limits apply to an explicit personal choice. Do not
+// fabricate green weeks, recovery checks or completed training to permit it.
+export function canChooseOptional(s, kind) {
+  if (!optionalKind(kind) || s.completed) return false;
+  try {
+    return changeOptionalDose(copy(s.training), {
+      kind,
+      fourPrimary: true,
+      fullCycle: true,
+    });
+  } catch {
+    return false;
+  }
+}
 export function optionalPreview(s, kind, now = Date.now()) {
   const proposed = copy(s);
   changeOptionalDose(proposed.training, {
@@ -366,6 +381,40 @@ export function optionalPreview(s, kind, now = Date.now()) {
 }
 export function applyGuidedChange(s, change, now = Date.now()) {
   const status = optionalStatus(s, change.kind, now);
+  if (change.chooseNow === true) {
+    if (!canChooseOptional(s, change.kind))
+      throw Error("Choose an available training change.");
+    if (!change.confirmed)
+      throw Error(
+        "Confirm that you want to add this work before the recommended checks are complete.",
+      );
+    if (!change.reason?.trim())
+      throw Error("Record why you are making this change.");
+    const t = s.training,
+      proposed = copy(t);
+    changeOptionalDose(proposed, {
+      kind: change.kind,
+      fourPrimary: true,
+      fullCycle: true,
+    });
+    const beforeAthletics = copy(t.athletics);
+    t.athletics = proposed.athletics;
+    t.cardio = proposed.cardio;
+    t.workloadChangedAt = now;
+    s.reviews.push({
+      at: now,
+      type: "change",
+      weekId: s.weekId,
+      week: t.week,
+      cycle: t.cycle,
+      change: { kind: change.kind, chooseNow: true, reason: change.reason },
+      recommendation: status.reason,
+      ...(athleticKind(change.kind)
+        ? { beforeAthletics, afterAthletics: copy(t.athletics) }
+        : {}),
+    });
+    return;
+  }
   if (!status.allowed) throw Error(status.reason);
   if (!change.confirmed)
     throw Error(

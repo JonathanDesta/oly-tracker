@@ -79,11 +79,11 @@ try {
     "oly-update-test-2",
   ]);
   await click("Settings");
-  assert.match(await page.locator("main").innerText(), /App 7\.25/);
+  assert.match(await page.locator("main").innerText(), /App 7\.26/);
   await click("Check for updates");
   await page
     .getByText(
-      "App 7.25 is current. Saved workouts and settings are unchanged.",
+      "App 7.26 is current. Saved workouts and settings are unchanged.",
       { exact: true },
     )
     .waitFor();

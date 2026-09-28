@@ -41,7 +41,7 @@ Each exercise, session and day shows a fixed planned time. Starting a session op
 
 Tap **Start timed set**, then **Set finished · record result** when the set actually ends. Recovery starts immediately while you enter the result. Zero shows overtime; it never records a result or ends a failure set. Continue confirms preparation/rest steps. Pause/resume, additional time, optional timer sound and a two-minute break control help manage delays. The ten-minute miscellaneous pool covers water/restroom stops; release unused time at the end. A small timer stays visible while logging. Timers and outcomes survive offline reload.
 
-Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.25 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
+Settings → Time planning retains moderate traffic (a fixed two-minute target per new gym station), adjustable loading/setup and ten minutes of breaks per visit. Active sessions keep their starting assumptions. App 7.26 identifies its installed build and checks for updates; waiting updates activate after the current workout is finished.
 
 GitHub Pages publishes **main**, not the local working directory or a feature branch. After releasing, run `npm run check:deployment` to verify all served app/source assets match the workspace. See [DEPLOYMENT.md](docs/DEPLOYMENT.md). Compatible saved Revision 6 settings migrate, including selected stretches and optional work; original logs and unfinished older sessions remain intact in the archive.
 
@@ -113,3 +113,19 @@ warm-ups; dumbbell history never supplies a barbell starting weight. The existin
 countdown steps cover rack setup, plate loading and light-bar preparation.
 Existing active sessions and saved logs stay unchanged. The one-time migration
 preserves later equipment choices in Settings → Schedule & equipment → Shrugs.
+
+## Clear optional-training choices · App 7.26
+
+Week and Settings now link directly to athletics. The plan explains the current
+lifting build-up level, reviewed full-workload weeks, and schedule checks, including
+that the two kinds of review may overlap. An actionable checklist identifies
+missing workouts, missing next-session recovery checks, different saved
+prescriptions, and recorded recovery concerns using the same evidence as weekly
+advancement. Normal calendar time alone never claims completed training.
+
+Users can follow the recommended preparation or explicitly choose **Add now
+anyway** for athletics and cardio. The preview shows the actual days, work and
+timing. A saved early choice records the recommendation and user's decision
+without inventing completed reviews, good recovery or prior adaptation. Open
+workouts keep their saved prescription. Phases that omit the module clearly label
+it as saved for future sessions. Normal recommended progression remains available.
