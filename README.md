@@ -1,6 +1,10 @@
 # Oly Tracker
 
-An offline training journal rebuilt around **Weightlifting First — Failure Work-Set Edition, Revision 6 (13 September 2026)**. The original 43-page PDF and a searchable text copy are bundled in `program/`.
+[Open Oly](https://jonathandesta.github.io/oly-tracker/) · [Open Planner](https://jonathandesta.github.io/Planner/)
+
+An offline web app that runs a personalized 52-week Olympic weightlifting program. It guides each session with timed warm-ups, sets and rests, logs every result, and recommends next-session loads and weekly volume with rules-based progression. Records stay on the device, with validated JSON backups, optional private Google Drive sync and a scheduling feed for [Planner](https://github.com/JonathanDesta/Planner). It is plain JavaScript with no runtime dependencies or build step, tested with Node's test runner and Playwright in Chrome and WebKit.
+
+The program is **Weightlifting First — Failure Work-Set Edition, Revision 6 (13 September 2026)**. The original 43-page PDF and a searchable text copy are bundled in `program/`. The sections below cover the training workflow, data handling and each program amendment in release order.
 
 ```sh
 npm start
